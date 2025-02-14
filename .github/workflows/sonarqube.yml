@@ -46,7 +46,6 @@ jobs:
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         with:
           args: >
-            -Dsonar.projectKey=django_project
-            -Dsonar.organization=your-org
+            -Dsonar.projectKey=dkn-pos-umkm-be
             -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }}
             -Dsonar.login=${{ secrets.SONAR_TOKEN }}
