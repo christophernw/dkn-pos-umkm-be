@@ -1,0 +1,35 @@
+name: Deploy Django App
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+
+    - name: Install sshpass
+      run: sudo apt-get update && sudo apt-get install -y sshpass
+
+    - name: Build and Push Docker Image
+      run: |
+        docker build -t my-django-app .
+        docker tag my-django-app my-dockerhub-username/my-django-app:latest
+        docker push my-dockerhub-username/my-django-app:latest
+
+    - name: Deploy to Cloud Server via SSH
+      run: |
+        sshpass -p "${{ secrets.SERVER_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+          docker pull my-dockerhub-username/my-django-app:latest
+          docker stop myproject_django || true
+          docker rm myproject_django || true
+          docker run -d --name myproject_django -p 8000:8000 my-dockerhub-username/my-django-app:latest
+        EOF
