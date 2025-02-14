@@ -22,15 +22,15 @@ jobs:
     - name: Build and Push Docker Image
       run: |
         docker build -t my-django-app .
-        docker tag my-django-app my-dockerhub-username/my-django-app:latest
-        docker push my-dockerhub-username/my-django-app:latest
+        docker tag my-django-app christophernw/dkn-pos-umkm-be:latest
+        docker push christophernw/dkn-pos-umkm-be:latest
 
     - name: Deploy to Cloud Server via SSH
       run: |
         sshpass -p "${{ secrets.SERVER_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
           cd django-be
-          docker pull my-dockerhub-username/my-django-app:latest
+          docker pull christophernw/dkn-pos-umkm-be:latest
           docker stop myproject_django || true
           docker rm myproject_django || true
-          docker run -d --name myproject_django -p 8000:8000 my-dockerhub-username/my-django-app:latest
+          docker run -d --name myproject_django -p 8000:8000 christophernw/dkn-pos-umkm-be:latest
         EOF
