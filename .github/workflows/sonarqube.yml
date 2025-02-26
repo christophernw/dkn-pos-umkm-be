@@ -30,7 +30,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest pytest-cov
+          pip install coverage
 
       - name: Run Tests with Coverage
         env:
@@ -39,9 +39,9 @@ jobs:
             DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
             DB_HOST: ${{ secrets.DB_HOST }}
             DB_PORT: ${{ secrets.DB_PORT }}
-            DJANGO_SETTINGS_MODULE: "backend.settings"
         run: |
-          pytest --cov=api --cov-report=xml
+          coverage run manage.py test
+          coverage xml
 
       - name: Run SonarQube Scanner
         uses: SonarSource/sonarqube-scan-action@v2
