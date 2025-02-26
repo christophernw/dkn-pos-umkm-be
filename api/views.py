@@ -1,8 +1,9 @@
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from .models import Product
+from django.views.decorators.http import require_http_methods
 
-
+@require_http_methods(["GET"])
 def hello_world(request):
     return JsonResponse({"message": "halooo duniaaaaa.......... "})
 
