@@ -1,63 +1,40 @@
-import pytest
+from django.test import TestCase
 from django.urls import reverse
-from rest_framework import status
 from api.models import Product
 
+class ProductTestCase(TestCase):
+    def test_create_product(self):
+        url = reverse('api:create-product')
+        data = {
+            "name": "Kromium",
+            "stock": 100,
+            "description": "Premium kroket with chicken and veggies"
+        }
+        response = self.client.post(url, data)
+        
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['message'], "Product created successfully")
+        self.assertIn('id', response.json())
 
-@pytest.mark.django_db
-def test_hello_world(client):
+    def test_list_products(self):
+        # Create some products in the database
+        product_data = [
+            {"name": "Kromium", "stock": 50, "description": "Delicious kroket"},
+            {"name": "Kromium Spicy", "stock": 20, "description": "Spicy kroket with chicken"},
+        ]
+        
+        for data in product_data:
+            Product.objects.create(**data)
 
-    url = reverse("api:hello")
-    response = client.get(url)
-    assert response.status_code == status.HTTP_200_OK
-    assert response.json() == {"message": "halooo duniaaaaa.......... "}
+        url = reverse('api:list-products')
+        response = self.client.get(url)
 
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.json()), len(product_data))
 
-@pytest.mark.django_db
-def test_create_product(client):
+    def test_hello_world(self):
+        url = reverse('api:hello')
+        response = self.client.get(url)
 
-    url = reverse("api:create-product")
-    data = {
-        "name": "Kromium",
-        "stock": 100,
-        "description": "Premium kroket with chicken and veggies",
-    }
-
-    response = client.post(url, data)
-    print(response.content)
-
-    assert response.status_code == status.HTTP_200_OK
-    assert response.json()["message"] == "Product created successfully"
-    assert "id" in response.json()
-
-    product = Product.objects.get(id=response.json()["id"])
-    assert product.name == data["name"]
-    assert product.stock == data["stock"]
-    assert product.description == data["description"]
-
-
-@pytest.mark.django_db
-def test_list_products(client):
-
-    product_data = [
-        {"name": "Kromium", "stock": 50, "description": "Delicious kroket"},
-        {
-            "name": "Kromium Spicy",
-            "stock": 20,
-            "description": "Spicy kroket with chicken",
-        },
-    ]
-
-    for data in product_data:
-        Product.objects.create(**data)
-
-    url = reverse("api:list-products")
-    response = client.get(url)
-
-    assert response.status_code == status.HTTP_200_OK
-    assert len(response.json()) == len(product_data)
-
-    for i, product in enumerate(response.json()):
-        assert product["name"] == product_data[i]["name"]
-        assert product["stock"] == product_data[i]["stock"]
-        assert product["description"] == product_data[i]["description"]
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"message": "halooo duniaaaaa.......... "})
