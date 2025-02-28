@@ -33,6 +33,8 @@ class ProdukAPITest(TestCase):
         data = response.json()
         self.assertEqual(len(data), 2)
 
+        data = sorted(data, key=lambda x: x["id"])
+
         self.assertEqual(data[0]["id"], self.produk_dengan_foto.id)
         self.assertEqual(data[0]["nama"], "Laptop")
         self.assertEqual(data[0]["foto"], "https://example.com/laptop.jpg")

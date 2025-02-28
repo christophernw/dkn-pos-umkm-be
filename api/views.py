@@ -1,11 +1,18 @@
 from ninja import NinjaAPI
+from django.http import HttpResponseBadRequest
 from api.models import Produk
 from api.schemas import ProdukSchema
 
 api = NinjaAPI()
 
 @api.get("/produk", response=list[ProdukSchema])
-def get_produk(request):
+def get_produk(request, sort: str = None):
+    if sort not in [None, "asc", "desc"]:
+        return HttpResponseBadRequest("Invalid sort parameter. Use 'asc' or 'desc'.")
+
+    order_by_field = "stok" if sort == "asc" else "-stok"
+    produk_list = Produk.objects.select_related("kategori").order_by(order_by_field, "id")  # Pastikan fallback ke id
+
     return [
         ProdukSchema(
             id=p.id,
@@ -17,5 +24,5 @@ def get_produk(request):
             satuan=p.satuan,
             kategori=p.kategori.nama,
         )
-        for p in Produk.objects.select_related("kategori").order_by("id")
+        for p in produk_list
     ]
