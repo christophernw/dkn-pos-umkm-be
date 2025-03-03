@@ -26,6 +26,13 @@ class ProdukAPITest(TestCase):
             kategori=self.kategori
         )
 
+    def test_kategori_str(self):
+        self.assertEqual(str(self.kategori), "Elektronik")
+
+    def test_produk_str(self):
+        self.assertEqual(str(self.produk_dengan_foto), "Laptop")
+        self.assertEqual(str(self.produk_tanpa_foto), "Keyboard")
+
     def test_get_produk_success(self):
         response = self.client.get("/api/produk")
         self.assertEqual(response.status_code, 200)
