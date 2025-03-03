@@ -1,7 +1,7 @@
 from ninja import NinjaAPI
 from django.http import HttpResponseBadRequest
-from api.models import Produk
-from api.schemas import ProdukSchema
+from api.models import Produk, KategoriProduk
+from api.schemas import ProdukSchema, CreateProdukSchema
 
 api = NinjaAPI()
 
@@ -26,3 +26,28 @@ def get_produk(request, sort: str = None):
         )
         for p in produk_list
     ]
+
+@api.post("/produk", response={201: ProdukSchema})
+def create_produk(request, payload: CreateProdukSchema):
+    kategori_obj, created = KategoriProduk.objects.get_or_create(nama=payload.kategori)
+
+    produk = Produk.objects.create(
+        nama=payload.nama,
+        foto=payload.foto,
+        harga_modal=payload.harga_modal,
+        harga_jual=payload.harga_jual,
+        stok=payload.stok,
+        satuan=payload.satuan,
+        kategori=kategori_obj
+    )
+
+    return 201, ProdukSchema(
+        id=produk.id,
+        nama=produk.nama,
+        foto=produk.foto,
+        harga_modal=float(produk.harga_modal),
+        harga_jual=float(produk.harga_jual),
+        stok=float(produk.stok),
+        satuan=produk.satuan,
+        kategori=kategori_obj.nama,
+    )
