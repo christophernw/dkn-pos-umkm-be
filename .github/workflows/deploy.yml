@@ -3,7 +3,7 @@ name: Deploy Django App
 on:
   push:
     branches:
-      - main 
+      - main
       - staging
   pull_request:
     branches:
