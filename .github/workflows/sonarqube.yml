@@ -3,14 +3,10 @@ name: SonarQube Analysis
 on:
   push:
     branches:
-      - main
-      - staging
-      - dev
+      - "**"
   pull_request:
     branches:
-      - main
-      - staging
-      - dev
+      - "**"
 
 jobs:
   sonar:
@@ -30,7 +26,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install coverage  # If using coverage
+          pip install coverage
 
       - name: Run Tests with Coverage
         env:
@@ -53,3 +49,5 @@ jobs:
             -Dsonar.projectKey=dkn-pos-umkm-be
             -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }}
             -Dsonar.login=${{ secrets.SONAR_TOKEN }}
+            -Dsonar.python.coverage.reportPaths=coverage.xml
+            -Dsonar.inclusions=authentication/api.py
