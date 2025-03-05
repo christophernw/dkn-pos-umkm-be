@@ -4,22 +4,26 @@ from api.models import Product
 from api.serializers import ProductUpdateSchema
 from django.http import JsonResponse
 
-
 router = Router()
 
-@router.get("/ping")
-def ping(request):
-    return {"message": "pong"}
+@router.get("/{product_id}")
+def get_product(request, product_id: int):
+    product = get_object_or_404(Product, id=product_id)
+    return JsonResponse({
+        "id": product.id,
+        "name": product.name,
+        "price": product.price,
+        "stock": product.stock,
+        "category": product.category
+    })
 
-@router.put("/products/{product_id}")
+@router.put("/{product_id}")  # <- Tidak perlu "/products/" karena sudah diatur di api.py
 def update_product(request, product_id: int, data: ProductUpdateSchema):
     product = get_object_or_404(Product, id=product_id)
 
-    # Validasi input
     if data.price < 0 or data.stock < 0:
-        return JsonResponse({"error": "Harga dan stok harus positif"}, status=400)
+        return JsonResponse({"error": "Harga dan stok harus bernilai positif"}, status=400)
 
-    # Update data produk
     for attr, value in data.dict().items():
         setattr(product, attr, value)
     product.save()

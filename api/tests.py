@@ -44,7 +44,7 @@ class ProductUpdateNegativeTest(TestCase):
     def test_update_product_invalid_price(self):
         """ Coba update dengan harga negatif, harus gagal dengan 400 """
         response = self.client.put(
-            f"/api/products/{self.product.id}/",
+            f"/api/products/{self.product.id}",
             {"name": "Produk A", "price": -5000, "stock": 5, "category": "Gadget"},
             content_type="application/json"
         )
@@ -53,7 +53,7 @@ class ProductUpdateNegativeTest(TestCase):
     def test_update_product_invalid_stock(self):
         """ Coba update dengan stok negatif, harus gagal dengan 400 """
         response = self.client.put(
-            f"/api/products/{self.product.id}/",
+            f"/api/products/{self.product.id}",
             {"name": "Produk A", "price": 5000, "stock": -5, "category": "Gadget"},
             content_type="application/json"
         )

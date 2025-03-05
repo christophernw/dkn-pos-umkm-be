@@ -19,8 +19,9 @@ from ninja import NinjaAPI
 from django.contrib import admin
 from django.urls import path
 from api.views import router  # ✅ Import the router directly
+from api.api import api
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-  # ✅ Use `router.urls` directly
+    path("api/", api.urls),
 ]
