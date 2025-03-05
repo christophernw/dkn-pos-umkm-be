@@ -50,4 +50,4 @@ jobs:
             -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }}
             -Dsonar.login=${{ secrets.SONAR_TOKEN }}
             -Dsonar.python.coverage.reportPaths=coverage.xml
-            -Dsonar.inclusions=authentication/api.py
+            -Dsonar.exclusions=**/migrations/**
