@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
 from pathlib import Path
+import environ
 import os
 import environ
 
@@ -41,7 +42,8 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'produk'
+    'search',
+    'produk',
 ]
 
 MIDDLEWARE = [
@@ -88,6 +90,17 @@ DATABASES = {
         'PORT': env('DB_PORT'),
     }
 }
+
+import sys
+
+if 'test' in sys.argv:
+    # Use an in-memory SQLite database for testing
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': ':memory:',
+        }
+    }
 
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
