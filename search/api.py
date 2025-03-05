@@ -1,10 +1,10 @@
 from ninja import Router
-from .schemas import ProdukSchema
-from .models import Produk
+from produk.schemas import ProdukSchema
+from produk.models import Produk
 
 router = Router()
 
-@router.get("/search", response=list[ProdukSchema])
+@router.get("/produk", response=list[ProdukSchema])
 def search_produk(request, q: str = ""):
     produk_list = Produk.objects.filter(nama__icontains=q)
     return [

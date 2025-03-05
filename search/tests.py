@@ -1,5 +1,5 @@
 from django.test import TestCase, Client
-from .models import Produk, KategoriProduk
+from produk.models import Produk, KategoriProduk
 
 class ProdukSearchAPITest(TestCase):
     def setUp(self):
@@ -43,38 +43,38 @@ class ProdukSearchAPITest(TestCase):
         self.assertEqual(str(self.kategori_minuman), "Minuman")
     
     def test_search_success(self):
-        response = self.client.get("/api/produk/search?q=nasi")
+        response = self.client.get("/api/search/produk?q=nasi")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.json()), 1)
         self.assertEqual(response.json()[0]["nama"], "Nasi Goreng")
 
     def test_search_multiple_results(self):
-        response = self.client.get("/api/produk/search?q=a")
+        response = self.client.get("/api/search/produk?q=a")
         self.assertEqual(response.status_code, 200)
         self.assertGreaterEqual(len(response.json()), 2)
 
     def test_search_case_insensitive(self):
-        response = self.client.get("/api/produk/search?q=NASI")
+        response = self.client.get("/api/search/produk?q=NASI")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.json()), 1)
         self.assertEqual(response.json()[0]["nama"], "Nasi Goreng")
 
     def test_search_no_results(self):
-        response = self.client.get("/api/produk/search?q=pizza")
+        response = self.client.get("/api/search/produk?q=pizza")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.json()), 0)
 
     def test_search_empty_query(self):
-        response = self.client.get("/api/produk/search?q=")
+        response = self.client.get("/api/search/produk?q=")
         self.assertEqual(response.status_code, 200)
         self.assertGreaterEqual(len(response.json()), 3)  # Harusnya mengembalikan semua produk
 
     def test_search_special_characters(self):
-        response = self.client.get("/api/produk/search?q=@!#$$%")
+        response = self.client.get("/api/search/produk?q=@!#$$%")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.json()), 0)
 
     def test_search_numeric_query(self):
-        response = self.client.get("/api/produk/search?q=123")
+        response = self.client.get("/api/search/produk?q=123")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.json()), 0)
