@@ -17,7 +17,7 @@ def get_product(request, product_id: int):
         "category": product.category
     })
 
-@router.put("/{product_id}")  # <- Tidak perlu "/products/" karena sudah diatur di api.py
+@router.put("/{product_id}")  
 def update_product(request, product_id: int, data: ProductUpdateSchema):
     product = get_object_or_404(Product, id=product_id)
 
