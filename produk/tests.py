@@ -37,7 +37,7 @@ class DeleteAPITest(TestCase):
         )
         
     def test_produk_str(self):
-        self.assertEqual(str(self.teh), "Es Teh Manis")
+        self.assertEqual(str(self.jus), "Jus Alpukat")
 
     def test_kategori_str(self):
         self.assertEqual(str(self.kategori_minuman), "Minuman")
