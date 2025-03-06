@@ -33,3 +33,21 @@ def delete_produk(request, id: int):
     produk = get_object_or_404(Produk, id=id)
     produk.delete()
     return {"message": "Produk berhasil dihapus"}
+
+@router.get("/search", response=list[ProdukSchema])
+def search_produk(request, q: str = ""):
+    produk_list = Produk.objects.filter(nama__icontains=q)
+    return [
+        {
+            "id": p.id,
+            "nama": p.nama,
+            "foto": p.foto,
+            "harga_modal": p.harga_modal,
+            "harga_jual": p.harga_jual,
+            "stok": p.stok,
+            "satuan": p.satuan,
+            "kategori": p.kategori.nama,
+        }
+        for p in produk_list
+    ]
+    
