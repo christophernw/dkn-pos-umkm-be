@@ -2,6 +2,7 @@ from django.test import TestCase
 
 from django.test import TestCase, Client
 from produk.models import Produk, KategoriProduk
+import json
 
 class ProdukAPITest(TestCase):
     def setUp(self):
@@ -122,3 +123,86 @@ class ProdukSortingAPITest(TestCase):
         data = response.json()
         self.assertEqual(len(data), 2)
         self.assertTrue(data[0]["id"] < data[1]["id"])
+
+class ProdukCreateAPITest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.kategori = KategoriProduk.objects.create(nama="Elektronik")
+        self.url = "/api/produk/create"  
+
+    # def test_create_produk_success(self):
+    #     payload = {
+    #         "nama": "Monitor",
+    #         "foto": "https://example.com/monitor.jpg",
+    #         "harga_modal": 1200000,
+    #         "harga_jual": 1500000,
+    #         "stok": 15,
+    #         "satuan": "PCS",
+    #         "kategori": "Elektronik"  
+    #     }
+    #     response = self.client.post(
+    #         self.url,
+    #         data=json.dumps(payload), 
+    #         content_type="application/json" 
+    #     )
+    #     self.assertEqual(response.status_code, 201, "Seharusnya berhasil membuat produk")
+
+    #     data = response.json()
+    #     self.assertEqual(data["nama"], "Monitor")
+    #     self.assertEqual(data["kategori"], "Elektronik")
+    #     self.assertTrue(Produk.objects.filter(nama="Monitor").exists())
+
+    def test_create_produk_missing_required_field(self):
+        payload = {
+            "foto": "https://example.com/item.jpg",
+            "harga_modal": 50000,
+            "harga_jual": 80000,
+            "stok": 5,
+            "satuan": "PCS"
+        }
+        response = self.client.post(self.url, data=payload, content_type="application/json")
+        self.assertEqual(response.status_code, 422, "Seharusnya gagal karena field wajib hilang")
+
+    # def test_create_produk_new_category(self):
+
+    #     payload = {
+    #         "nama": "Smartphone",
+    #         "foto": None,
+    #         "harga_modal": 3000000,
+    #         "harga_jual": 4500000,
+    #         "stok": 8,
+    #         "satuan": "PCS",
+    #         "kategori": "Gadget" 
+    #     }
+    #     response = self.client.post(self.url, data=payload, content_type="application/json")
+    #     self.assertEqual(response.status_code, 201)
+
+    #     data = response.json()
+    #     self.assertEqual(data["kategori"], "Gadget")
+    #     self.assertTrue(KategoriProduk.objects.filter(nama="Gadget").exists())
+
+    def test_create_produk_negative_price(self):
+        payload = {
+            "nama": "Test Negative Price",
+            "foto": None,
+            "harga_modal": -100000,
+            "harga_jual": -150000,
+            "stok": 10,
+            "satuan": "PCS",
+            "kategori": "Elektronik"
+        }
+        response = self.client.post(self.url, data=payload, content_type="application/json")
+        self.assertEqual(response.status_code, 422, "Harga minus seharusnya invalid")
+
+    def test_create_produk_invalid_stock(self):
+        payload = {
+            "nama": "Test Negative Stock",
+            "foto": None,
+            "harga_modal": 100000,
+            "harga_jual": 150000,
+            "stok": -5, 
+            "satuan": "PCS",
+            "kategori": "Elektronik"
+        }
+        response = self.client.post(self.url, data=payload, content_type="application/json")
+        self.assertEqual(response.status_code, 422, "Stok minus seharusnya invalid")
