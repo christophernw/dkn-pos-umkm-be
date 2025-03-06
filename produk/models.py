@@ -1,5 +1,7 @@
 from django.db import models
 
+from django.db import models
+
 class KategoriProduk(models.Model):
     nama = models.CharField(max_length=255)
 
@@ -9,7 +11,7 @@ class KategoriProduk(models.Model):
 class Produk(models.Model):
     id = models.AutoField(primary_key=True)
     nama = models.CharField(max_length=255)
-    foto = models.CharField(max_length=500, blank=True)
+    foto = models.CharField(max_length=500, null=True, blank=True)
     harga_modal = models.DecimalField(max_digits=10, decimal_places=2)
     harga_jual = models.DecimalField(max_digits=10, decimal_places=2)
     stok = models.DecimalField(max_digits=10, decimal_places=3)
