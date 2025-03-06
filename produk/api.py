@@ -1,4 +1,5 @@
 from ninja import Router
+from django.shortcuts import get_object_or_404
 from django.http import HttpResponseBadRequest
 from produk.models import Produk
 from produk.schemas import ProdukSchema
@@ -26,3 +27,9 @@ def get_produk(request, sort: str = None):
         )
         for p in produk_list
     ]
+
+@router.delete("/delete/{id}")
+def delete_produk(request, id: int):
+    produk = get_object_or_404(Produk, id=id)
+    produk.delete()
+    return {"message": "Produk berhasil dihapus"}
