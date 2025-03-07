@@ -30,13 +30,4 @@ class AuthenticationTests(TestCase):
         self.assertEqual(response.status_code, 401)
         self.assertIn("error", response.json())
 
-    def test_validate_token_valid(self):
-        access_token = str(self.refresh.access_token)
-        response = self.client.post("/validate-token", json={"token": access_token})
-        self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.json()["valid"])
-
-    def test_validate_token_invalid(self):
-        response = self.client.post("/validate-token", json={"token": "invalid_token"})
-        self.assertEqual(response.status_code, 200)
-        self.assertFalse(response.json()["valid"])
+    

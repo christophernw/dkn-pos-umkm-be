@@ -53,11 +53,3 @@ def refresh_token(request, refresh_data: RefreshTokenRequest):
     except TokenError as e:
         return 401, {"error": f"Invalid refresh token: {str(e)}"}
     
-@router.post("/validate-token")
-def validate_token(request, token_data: TokenValidationRequest):
-    try:
-        # Verify the token is valid
-        AccessToken(token_data.token)
-        return {"valid": True}
-    except TokenError:
-        return {"valid": False}
