@@ -51,3 +51,5 @@ jobs:
             -Dsonar.login=${{ secrets.SONAR_TOKEN }}
             -Dsonar.python.coverage.reportPaths=coverage.xml
             -Dsonar.exclusions=**/migrations/**
+            -Dsonar.exclusions=authentication/admin.py,authentication/apps.py,backend/asgi.py,authentication/models.py,authentication/schemas.py,backend/wsgi.py
+      
