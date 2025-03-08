@@ -5,7 +5,7 @@ from produk.schemas import ProdukSchema
 
 router = Router()
 
-@router.get("", response=list[ProdukSchema])  # HAPUS "produk" biar langsung pakai prefix dari add_router
+@router.get("", response=list[ProdukSchema])
 def get_produk(request, sort: str = None):
     if sort not in [None, "asc", "desc"]:
         return HttpResponseBadRequest("Invalid sort parameter. Use 'asc' or 'desc'.")
