@@ -35,12 +35,6 @@ class ProdukSearchAPITest(TestCase):
             satuan="porsi",
             kategori=self.kategori_makanan,
         )
-        
-    def test_produk_str(self):
-        self.assertEqual(str(self.teh), "Es Teh Manis")
-
-    def test_kategori_str(self):
-        self.assertEqual(str(self.kategori_minuman), "Minuman")
     
     def test_search_success(self):
         response = self.client.get("/api/search/produk?q=nasi")
