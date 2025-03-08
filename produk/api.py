@@ -27,10 +27,16 @@ def get_produk(request, sort: str = None):
         for p in produk_list
     ]
 
-create_router = Router()
-
-@create_router.post("", response={201: ProdukSchema})
+@router.post("/create", response={201: ProdukSchema, 422: dict})
 def create_produk(request, payload: CreateProdukSchema):
+
+    if payload.harga_modal < 0 or payload.harga_jual < 0:
+
+        return 422, {"detail": "Harga minus seharusnya invalid"}
+
+    if payload.stok < 0:
+        return 422, {"detail": "Stok minus seharusnya invalid"}
+
     kategori_obj, _ = KategoriProduk.objects.get_or_create(nama=payload.kategori)
     
     produk = Produk.objects.create(
@@ -43,7 +49,7 @@ def create_produk(request, payload: CreateProdukSchema):
         kategori=kategori_obj
     )
     
-    return ProdukSchema(
+    return 201, ProdukSchema(
         id=produk.id,
         nama=produk.nama,
         foto=produk.foto,

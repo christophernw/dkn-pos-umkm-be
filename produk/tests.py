@@ -130,27 +130,27 @@ class ProdukCreateAPITest(TestCase):
         self.kategori = KategoriProduk.objects.create(nama="Elektronik")
         self.url = "/api/produk/create"  
 
-    # def test_create_produk_success(self):
-    #     payload = {
-    #         "nama": "Monitor",
-    #         "foto": "https://example.com/monitor.jpg",
-    #         "harga_modal": 1200000,
-    #         "harga_jual": 1500000,
-    #         "stok": 15,
-    #         "satuan": "PCS",
-    #         "kategori": "Elektronik"  
-    #     }
-    #     response = self.client.post(
-    #         self.url,
-    #         data=json.dumps(payload), 
-    #         content_type="application/json" 
-    #     )
-    #     self.assertEqual(response.status_code, 201, "Seharusnya berhasil membuat produk")
+    def test_create_produk_success(self):
+        payload = {
+            "nama": "Monitor",
+            "foto": "https://example.com/monitor.jpg",
+            "harga_modal": 1200000,
+            "harga_jual": 1500000,
+            "stok": 15,
+            "satuan": "PCS",
+            "kategori": "Elektronik"  
+        }
+        response = self.client.post(
+            self.url,
+            data=json.dumps(payload), 
+            content_type="application/json" 
+        )
+        self.assertEqual(response.status_code, 201, "Seharusnya berhasil membuat produk")
 
-    #     data = response.json()
-    #     self.assertEqual(data["nama"], "Monitor")
-    #     self.assertEqual(data["kategori"], "Elektronik")
-    #     self.assertTrue(Produk.objects.filter(nama="Monitor").exists())
+        data = response.json()
+        self.assertEqual(data["nama"], "Monitor")
+        self.assertEqual(data["kategori"], "Elektronik")
+        self.assertTrue(Produk.objects.filter(nama="Monitor").exists())
 
     def test_create_produk_missing_required_field(self):
         payload = {
@@ -163,23 +163,23 @@ class ProdukCreateAPITest(TestCase):
         response = self.client.post(self.url, data=payload, content_type="application/json")
         self.assertEqual(response.status_code, 422, "Seharusnya gagal karena field wajib hilang")
 
-    # def test_create_produk_new_category(self):
+    def test_create_produk_new_category(self):
 
-    #     payload = {
-    #         "nama": "Smartphone",
-    #         "foto": None,
-    #         "harga_modal": 3000000,
-    #         "harga_jual": 4500000,
-    #         "stok": 8,
-    #         "satuan": "PCS",
-    #         "kategori": "Gadget" 
-    #     }
-    #     response = self.client.post(self.url, data=payload, content_type="application/json")
-    #     self.assertEqual(response.status_code, 201)
+        payload = {
+            "nama": "Smartphone",
+            "foto": None,
+            "harga_modal": 3000000,
+            "harga_jual": 4500000,
+            "stok": 8,
+            "satuan": "PCS",
+            "kategori": "Gadget" 
+        }
+        response = self.client.post(self.url, data=payload, content_type="application/json")
+        self.assertEqual(response.status_code, 201)
 
-    #     data = response.json()
-    #     self.assertEqual(data["kategori"], "Gadget")
-    #     self.assertTrue(KategoriProduk.objects.filter(nama="Gadget").exists())
+        data = response.json()
+        self.assertEqual(data["kategori"], "Gadget")
+        self.assertTrue(KategoriProduk.objects.filter(nama="Gadget").exists())
 
     def test_create_produk_negative_price(self):
         payload = {
@@ -206,3 +206,16 @@ class ProdukCreateAPITest(TestCase):
         }
         response = self.client.post(self.url, data=payload, content_type="application/json")
         self.assertEqual(response.status_code, 422, "Stok minus seharusnya invalid")
+
+    def test_create_produk_zero_values(self):
+        payload = {
+            "nama": "Test Zero Values",
+            "foto": None,
+            "harga_modal": 0,
+            "harga_jual": 0,
+            "stok": 0,
+            "satuan": "PCS",
+            "kategori": "Elektronik"
+        }
+        response = self.client.post(self.url, data=payload, content_type="application/json")
+        self.assertEqual(response.status_code, 201)
