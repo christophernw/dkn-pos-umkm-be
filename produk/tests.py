@@ -165,7 +165,7 @@ class ProdukCreateAPITest(TestCase):
 
         payload = {
             "nama": "Smartphone",
-            "foto": None,
+            "foto": '',
             "harga_modal": 3000000,
             "harga_jual": 4500000,
             "stok": 8,
@@ -182,7 +182,7 @@ class ProdukCreateAPITest(TestCase):
     def test_create_produk_negative_price(self):
         payload = {
             "nama": "Test Negative Price",
-            "foto": None,
+            "foto": '',
             "harga_modal": -100000,
             "harga_jual": -150000,
             "stok": 10,
@@ -195,7 +195,7 @@ class ProdukCreateAPITest(TestCase):
     def test_create_produk_invalid_stock(self):
         payload = {
             "nama": "Test Negative Stock",
-            "foto": None,
+            "foto": '',
             "harga_modal": 100000,
             "harga_jual": 150000,
             "stok": -5, 
@@ -208,7 +208,7 @@ class ProdukCreateAPITest(TestCase):
     def test_create_produk_zero_values(self):
         payload = {
             "nama": "Test Zero Values",
-            "foto": None,
+            "foto": '',
             "harga_modal": 0,
             "harga_jual": 0,
             "stok": 0,
@@ -217,7 +217,7 @@ class ProdukCreateAPITest(TestCase):
         }
         response = self.client.post(self.url, data=payload, content_type="application/json")
         self.assertEqual(response.status_code, 201)
-=======
+    
 class DeleteAPITest(TestCase):
     def setUp(self):
         self.client = Client()
