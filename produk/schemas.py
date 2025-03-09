@@ -23,5 +23,6 @@ class CreateProdukSchema(Schema):
 class PaginatedResponseSchema(Schema):
     items: List[ProdukSchema]
     total: int
+    page: int
+    per_page: int
     total_pages: int
-    current_page: int
