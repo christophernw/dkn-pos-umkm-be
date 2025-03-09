@@ -1,19 +1,19 @@
 from ninja import Router
 from django.shortcuts import get_object_or_404
 from django.http import HttpResponseBadRequest
-from produk.models import Produk
-from produk.schemas import ProdukSchema
+from produk.models import Produk, KategoriProduk
+from produk.schemas import PaginatedResponseSchema, ProdukSchema, CreateProdukSchema
 
 router = Router()
 
-@router.get("", response=list[ProdukSchema])  # HAPUS "produk" biar langsung pakai prefix dari add_router
-def get_produk(request, sort: str = None):
+def get_produk_queryset(sort=None):
     if sort not in [None, "asc", "desc"]:
-        return HttpResponseBadRequest("Invalid sort parameter. Use 'asc' or 'desc'.")
-
+        return None
+        
     order_by_field = "stok" if sort == "asc" else "-stok"
-    produk_list = Produk.objects.select_related("kategori").order_by(order_by_field, "id")
+    return Produk.objects.select_related("kategori").order_by(order_by_field, "id")
 
+def format_produk_response(produk_list):
     return [
         ProdukSchema(
             id=p.id,
@@ -28,6 +28,77 @@ def get_produk(request, sort: str = None):
         for p in produk_list
     ]
 
+@router.get("", response=list[ProdukSchema])
+def get_produk(request, sort: str = None):
+    queryset = get_produk_queryset(sort)
+    if queryset is None:
+        return HttpResponseBadRequest("Invalid sort parameter. Use 'asc' or 'desc'.")
+    
+    return format_produk_response(queryset)
+
+@router.get("/page/{page}", response={200: PaginatedResponseSchema, 404: dict})
+def get_produk_paginated(request, page: int, sort: str = None):
+    queryset = get_produk_queryset(sort)
+    if queryset is None:
+        return HttpResponseBadRequest("Invalid sort parameter. Use 'asc' or 'desc'.")
+    
+    per_page = 7
+    if 'per_page' in request.GET:
+        try:
+            per_page = int(request.GET.get('per_page'))
+        except ValueError:
+            pass
+    
+    total = queryset.count()
+    total_pages = (total + per_page - 1) // per_page
+    
+    if page > total_pages and total > 0:
+        return 404, {"message": "Page not found"}
+    
+    offset = (page - 1) * per_page
+    page_items = queryset[offset:offset + per_page]
+    
+    return 200, {
+        "items": format_produk_response(page_items),
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": total_pages
+    }
+
+@router.post("/create", response={201: ProdukSchema, 422: dict})
+def create_produk(request, payload: CreateProdukSchema):
+
+    if payload.harga_modal < 0 or payload.harga_jual < 0:
+
+        return 422, {"detail": "Harga minus seharusnya invalid"}
+
+    if payload.stok < 0:
+        return 422, {"detail": "Stok minus seharusnya invalid"}
+
+    kategori_obj, _ = KategoriProduk.objects.get_or_create(nama=payload.kategori)
+    
+    produk = Produk.objects.create(
+        nama=payload.nama,
+        foto=payload.foto,
+        harga_modal=payload.harga_modal,
+        harga_jual=payload.harga_jual,
+        stok=payload.stok,
+        satuan=payload.satuan,
+        kategori=kategori_obj
+    )
+    
+    return 201, ProdukSchema(
+        id=produk.id,
+        nama=produk.nama,
+        foto=produk.foto,
+        harga_modal=float(produk.harga_modal),
+        harga_jual=float(produk.harga_jual),
+        stok=float(produk.stok),
+        satuan=produk.satuan,
+        kategori=kategori_obj.nama,
+    )
+  
 @router.delete("/delete/{id}")
 def delete_produk(request, id: int):
     produk = get_object_or_404(Produk, id=id)
