@@ -18,4 +18,4 @@ class CreateProdukSchema(Schema):
     harga_jual: float
     stok: float
     satuan: str
-    kategori: int
+    kategori: str

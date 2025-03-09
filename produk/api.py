@@ -1,4 +1,5 @@
 from ninja import Router
+from django.shortcuts import get_object_or_404
 from django.http import HttpResponseBadRequest
 from produk.models import Produk, KategoriProduk
 from produk.schemas import ProdukSchema, CreateProdukSchema
@@ -27,23 +28,46 @@ def get_produk(request, sort: str = None):
         for p in produk_list
     ]
 
-create_router = Router()
+@router.post("/create", response={201: ProdukSchema, 422: dict})
+def create_produk(request):
+    print(request)
 
-@create_router.post("", response={201: ProdukSchema})
-def create_produk(request, payload: CreateProdukSchema):
-    kategori_obj, _ = KategoriProduk.objects.get_or_create(nama=payload.kategori)
-    
+    nama = request.POST.get("nama")
+    foto = request.FILES.get("foto")
+    harga_modal = request.POST.get("harga_modal")
+    harga_jual = request.POST.get("harga_jual")
+    stok = request.POST.get("stok")
+    satuan = request.POST.get("satuan")
+    kategori_nama = request.POST.get("kategori")
+
+    try:
+        harga_modal = float(harga_modal)
+        harga_jual = float(harga_jual)
+        stok = float(stok)
+    except ValueError:
+        return 422, {"detail": "Harga atau stok harus berupa angka"}
+
+    if harga_modal < 0 or harga_jual < 0:
+        return 422, {"detail": "Harga minus seharusnya invalid"}
+
+    if stok < 0:
+        return 422, {"detail": "Stok minus seharusnya invalid"}
+
+    # Ambil atau buat kategori
+    kategori_obj, _ = KategoriProduk.objects.get_or_create(nama=kategori_nama)
+
+    # Simpan ke database
     produk = Produk.objects.create(
-        nama=payload.nama,
-        foto=payload.foto,
-        harga_modal=payload.harga_modal,
-        harga_jual=payload.harga_jual,
-        stok=payload.stok,
-        satuan=payload.satuan,
+        nama=nama,
+        foto=foto,
+        harga_modal=harga_modal,
+        harga_jual=harga_jual,
+        stok=stok,
+        satuan=satuan,
         kategori=kategori_obj
     )
     
-    return ProdukSchema(
+    return 201, ProdukSchema(
         id=produk.id,
         nama=produk.nama,
         foto=produk.foto,
@@ -53,3 +77,9 @@ def create_produk(request, payload: CreateProdukSchema):
         satuan=produk.satuan,
         kategori=kategori_obj.nama,
     )
+  
+@router.delete("/delete/{id}")
+def delete_produk(request, id: int):
+    produk = get_object_or_404(Produk, id=id)
+    produk.delete()
+    return {"message": "Produk berhasil dihapus"}
