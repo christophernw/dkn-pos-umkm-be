@@ -1,6 +1,6 @@
 from django.test import TestCase, Client
 from produk.models import Produk, KategoriProduk
-import json
+from django.core.files.uploadedfile import SimpleUploadedFile
 
 class ProdukAPITest(TestCase):
     def setUp(self):
@@ -131,18 +131,13 @@ class ProdukCreateAPITest(TestCase):
     def test_create_produk_success(self):
         payload = {
             "nama": "Monitor",
-            "foto": "https://example.com/monitor.jpg",
-            "harga_modal": 1200000,
-            "harga_jual": 1500000,
-            "stok": 15,
+            "harga_modal": "1200000", 
+            "harga_jual": "1500000",
+            "stok": "15",
             "satuan": "PCS",
             "kategori": "Elektronik"  
         }
-        response = self.client.post(
-            self.url,
-            data=json.dumps(payload), 
-            content_type="application/json" 
-        )
+        response = self.client.post(self.url, data=payload)
         self.assertEqual(response.status_code, 201, "Seharusnya berhasil membuat produk")
 
         data = response.json()
@@ -152,27 +147,26 @@ class ProdukCreateAPITest(TestCase):
 
     def test_create_produk_missing_required_field(self):
         payload = {
-            "foto": "https://example.com/item.jpg",
-            "harga_modal": 50000,
-            "harga_jual": 80000,
-            "stok": 5,
-            "satuan": "PCS"
+            "nama": "Mouse",
+            "harga_modal": "",
+            "harga_jual": "80000",
+            "stok": "5",
+            "satuan": "PCS",
+            "kategori": "Elektronik"
         }
-        response = self.client.post(self.url, data=payload, content_type="application/json")
+        response = self.client.post(self.url, data=payload)
         self.assertEqual(response.status_code, 422, "Seharusnya gagal karena field wajib hilang")
 
     def test_create_produk_new_category(self):
-
         payload = {
             "nama": "Smartphone",
-            "foto": None,
-            "harga_modal": 3000000,
-            "harga_jual": 4500000,
-            "stok": 8,
+            "harga_modal": "3000000",
+            "harga_jual": "4500000",
+            "stok": "8",
             "satuan": "PCS",
             "kategori": "Gadget" 
         }
-        response = self.client.post(self.url, data=payload, content_type="application/json")
+        response = self.client.post(self.url, data=payload)
         self.assertEqual(response.status_code, 201)
 
         data = response.json()
@@ -182,42 +176,71 @@ class ProdukCreateAPITest(TestCase):
     def test_create_produk_negative_price(self):
         payload = {
             "nama": "Test Negative Price",
-            "foto": None,
-            "harga_modal": -100000,
-            "harga_jual": -150000,
-            "stok": 10,
+            "harga_modal": "-100000",
+            "harga_jual": "-150000",
+            "stok": "10",
             "satuan": "PCS",
             "kategori": "Elektronik"
         }
-        response = self.client.post(self.url, data=payload, content_type="application/json")
+        response = self.client.post(self.url, data=payload)
         self.assertEqual(response.status_code, 422, "Harga minus seharusnya invalid")
 
     def test_create_produk_invalid_stock(self):
         payload = {
             "nama": "Test Negative Stock",
-            "foto": None,
-            "harga_modal": 100000,
-            "harga_jual": 150000,
-            "stok": -5, 
+            "harga_modal": "100000",
+            "harga_jual": "150000",
+            "stok": "-5", 
             "satuan": "PCS",
             "kategori": "Elektronik"
         }
-        response = self.client.post(self.url, data=payload, content_type="application/json")
+        response = self.client.post(self.url, data=payload)
         self.assertEqual(response.status_code, 422, "Stok minus seharusnya invalid")
 
     def test_create_produk_zero_values(self):
         payload = {
             "nama": "Test Zero Values",
-            "foto": None,
-            "harga_modal": 0,
-            "harga_jual": 0,
-            "stok": 0,
+            "harga_modal": "0",
+            "harga_jual": "0",
+            "stok": "0",
             "satuan": "PCS",
             "kategori": "Elektronik"
         }
-        response = self.client.post(self.url, data=payload, content_type="application/json")
+        response = self.client.post(self.url, data=payload)
         self.assertEqual(response.status_code, 201)
-=======
+
+    def test_create_produk_non_numeric_values(self):
+        payload = {
+            "nama": "Test Non Numeric Price",
+            "harga_modal": "abc", 
+            "harga_jual": "150000",
+            "stok": "10",
+            "satuan": "PCS",
+            "kategori": "Elektronik"
+        }
+        response = self.client.post(self.url, data=payload)
+        self.assertEqual(response.status_code, 422)
+        data = response.json()
+        self.assertIn("Harga atau stok harus berupa angka", data["detail"])
+
+    def test_create_produk_with_file(self):
+        fake_image = SimpleUploadedFile(
+            "test_image.jpg", b"fake_image_data", content_type="image/jpeg"
+        )
+        payload = {
+            "nama": "Item With File",
+            "foto": fake_image, 
+            "harga_modal": "100000",
+            "harga_jual": "150000",
+            "stok": "10",
+            "satuan": "PCS",
+            "kategori": "Elektronik"
+        }
+        response = self.client.post(self.url, data=payload)
+        self.assertEqual(response.status_code, 201)
+        data = response.json()
+        self.assertIsNotNone(data["foto"])
+
 class DeleteAPITest(TestCase):
     def setUp(self):
         self.client = Client()
