@@ -50,7 +50,7 @@ def get_produk_paginated(request, page: int, sort: str = None):
             pass
     
     total = queryset.count()
-    total_pages = (total + per_page - 1) // per_page  # Ceiling division
+    total_pages = (total + per_page - 1) // per_page
     
     if page > total_pages and total > 0:
         return 404, {"message": "Page not found"}
