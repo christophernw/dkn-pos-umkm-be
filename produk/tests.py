@@ -272,3 +272,128 @@ class DeleteAPITest(TestCase):
     def test_delete_produk_invalid_id(self):
         response = self.client.delete("/api/produk/delete/invalid")
         self.assertEqual(response.status_code, 422)
+
+class ProdukPaginationAPITest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.kategori = KategoriProduk.objects.create(nama="Elektronik")
+
+        for i in range(20):
+            Produk.objects.create(
+                nama=f"Produk {i+1}",
+                foto="",
+                harga_modal=100000,
+                harga_jual=150000,
+                stok=10,
+                satuan="PCS",
+                kategori=self.kategori
+            )
+
+    def test_get_produk_pagination_default_page(self):
+        response = self.client.get("/api/produk/page")
+        self.assertEqual(response.status_code, 200)
+
+        data = response.json()
+        self.assertIn("items", data)
+        self.assertIn("total", data)
+        self.assertIn("total_pages", data)
+        self.assertIn("current_page", data)
+        
+        self.assertEqual(len(data["items"]), 7)
+        self.assertEqual(data["total"], 20)
+        self.assertEqual(data["total_pages"], 3)
+        self.assertEqual(data["current_page"], 1)
+        
+    def test_get_produk_pagination_specific_page(self):
+        response = self.client.get("/api/produk/page?page=2")
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertEqual(len(data["items"]), 7)
+        self.assertEqual(data["current_page"], 2)
+        
+    def test_get_produk_pagination_last_page(self):
+        response = self.client.get("/api/produk/page?page=3")
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertEqual(len(data["items"]), 6)
+        self.assertEqual(data["current_page"], 3)
+        
+    def test_get_produk_pagination_invalid_page(self):
+        response = self.client.get("/api/produk/page?page=5")
+        self.assertEqual(response.status_code, 404)
+        
+    def test_get_produk_pagination_negative_page(self):
+        response = self.client.get("/api/produk/page?page=-1")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("error", response.json())
+        
+    def test_get_produk_pagination_non_numeric_page(self):
+        response = self.client.get("/api/produk/page?page=abc")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("error", response.json())
+        
+    def test_get_produk_pagination_with_sorting(self):
+        Produk.objects.filter(nama="Produk 1").update(stok=5)
+        Produk.objects.filter(nama="Produk 2").update(stok=15)
+        Produk.objects.filter(nama="Produk 3").update(stok=25)
+        
+        response = self.client.get("/api/produk/page?sort=asc")
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertEqual(data["items"][0]["stok"], 5.0)
+        
+    def test_get_produk_pagination_with_sorting_and_page(self):
+        for i in range(20):
+            Produk.objects.filter(nama=f"Produk {i+1}").update(stok=i+1)
+            
+        response = self.client.get("/api/produk/page?sort=desc&page=2")
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        stok_values = [item["stok"] for item in data["items"]]
+        self.assertEqual(stok_values, [13.0, 12.0, 11.0, 10.0, 9.0, 8.0, 7.0])
+        
+    def test_get_produk_pagination_empty_data(self):
+        Produk.objects.all().delete()
+        response = self.client.get("/api/produk/page")
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertEqual(len(data["items"]), 0)
+        self.assertEqual(data["total"], 0)
+        self.assertEqual(data["total_pages"], 0)
+        self.assertEqual(data["current_page"], 1)
+        
+    def test_get_produk_pagination_exactly_one_page(self):
+        Produk.objects.all().delete()
+        for i in range(7):
+            Produk.objects.create(
+                nama=f"Produk Exact {i+1}",
+                foto="",
+                harga_modal=100000,
+                harga_jual=150000,
+                stok=10,
+                satuan="PCS",
+                kategori=self.kategori
+            )
+            
+        response = self.client.get("/api/produk/page")
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertEqual(len(data["items"]), 7)
+        self.assertEqual(data["total"], 7)
+        self.assertEqual(data["total_pages"], 1)
+        self.assertEqual(data["current_page"], 1)
+        
+    def test_get_produk_pagination_custom_per_page(self):
+        response = self.client.get("/api/produk/page?per_page=5")
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertEqual(len(data["items"]), 5)
+        self.assertEqual(data["total"], 20)
+        self.assertEqual(data["total_pages"], 4)

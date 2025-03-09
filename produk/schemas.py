@@ -1,5 +1,5 @@
 from ninja import Schema
-from typing import Optional
+from typing import List, Optional
 
 class ProdukSchema(Schema):
     id: int
@@ -19,3 +19,9 @@ class CreateProdukSchema(Schema):
     stok: float
     satuan: str
     kategori: str
+
+class PaginatedResponseSchema(Schema):
+    items: List[ProdukSchema]
+    total: int
+    total_pages: int
+    current_page: int
