@@ -67,24 +67,41 @@ def get_produk_paginated(request, page: int, sort: str = None):
     }
 
 @router.post("/create", response={201: ProdukSchema, 422: dict})
-def create_produk(request, payload: CreateProdukSchema):
+def create_produk(request):
+    print(request)
 
-    if payload.harga_modal < 0 or payload.harga_jual < 0:
+    nama = request.POST.get("nama")
+    foto = request.FILES.get("foto")
+    harga_modal = request.POST.get("harga_modal")
+    harga_jual = request.POST.get("harga_jual")
+    stok = request.POST.get("stok")
+    satuan = request.POST.get("satuan")
+    kategori_nama = request.POST.get("kategori")
 
+    try:
+        harga_modal = float(harga_modal)
+        harga_jual = float(harga_jual)
+        stok = float(stok)
+    except ValueError:
+        return 422, {"detail": "Harga atau stok harus berupa angka"}
+
+    if harga_modal < 0 or harga_jual < 0:
         return 422, {"detail": "Harga minus seharusnya invalid"}
 
-    if payload.stok < 0:
+    if stok < 0:
         return 422, {"detail": "Stok minus seharusnya invalid"}
 
-    kategori_obj, _ = KategoriProduk.objects.get_or_create(nama=payload.kategori)
-    
+    # Ambil atau buat kategori
+    kategori_obj, _ = KategoriProduk.objects.get_or_create(nama=kategori_nama)
+
+    # Simpan ke database
     produk = Produk.objects.create(
-        nama=payload.nama,
-        foto=payload.foto,
-        harga_modal=payload.harga_modal,
-        harga_jual=payload.harga_jual,
-        stok=payload.stok,
-        satuan=payload.satuan,
+        nama=nama,
+        foto=foto,
+        harga_modal=harga_modal,
+        harga_jual=harga_jual,
+        stok=stok,
+        satuan=satuan,
         kategori=kategori_obj
     )
     
