@@ -91,10 +91,8 @@ def create_produk(request):
     if stok < 0:
         return 422, {"detail": "Stok minus seharusnya invalid"}
 
-    # Ambil atau buat kategori
     kategori_obj, _ = KategoriProduk.objects.get_or_create(nama=kategori_nama)
 
-    # Simpan ke database
     produk = Produk.objects.create(
         nama=nama,
         foto=foto,
