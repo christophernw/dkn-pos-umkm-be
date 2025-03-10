@@ -325,7 +325,7 @@ class ProdukPaginationAPITest(TestCase):
         data = response.json()
         self.assertEqual(len(data["items"]), 5)
         self.assertEqual(data["per_page"], 5)
-        self.assertEqual(data["total_pages"], 4)  # Total 20 items, 5 per page = 4 pages
+        self.assertEqual(data["total_pages"], 4)
 
     def test_get_produk_pagination_invalid_sort(self):
         response = self.client.get("/api/produk/page/1?sort=invalid")
@@ -340,6 +340,108 @@ class ProdukPaginationAPITest(TestCase):
         self.assertEqual(data["per_page"], 7)
         self.assertEqual(len(data["items"]), 7)
 
+class LowStockAPITest(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.kategori = KategoriProduk.objects.create(nama="Elektronik")
+
+        self.produk_stok_rendah_1 = Produk.objects.create(
+            nama="Mouse",
+            foto="https://example.com/mouse.jpg",
+            harga_modal=50000,
+            harga_jual=80000,
+            stok=5,
+            satuan="Pcs",
+            kategori=self.kategori
+        )
+
+        self.produk_stok_rendah_2 = Produk.objects.create(
+            nama="Headset",
+            foto="https://example.com/headset.jpg",
+            harga_modal=150000,
+            harga_jual=250000,
+            stok=9.5,
+            satuan="Pcs",
+            kategori=self.kategori
+        )
+        
+        self.produk_stok_kosong = Produk.objects.create(
+            nama="Webcam",
+            foto="https://example.com/webcam.jpg",
+            harga_modal=120000,
+            harga_jual=200000,
+            stok=0,
+            satuan="Pcs",
+            kategori=self.kategori
+        )
+
+        self.produk_stok_batas = Produk.objects.create(
+            nama="Laptop",
+            foto="https://example.com/laptop.jpg",
+            harga_modal=5000000,
+            harga_jual=7000000,
+            stok=10,
+            satuan="Pcs",
+            kategori=self.kategori
+        )
+
+        self.produk_stok_aman = Produk.objects.create(
+            nama="Keyboard",
+            foto="",
+            harga_modal=300000,
+            harga_jual=500000,
+            stok=20,
+            satuan="Pcs",
+            kategori=self.kategori
+        )
+
+    def test_get_low_stock_products_success(self):
+        response = self.client.get("/api/produk/low-stock")
+        self.assertEqual(response.status_code, 200)
+
+        data = response.json()
+        self.assertEqual(len(data), 3)
+
+        data = sorted(data, key=lambda x: x["id"])
+        
+        product_ids = [item["id"] for item in data]
+        self.assertIn(self.produk_stok_rendah_1.id, product_ids)
+        self.assertIn(self.produk_stok_rendah_2.id, product_ids)
+        self.assertIn(self.produk_stok_kosong.id, product_ids)
+        
+        self.assertNotIn(self.produk_stok_batas.id, product_ids)
+        self.assertNotIn(self.produk_stok_aman.id, product_ids)
+        
+        self.assertEqual(data[0]["nama"], "Mouse")
+        self.assertEqual(data[0]["foto"], "https://example.com/mouse.jpg")
+        self.assertEqual(data[0]["harga_modal"], float(self.produk_stok_rendah_1.harga_modal))
+        self.assertEqual(data[0]["harga_jual"], float(self.produk_stok_rendah_1.harga_jual))
+        self.assertEqual(data[0]["stok"], float(self.produk_stok_rendah_1.stok))
+        self.assertEqual(data[0]["satuan"], self.produk_stok_rendah_1.satuan)
+        self.assertEqual(data[0]["kategori"], "Elektronik")
+
+    def test_get_low_stock_products_empty(self):
+        Produk.objects.filter(stok__lt=10).delete()
+        
+        response = self.client.get("/api/produk/low-stock")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), [])
+
+    def test_get_low_stock_products_no_products(self):
+        Produk.objects.all().delete()
+        
+        response = self.client.get("/api/produk/low-stock")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), [])
+
+    def test_get_low_stock_products_invalid_url(self):
+        response = self.client.get("/api/produk/low-stok")
+        self.assertEqual(response.status_code, 404)
+
+    def test_get_low_stock_products_invalid_method(self):
+        response = self.client.post("/api/produk/low-stock")
+        self.assertEqual(response.status_code, 405) 
+        
 class ProdukSearchAPITest(TestCase):
     def setUp(self):
         self.client = Client()

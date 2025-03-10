@@ -122,3 +122,7 @@ def search_produk(request, q: str = ""):
         for p in produk_list
     ]
     
+@router.get("/low-stock", response=list[ProdukSchema])
+def get_low_stock_products(request):
+    queryset = Produk.objects.select_related("kategori").filter(stok__lt=10).order_by("id")
+    return format_produk_response(queryset)
