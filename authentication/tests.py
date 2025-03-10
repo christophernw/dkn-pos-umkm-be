@@ -174,3 +174,56 @@ class TestAuth(TestCase):
     def test_validate_wrong_method(self):
         response = self.client.get("/validate", headers={"Authorization": "Bearer invalidtoken"})
         self.assertEqual(response.status_code, 405)
+
+
+    def test_process_session_new_user(self):
+        """Test Google sign-in process when user doesn't exist"""
+        response = self.client.post(
+            "/process-session",
+            data=json.dumps({
+                "user": {
+                    "name": "Google User",
+                    "email": "google@example.com"
+                }
+            }),
+            content_type="application/json"
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["message"], "Login successful")
+        self.assertIn("refresh", response.json())
+        self.assertIn("access", response.json())
+        
+        # Verify user was created
+        user = User.objects.get(email="google@example.com")
+        self.assertEqual(user.username, "Google User")
+
+    def test_process_session_existing_user(self):
+        """Test Google sign-in process when user already exists"""
+        # First create a user
+        existing_user = User.objects.create_user(
+            username="Existing Google User",
+            email="existing@example.com"
+        )
+        
+        # Then simulate the process-session call
+        response = self.client.post(
+            "/process-session",
+            data=json.dumps({
+                "user": {
+                    "name": "Some Name", # Different name to verify it isn't changed
+                    "email": "existing@example.com"
+                }
+            }),
+            content_type="application/json"
+        )
+        
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["message"], "Login successful")
+        self.assertIn("refresh", response.json())
+        self.assertIn("access", response.json())
+        self.assertEqual(response.json()["user"]["email"], "existing@example.com")
+        
+        # Verify user count hasn't changed (no duplicate created)
+        user_count = User.objects.filter(email="existing@example.com").count()
+        self.assertEqual(user_count, 1)
