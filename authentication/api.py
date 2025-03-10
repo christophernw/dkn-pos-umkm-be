@@ -9,6 +9,39 @@ from ninja_jwt.authentication import JWTAuth
 
 router = Router()
 
+from pydantic import BaseModel
+
+
+class SessionData(BaseModel):
+    user: dict
+
+
+@router.post("/process-session")
+def process_session(request, session_data: SessionData):
+    user_data = session_data.user
+    print(user_data)
+
+    try:
+        user = User.objects.get(email=user_data.get("email"))
+    except User.DoesNotExist:
+        user = User.objects.create_user(
+            username=user_data.get("name"),
+            email=user_data.get("email"),
+        )
+
+    refresh = RefreshToken.for_user(user)
+
+    return {
+        "message": "Login successful",
+        "refresh": str(refresh),
+        "access": str(refresh.access_token),
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "name": user.username,
+        },
+    }
+
 
 @router.post("/login", throttle=AnonRateThrottle(rate="10/h"))
 def login(request, data: LoginSchema):
@@ -39,7 +72,7 @@ def register(request, data: RegisterSchema):
             password=data.password,
             first_name=data.first_name,
             last_name=data.last_name,
-            is_staff=True
+            is_staff=True,
         )
         refresh = RefreshToken.for_user(user)
         return {
@@ -78,5 +111,5 @@ def get_user_by_token(request):
         "id": user.id,
         "phone_number": user.username,
         "first_name": user.first_name,
-        "last_name": user.last_name
+        "last_name": user.last_name,
     }
