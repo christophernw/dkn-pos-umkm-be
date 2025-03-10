@@ -25,6 +25,7 @@ injector==0.22.0
 jmespath==1.0.1
 mccabe==0.7.0
 packaging==24.2
+pillow==11.1.0
 pluggy==1.5.0
 psycopg2-binary==2.9.10
 pycodestyle==2.12.1
