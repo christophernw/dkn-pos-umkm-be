@@ -1,7 +1,6 @@
 from django.test import TestCase, Client
 from produk.models import Produk, KategoriProduk
-# from django.core.files.uploadedfile import SimpleUploadedFile
-import json
+from django.core.files.uploadedfile import SimpleUploadedFile
 
 class ProdukAPITest(TestCase):
     def setUp(self):
@@ -138,11 +137,7 @@ class ProdukCreateAPITest(TestCase):
             "satuan": "PCS",
             "kategori": "Elektronik"  
         }
-        response = self.client.post(
-            self.url,
-            data=json.dumps(payload),
-            content_type="application/json"
-        )
+        response = self.client.post(self.url, data=payload)
         self.assertEqual(response.status_code, 201, "Seharusnya berhasil membuat produk")
 
         data = response.json()
@@ -159,11 +154,7 @@ class ProdukCreateAPITest(TestCase):
             "satuan": "PCS",
             "kategori": "Elektronik"
         }
-        response = self.client.post(
-            self.url,
-            data=json.dumps(payload),
-            content_type="application/json"
-        )
+        response = self.client.post(self.url, data=payload)
         self.assertEqual(response.status_code, 422, "Seharusnya gagal karena field wajib hilang")
 
     def test_create_produk_new_category(self):
@@ -175,11 +166,7 @@ class ProdukCreateAPITest(TestCase):
             "satuan": "PCS",
             "kategori": "Gadget" 
         }
-        response = self.client.post(
-            self.url,
-            data=json.dumps(payload),
-            content_type="application/json"
-        )
+        response = self.client.post(self.url, data=payload)
         self.assertEqual(response.status_code, 201)
 
         data = response.json()
@@ -195,11 +182,7 @@ class ProdukCreateAPITest(TestCase):
             "satuan": "PCS",
             "kategori": "Elektronik"
         }
-        response = self.client.post(
-            self.url,
-            data=json.dumps(payload),
-            content_type="application/json"
-        )
+        response = self.client.post(self.url, data=payload)
         self.assertEqual(response.status_code, 422, "Harga minus seharusnya invalid")
 
     def test_create_produk_invalid_stock(self):
@@ -211,11 +194,7 @@ class ProdukCreateAPITest(TestCase):
             "satuan": "PCS",
             "kategori": "Elektronik"
         }
-        response = self.client.post(
-            self.url,
-            data=json.dumps(payload),
-            content_type="application/json"
-        )
+        response = self.client.post(self.url, data=payload)
         self.assertEqual(response.status_code, 422, "Stok minus seharusnya invalid")
 
     def test_create_produk_zero_values(self):
@@ -227,11 +206,7 @@ class ProdukCreateAPITest(TestCase):
             "satuan": "PCS",
             "kategori": "Elektronik"
         }
-        response = self.client.post(
-            self.url,
-            data=json.dumps(payload),
-            content_type="application/json"
-        )
+        response = self.client.post(self.url, data=payload)
         self.assertEqual(response.status_code, 201)
 
     def test_create_produk_non_numeric_values(self):
@@ -243,33 +218,29 @@ class ProdukCreateAPITest(TestCase):
             "satuan": "PCS",
             "kategori": "Elektronik"
         }
-        response = self.client.post(
-            self.url,
-            data=json.dumps(payload),
-            content_type="application/json"
-        )
+        response = self.client.post(self.url, data=payload)
         self.assertEqual(response.status_code, 422)
         data = response.json()
         self.assertIn("Input should be a valid number", str(data["detail"]))
 
-    # def test_create_produk_with_file(self):
-    #     fake_image = SimpleUploadedFile(
-    #         "test_image.jpg", b"fake_image_data", content_type="image/jpeg"
-    #     )
-    #     payload = {
-    #         "nama": "Item With File",
-    #         "harga_modal": 100000,
-    #         "harga_jual": 150000,
-    #         "stok": 10,
-    #         "satuan": "PCS",
-    #         "kategori": "Elektronik"
-    #     }
-    #     response = self.client.post(self.url, data=payload, files={"foto": fake_image})
-    #     self.assertEqual(response.status_code, 201)
-    #     data = response.json()
-    #     self.assertIn("foto", data)
-    #     self.assertIsInstance(data["foto"], str)
-    #     self.assertTrue(data["foto"].startswith("http"))
+    def test_create_produk_with_file(self):
+        foto_mock = SimpleUploadedFile("test_image.jpg", b"file_content", content_type="image/jpeg")
+
+        payload = {
+            "nama": "Monitor",
+            "harga_modal": 1200000,
+            "harga_jual": 1500000,
+            "stok": 15,
+            "satuan": "PCS",
+            "kategori": self.kategori.nama,
+        }
+
+        response = self.client.post(
+            self.url,
+            data=payload,
+            files={"foto": foto_mock},
+        )
+        self.assertEqual(response.status_code, 201, "Seharusnya berhasil membuat produk dengan foto")
 
 class DeleteAPITest(TestCase):
     def setUp(self):
