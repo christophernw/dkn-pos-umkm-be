@@ -29,23 +29,18 @@ def get_produk(request, sort: str = None):
     ]
 
 @router.post("/create", response={201: ProdukSchema, 422: dict})
-def create_produk(request):
-    print(request)
+def create_produk(request, payload: CreateProdukSchema):
+    nama = payload.nama
+    harga_modal = payload.harga_modal
+    harga_jual = payload.harga_jual
+    stok = payload.stok
+    satuan = payload.satuan
+    kategori_nama = payload.kategori
+    foto_file = request.FILES.get("foto")
+    foto_url = None
 
-    nama = request.POST.get("nama")
-    foto = request.FILES.get("foto")
-    harga_modal = request.POST.get("harga_modal")
-    harga_jual = request.POST.get("harga_jual")
-    stok = request.POST.get("stok")
-    satuan = request.POST.get("satuan")
-    kategori_nama = request.POST.get("kategori")
-
-    try:
-        harga_modal = float(harga_modal)
-        harga_jual = float(harga_jual)
-        stok = float(stok)
-    except ValueError:
-        return 422, {"detail": "Harga atau stok harus berupa angka"}
+    if foto_file:
+        foto_url = foto_file.url
 
     if harga_modal < 0 or harga_jual < 0:
         return 422, {"detail": "Harga minus seharusnya invalid"}
@@ -57,7 +52,7 @@ def create_produk(request):
 
     produk = Produk.objects.create(
         nama=nama,
-        foto=foto,
+        foto=foto_url, 
         harga_modal=harga_modal,
         harga_jual=harga_jual,
         stok=stok,
@@ -68,7 +63,7 @@ def create_produk(request):
     return 201, ProdukSchema(
         id=produk.id,
         nama=produk.nama,
-        foto=produk.foto,
+        foto=produk.foto, 
         harga_modal=float(produk.harga_modal),
         harga_jual=float(produk.harga_jual),
         stok=float(produk.stok),
