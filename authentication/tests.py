@@ -1,5 +1,8 @@
+from django.apps import AppConfig
 from django.test import TestCase
 from ninja.testing import TestClient
+
+from authentication.apps import AuthenticationConfig
 from .api import router
 import json
 from django.contrib.auth.models import User
