@@ -1,6 +1,10 @@
 from django.test import TestCase, Client
 from produk.models import Produk, KategoriProduk
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase
+from produk.models import Produk, KategoriProduk
+from django.urls import reverse
+import json
 
 class ProdukAPITest(TestCase):
     def setUp(self):
@@ -537,3 +541,133 @@ class ProdukSearchAPITest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.json()), 0)
 
+class ProdukUpdateTest(TestCase):
+    def setUp(self):
+        """Setup data awal untuk pengujian"""
+        self.kategori = KategoriProduk.objects.create(nama="Elektronik")
+        self.kategori_baru = KategoriProduk.objects.create(nama="Gadget")
+        self.produk = Produk.objects.create(
+            nama="Produk A",
+            harga_modal=10000,
+            harga_jual=15000,
+            stok=10,
+            satuan="pcs",
+            kategori=self.kategori
+        )
+
+    def test_update_produk_success(self):
+        """Cek apakah produk berhasil diperbarui dengan beberapa field"""
+        response = self.client.put(
+            f"/api/produk/update/{self.produk.id}",
+            json.dumps({
+                "nama": "Produk A - Update",
+                "harga_modal": 12000,
+                "stok": 8,
+                "kategori": "Gadget"
+            }),
+            content_type="application/json"
+        )
+        self.assertEqual(response.status_code, 200)
+
+        self.produk.refresh_from_db()
+        self.assertEqual(self.produk.nama, "Produk A - Update")
+        self.assertEqual(self.produk.harga_modal, 12000)
+        self.assertEqual(self.produk.stok, 8)
+        self.assertEqual(self.produk.kategori.nama, "Gadget")
+
+    def test_update_produk_not_found(self):
+        """Cek jika produk tidak ditemukan"""
+        response = self.client.put(
+            "/api/produk/update/9999",
+            json.dumps({"nama": "Produk Tidak Ada"}),
+            content_type="application/json"
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_update_produk_partial_update(self):
+        """Cek apakah produk bisa diperbarui dengan hanya satu field"""
+        response = self.client.put(
+            f"/api/produk/update/{self.produk.id}",
+            json.dumps({"stok": 5}),
+            content_type="application/json"
+        )
+        self.assertEqual(response.status_code, 200)
+
+        self.produk.refresh_from_db()
+        self.assertEqual(self.produk.stok, 5)  # Stok berubah, lainnya tetap sama
+
+    def test_update_produk_invalid_price(self):
+        """Cek validasi harga negatif"""
+        response = self.client.put(
+            f"/api/produk/update/{self.produk.id}",
+            json.dumps({"harga_modal": -5000}),
+            content_type="application/json"
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_update_produk_invalid_stock(self):
+        """Cek validasi stok negatif"""
+        response = self.client.put(
+            f"/api/produk/update/{self.produk.id}",
+            json.dumps({"stok": -5}),
+            content_type="application/json"
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_update_produk_invalid_data_type(self):
+        """Cek apakah sistem menangani input dengan tipe data salah"""
+        response = self.client.put(
+            f"/api/produk/update/{self.produk.id}",
+            json.dumps({"harga_modal": "invalid_string"}),
+            content_type="application/json"
+        )
+        self.assertEqual(response.status_code, 422)
+
+    def test_update_produk_no_data(self):
+        """Cek apakah sistem menangani request kosong"""
+        response = self.client.put(
+            f"/api/produk/update/{self.produk.id}",
+            json.dumps({}),
+            content_type="application/json"
+        )
+        self.assertEqual(response.status_code, 200)  # Tidak ada perubahan, tapi tidak error
+
+    def test_update_produk_unchanged_data(self):
+        """Cek apakah sistem bisa menerima data yang tidak berubah"""
+        response = self.client.put(
+            f"/api/produk/update/{self.produk.id}",
+            json.dumps({
+                "nama": self.produk.nama,
+                "harga_modal": self.produk.harga_modal,
+                "stok": self.produk.stok
+            }),
+            content_type="application/json"
+        )
+        self.assertEqual(response.status_code, 200)  # Harus tetap berhasil
+
+    def test_update_produk_large_values(self):
+        """Cek apakah sistem menangani nilai besar dengan benar"""
+        response = self.client.put(
+            f"/api/produk/update/{self.produk.id}",
+            json.dumps({
+                "harga_modal": 9999999.99,
+                "harga_jual": 9999999.99,
+                "stok": 1000000
+            }),
+            content_type="application/json"
+        )
+        self.assertEqual(response.status_code, 200)
+
+        self.produk.refresh_from_db()
+        self.assertAlmostEqual(float(self.produk.harga_modal), 9999999.99, places=2)
+        self.assertAlmostEqual(float(self.produk.harga_jual), 9999999.99, places=2)
+        self.assertEqual(self.produk.stok, 1000000)
+
+    def test_update_produk_invalid_json_format(self):
+        """Cek apakah sistem menangani JSON yang tidak valid"""
+        response = self.client.put(
+            f"/api/produk/update/{self.produk.id}",
+            "INVALID_JSON",
+            content_type="application/json"
+        )
+        self.assertEqual(response.status_code, 400)

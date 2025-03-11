@@ -26,3 +26,12 @@ class PaginatedResponseSchema(Schema):
     page: int
     per_page: int
     total_pages: int
+
+class UpdateProdukSchema(Schema):
+    nama: Optional[str] = None
+    foto: Optional[str] = None
+    harga_modal: Optional[float] = None
+    harga_jual: Optional[float] = None
+    stok: Optional[float] = None
+    satuan: Optional[str] = None
+    kategori: Optional[str] = None

@@ -3,6 +3,7 @@ from django.shortcuts import get_object_or_404
 from django.http import HttpResponseBadRequest
 from produk.models import Produk, KategoriProduk
 from produk.schemas import PaginatedResponseSchema, ProdukSchema, CreateProdukSchema
+from produk.schemas import UpdateProdukSchema
 
 router = Router()
 
@@ -141,3 +142,36 @@ def search_produk(request, q: str = ""):
 def get_low_stock_products(request):
     queryset = Produk.objects.select_related("kategori").filter(stok__lt=10).order_by("id")
     return format_produk_response(queryset)
+
+@router.put("/update/{id}", response={200: ProdukSchema, 404: dict, 400: dict})
+def update_produk(request, id: int, payload: UpdateProdukSchema):
+    produk = get_object_or_404(Produk, id=id)
+
+    # Validasi harga dan stok tidak boleh negatif jika ada perubahan
+    if payload.harga_modal is not None and payload.harga_modal < 0:
+        return 400, {"detail": "Harga modal tidak boleh negatif"}
+    if payload.harga_jual is not None and payload.harga_jual < 0:
+        return 400, {"detail": "Harga jual tidak boleh negatif"}
+    if payload.stok is not None and payload.stok < 0:
+        return 400, {"detail": "Stok tidak boleh negatif"}
+
+    # Perbarui hanya field yang diberikan
+    for attr, value in payload.dict(exclude_unset=True).items():
+        if attr == "kategori":
+            kategori_obj, _ = KategoriProduk.objects.get_or_create(nama=value)
+            setattr(produk, "kategori", kategori_obj)
+        else:
+            setattr(produk, attr, value)
+
+    produk.save()
+
+    return 200, ProdukSchema(
+        id=produk.id,
+        nama=produk.nama,
+        foto=produk.foto.url if produk.foto else None,
+        harga_modal=float(produk.harga_modal),
+        harga_jual=float(produk.harga_jual),
+        stok=float(produk.stok),
+        satuan=produk.satuan,
+        kategori=produk.kategori.nama,
+    )

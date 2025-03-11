@@ -1,6 +1,5 @@
 from django.db import models
 
-from django.db import models
 
 class KategoriProduk(models.Model):
     nama = models.CharField(max_length=255)
