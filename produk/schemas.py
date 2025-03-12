@@ -1,4 +1,4 @@
-from ninja import Schema
+from ninja import Schema, UploadedFile
 from typing import List, Optional
 from pydantic import BaseModel, Field, field_validator
 
@@ -19,7 +19,7 @@ class ProdukResponseSchema(Schema):
         return cls(
             id=produk.id,
             nama=produk.nama,
-            foto=produk.foto,
+            foto=produk.foto.url if produk.foto else None,
             harga_modal=float(produk.harga_modal),
             harga_jual=float(produk.harga_jual),
             stok=float(produk.stok),
@@ -30,7 +30,6 @@ class ProdukResponseSchema(Schema):
 
 class CreateProdukSchema(BaseModel):
     nama: str
-    foto: Optional[str] = None
     harga_modal: float
     harga_jual: float
     stok: float
@@ -55,6 +54,14 @@ class CreateProdukSchema(BaseModel):
             raise ValueError("Stok minus seharusnya invalid")
         return v
 
+class UpdateProdukStokSchema(Schema):
+    stok: float
+    
+    @field_validator("stok")
+    def validate_stok(cls, v):
+        if v < 0:
+            raise ValueError("Stok minus tidak valid")
+        return v
 
 class PaginatedResponseSchema(Schema):
     items: List[ProdukResponseSchema]
