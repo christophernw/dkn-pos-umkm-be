@@ -163,4 +163,4 @@ pplbackend/config/local.py
 #.idea/
 
 # Images
-*.jpg
+media/*
