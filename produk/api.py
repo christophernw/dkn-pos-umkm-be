@@ -92,8 +92,16 @@ def create_produk(request, payload: CreateProdukSchema, foto: UploadedFile = Non
 
     return 201, ProdukResponseSchema.from_orm(produk)
 
+@router.get("/{id}", response={200: ProdukResponseSchema, 404: dict})
+def get_produk_by_id(request, id: int):
+    user_id = request.auth
+    try:
+        produk = get_object_or_404(Produk, id=id, user_id=user_id)
+        return 200, ProdukResponseSchema.from_orm(produk)
+    except Exception as e:
+        return 404, {"message": "Produk tidak ditemukan"}
 
-@router.patch(
+@router.post(
     "/update/{id}", response={200: ProdukResponseSchema, 404: dict, 422: dict}
 )
 def update_produk(
