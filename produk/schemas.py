@@ -2,7 +2,16 @@ from ninja import Schema, UploadedFile
 from typing import List, Optional
 from pydantic import BaseModel, Field, field_validator
 
-
+class ProdukSchema(Schema):
+    id: int
+    nama: str
+    foto: Optional[str]
+    harga_modal: float
+    harga_jual: float
+    stok: float
+    satuan: str
+    kategori: str
+    
 class ProdukResponseSchema(Schema):
     id: int
     nama: str

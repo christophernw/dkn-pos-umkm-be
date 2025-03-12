@@ -11,6 +11,7 @@ from produk.schemas import (
     PaginatedResponseSchema,
     ProdukResponseSchema,
     CreateProdukSchema,
+    UpdateProdukSchema,
     UpdateProdukStokSchema,
 )
 from django.contrib.auth.models import User
@@ -69,6 +70,39 @@ def get_produk_paginated(request, page: int, sort: str = None, q: str = ""):
         "total_pages": total_pages,
     }
 
+@router.get("/{id}", response={200: ProdukResponseSchema, 404: dict})
+def get_produk_by_id(request, id: int):
+    user_id = request.auth
+    produk = Produk.objects.filter(id=id, user_id=user_id).select_related("kategori").first()
+    if not produk:
+        return 404, {"detail": "Produk tidak ditemukan"}
+
+    return 200, ProdukResponseSchema.from_orm(produk)
+
+@router.put("/update/{id}", response={200: ProdukResponseSchema, 404: dict, 400: dict})
+def update_produk(request, id: int, payload: UpdateProdukSchema):
+    user_id = request.auth
+    produk = get_object_or_404(Produk, id=id, user_id=user_id)
+
+    # Validasi harga dan stok tidak boleh negatif jika ada perubahan
+    if payload.harga_modal is not None and payload.harga_modal < 0:
+        return 400, {"detail": "Harga modal tidak boleh negatif"}
+    if payload.harga_jual is not None and payload.harga_jual < 0:
+        return 400, {"detail": "Harga jual tidak boleh negatif"}
+    if payload.stok is not None and payload.stok < 0:
+        return 400, {"detail": "Stok tidak boleh negatif"}
+
+    # Perbarui hanya field yang diberikan
+    for attr, value in payload.dict(exclude_unset=True).items():
+        if attr == "kategori":
+            kategori_obj, _ = KategoriProduk.objects.get_or_create(nama=value)
+            setattr(produk, "kategori", kategori_obj)
+        else:
+            setattr(produk, attr, value)
+
+    produk.save()
+
+    return 200, ProdukResponseSchema.from_orm(produk)
 
 @router.post("/create", response={201: ProdukResponseSchema, 422: dict})
 def create_produk(request, payload: CreateProdukSchema, foto: UploadedFile = None):
@@ -117,42 +151,6 @@ def delete_produk(request, id: int):
 
 @router.get("/low-stock", response=list[ProdukResponseSchema])
 def get_low_stock_products(request):
-    queryset = Produk.objects.select_related("kategori").filter(stok__lt=10).order_by("id")
-    return format_produk_response(queryset)
-
-@router.put("/update/{id}", response={200: ProdukSchema, 404: dict, 400: dict})
-def update_produk(request, id: int, payload: UpdateProdukSchema):
-    produk = get_object_or_404(Produk, id=id)
-
-    # Validasi harga dan stok tidak boleh negatif jika ada perubahan
-    if payload.harga_modal is not None and payload.harga_modal < 0:
-        return 400, {"detail": "Harga modal tidak boleh negatif"}
-    if payload.harga_jual is not None and payload.harga_jual < 0:
-        return 400, {"detail": "Harga jual tidak boleh negatif"}
-    if payload.stok is not None and payload.stok < 0:
-        return 400, {"detail": "Stok tidak boleh negatif"}
-
-    # Perbarui hanya field yang diberikan
-    for attr, value in payload.dict(exclude_unset=True).items():
-        if attr == "kategori":
-            kategori_obj, _ = KategoriProduk.objects.get_or_create(nama=value)
-            setattr(produk, "kategori", kategori_obj)
-        else:
-            setattr(produk, attr, value)
-
-    produk.save()
-
-    return 200, ProdukSchema(
-        id=produk.id,
-        nama=produk.nama,
-        foto=produk.foto.url if produk.foto else None,
-        harga_modal=float(produk.harga_modal),
-        harga_jual=float(produk.harga_jual),
-        stok=float(produk.stok),
-        satuan=produk.satuan,
-        kategori=produk.kategori.nama,
-    )
-
     user_id = request.auth
     products = (
         Produk.objects.select_related("kategori")

@@ -296,7 +296,9 @@ class TestProductAPI(TestCase):
         
         # Verify default per_page was used (7)
         self.assertEqual(status, 200)
-        self.assertEqual(response["per_page"], 7)class ProdukUpdateTest(TestCase):
+        self.assertEqual(response["per_page"], 7)
+        
+class ProdukUpdateTest(TestCase):    
     def setUp(self):
         """Setup data awal untuk pengujian"""
         self.kategori = KategoriProduk.objects.create(nama="Elektronik")
