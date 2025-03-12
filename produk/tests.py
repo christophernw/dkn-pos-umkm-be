@@ -1,539 +1,299 @@
-from django.test import TestCase, Client
-from produk.models import Produk, KategoriProduk
-from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase, Client, RequestFactory
+from django.urls import reverse
+from django.contrib.auth.models import User
+from decimal import Decimal
+import json
+from unittest.mock import patch, MagicMock
 
-class ProdukAPITest(TestCase):
+import jwt
+from pydantic import ValidationError
+
+from backend import settings
+from .api import AuthBearer, get_produk_default, router, get_produk_paginated, create_produk, delete_produk, get_low_stock_products, update_produk_stock
+from .models import Produk, KategoriProduk
+from .schemas import ProdukResponseSchema, CreateProdukSchema, UpdateProdukStokSchema
+
+class MockAuthenticatedRequest:
+    """Mock request with authentication for testing"""
+    def __init__(self, user_id=1, method="GET", body=None, GET=None):
+        self.auth = user_id  # Simulating authenticated user
+        self.method = method
+        self._body = json.dumps(body).encode() if body else None
+        self.GET = GET or {}
+
+class TestProductAPI(TestCase):
     def setUp(self):
-        self.client = Client()
-        self.kategori = KategoriProduk.objects.create(nama="Elektronik")
-
-        self.produk_dengan_foto = Produk.objects.create(
-            nama="Laptop",
-            foto="https://example.com/laptop.jpg",
-            harga_modal=5000000,
-            harga_jual=7000000,
-            stok=10,
-            satuan="Pcs",
-            kategori=self.kategori
-        )
-
-        self.produk_tanpa_foto = Produk.objects.create(
-            nama="Keyboard",
-            foto="",
-            harga_modal=300000,
-            harga_jual=500000,
-            stok=20,
-            satuan="Pcs",
-            kategori=self.kategori
-        )
-
-    def test_kategori_str(self):
-        self.assertEqual(str(self.kategori), "Elektronik")
-
-    def test_produk_str(self):
-        self.assertEqual(str(self.produk_dengan_foto), "Laptop")
-        self.assertEqual(str(self.produk_tanpa_foto), "Keyboard")
-
-    def test_get_produk_success(self):
-        response = self.client.get("/api/produk")
-        self.assertEqual(response.status_code, 200)
-
-        data = response.json()
-        self.assertEqual(len(data), 2)
-
-        data = sorted(data, key=lambda x: x["id"])
-
-        self.assertEqual(data[0]["id"], self.produk_dengan_foto.id)
-        self.assertEqual(data[0]["nama"], "Laptop")
-        self.assertEqual(data[0]["foto"], "https://example.com/laptop.jpg")
-        self.assertEqual(data[0]["harga_modal"], float(self.produk_dengan_foto.harga_modal))
-        self.assertEqual(data[0]["harga_jual"], float(self.produk_dengan_foto.harga_jual))
-        self.assertEqual(data[0]["stok"], float(self.produk_dengan_foto.stok))
-        self.assertEqual(data[0]["satuan"], self.produk_dengan_foto.satuan)
-        self.assertEqual(data[0]["kategori"], "Elektronik")
-
-        self.assertEqual(data[1]["id"], self.produk_tanpa_foto.id)
-        self.assertEqual(data[1]["nama"], "Keyboard")
-        self.assertEqual(data[1]["foto"], "")
-        self.assertEqual(data[1]["harga_modal"], float(self.produk_tanpa_foto.harga_modal))
-        self.assertEqual(data[1]["harga_jual"], float(self.produk_tanpa_foto.harga_jual))
-        self.assertEqual(data[1]["stok"], float(self.produk_tanpa_foto.stok))
-        self.assertEqual(data[1]["satuan"], self.produk_tanpa_foto.satuan)
-        self.assertEqual(data[1]["kategori"], "Elektronik")
-
-    def test_get_produk_not_found(self):
-        Produk.objects.all().delete()
-        response = self.client.get("/api/produk")
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), [])
-
-    def test_get_produk_invalid_url(self):
-        response = self.client.get("/api/produk-salah")
-        self.assertEqual(response.status_code, 404)
-
-class ProdukSortingAPITest(TestCase):
-    def setUp(self):
-        self.client = Client()
-        self.kategori = KategoriProduk.objects.create(nama="Elektronik")
-
-        self.produk_1 = Produk.objects.create(nama="Laptop", foto="", harga_modal=5000000, harga_jual=7000000, stok=5, satuan="PCS", kategori=self.kategori)
-        self.produk_2 = Produk.objects.create(nama="Keyboard", foto="", harga_modal=300000, harga_jual=500000, stok=20, satuan="PCS", kategori=self.kategori)
-        self.produk_3 = Produk.objects.create(nama="Mouse", foto="", harga_modal=150000, harga_jual=250000, stok=10, satuan="PCS", kategori=self.kategori)
-
-    def test_get_produk_sorted_ascending(self):
-        response = self.client.get("/api/produk?sort=asc")
-        self.assertEqual(response.status_code, 200)
-
-        data = response.json()
-        self.assertEqual(len(data), 3)
-        self.assertEqual(data[0]["nama"], "Laptop")
-        self.assertEqual(data[1]["nama"], "Mouse")
-        self.assertEqual(data[2]["nama"], "Keyboard")
-
-    def test_get_produk_sorted_descending(self):
-        response = self.client.get("/api/produk?sort=desc")
-        self.assertEqual(response.status_code, 200)
-
-        data = response.json()
-        self.assertEqual(len(data), 3)
-        self.assertEqual(data[0]["nama"], "Keyboard")
-        self.assertEqual(data[1]["nama"], "Mouse")
-        self.assertEqual(data[2]["nama"], "Laptop")
-
-    def test_get_produk_invalid_sort_param(self):
-        response = self.client.get("/api/produk?sort=invalid")
-        self.assertEqual(response.status_code, 400)
-
-    def test_get_produk_no_data(self):
-        Produk.objects.all().delete()
-        response = self.client.get("/api/produk?sort=asc")
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), [])
-
-    def test_get_produk_same_stock(self):
-        Produk.objects.all().delete()
-        Produk.objects.create(nama="Item A", foto="", stok=10, harga_modal=100, harga_jual=200, satuan="PCS", kategori=self.kategori)
-        Produk.objects.create(nama="Item B", foto="", stok=10, harga_modal=150, harga_jual=250, satuan="PCS", kategori=self.kategori)
-
-        response = self.client.get("/api/produk?sort=asc")
-        self.assertEqual(response.status_code, 200)
-
-        data = response.json()
-        self.assertEqual(len(data), 2)
-        self.assertTrue(data[0]["id"] < data[1]["id"])
-
-class ProdukCreateAPITest(TestCase):
-    def setUp(self):
-        self.client = Client()
-        self.kategori = KategoriProduk.objects.create(nama="Elektronik")
-        self.url = "/api/produk/create"  
-
-    def test_create_produk_success(self):
-        payload = {
-            "nama": "Monitor",
-            "harga_modal": "1200000", 
-            "harga_jual": "1500000",
-            "stok": "15",
-            "satuan": "PCS",
-            "kategori": "Elektronik"  
-        }
-        response = self.client.post(self.url, data=payload)
-        self.assertEqual(response.status_code, 201, "Seharusnya berhasil membuat produk")
-
-        data = response.json()
-        self.assertEqual(data["nama"], "Monitor")
-        self.assertEqual(data["kategori"], "Elektronik")
-        self.assertTrue(Produk.objects.filter(nama="Monitor").exists())
-
-    def test_create_produk_missing_required_field(self):
-        payload = {
-            "nama": "Mouse",
-            "harga_modal": "",
-            "harga_jual": "80000",
-            "stok": "5",
-            "satuan": "PCS",
-            "kategori": "Elektronik"
-        }
-        response = self.client.post(self.url, data=payload)
-        self.assertEqual(response.status_code, 422, "Seharusnya gagal karena field wajib hilang")
-
-    def test_create_produk_new_category(self):
-        payload = {
-            "nama": "Smartphone",
-            "harga_modal": "3000000",
-            "harga_jual": "4500000",
-            "stok": "8",
-            "satuan": "PCS",
-            "kategori": "Gadget" 
-        }
-        response = self.client.post(self.url, data=payload)
-        self.assertEqual(response.status_code, 201)
-
-        data = response.json()
-        self.assertEqual(data["kategori"], "Gadget")
-        self.assertTrue(KategoriProduk.objects.filter(nama="Gadget").exists())
-
-    def test_create_produk_negative_price(self):
-        payload = {
-            "nama": "Test Negative Price",
-            "harga_modal": "-100000",
-            "harga_jual": "-150000",
-            "stok": "10",
-            "satuan": "PCS",
-            "kategori": "Elektronik"
-        }
-        response = self.client.post(self.url, data=payload)
-        self.assertEqual(response.status_code, 422, "Harga minus seharusnya invalid")
-
-    def test_create_produk_invalid_stock(self):
-        payload = {
-            "nama": "Test Negative Stock",
-            "harga_modal": "100000",
-            "harga_jual": "150000",
-            "stok": "-5", 
-            "satuan": "PCS",
-            "kategori": "Elektronik"
-        }
-        response = self.client.post(self.url, data=payload)
-        self.assertEqual(response.status_code, 422, "Stok minus seharusnya invalid")
-
-    def test_create_produk_zero_values(self):
-        payload = {
-            "nama": "Test Zero Values",
-            "harga_modal": "0",
-            "harga_jual": "0",
-            "stok": "0",
-            "satuan": "PCS",
-            "kategori": "Elektronik"
-        }
-        response = self.client.post(self.url, data=payload)
-        self.assertEqual(response.status_code, 201)
-
-    def test_create_produk_non_numeric_values(self):
-        payload = {
-            "nama": "Test Non Numeric Price",
-            "harga_modal": "abc", 
-            "harga_jual": "150000",
-            "stok": "10",
-            "satuan": "PCS",
-            "kategori": "Elektronik"
-        }
-        response = self.client.post(self.url, data=payload)
-        self.assertEqual(response.status_code, 422)
-        data = response.json()
-        self.assertIn("Harga atau stok harus berupa angka", data["detail"])
-
-    def test_create_produk_with_file(self):
-        fake_image = SimpleUploadedFile(
-            "test_image.jpg", b"fake_image_data", content_type="image/jpeg"
-        )
-        payload = {
-            "nama": "Item With File",
-            "foto": fake_image, 
-            "harga_modal": "100000",
-            "harga_jual": "150000",
-            "stok": "10",
-            "satuan": "PCS",
-            "kategori": "Elektronik"
-        }
-        response = self.client.post(self.url, data=payload)
-        self.assertEqual(response.status_code, 201)
-        data = response.json()
-        self.assertIsNotNone(data["foto"])
-
-class DeleteAPITest(TestCase):
-    def setUp(self):
-        self.client = Client()
-
-        self.kategori_makanan = KategoriProduk.objects.create(nama="Makanan")
-        self.kategori_minuman = KategoriProduk.objects.create(nama="Minuman")
-
-        self.burger = Produk.objects.create(
-            nama="Burger Keju",
-            foto="burger_keju.png",
-            harga_modal=18000,
-            harga_jual=25000,
-            stok=40,
-            satuan="porsi",
-            kategori=self.kategori_makanan,
-        )
-        self.jus = Produk.objects.create(
-            nama="Jus Alpukat",
-            foto="jus_alpukat.png",
-            harga_modal=5000,
-            harga_jual=10000,
-            stok=80,
-            satuan="gelas",
-            kategori=self.kategori_minuman,
-        )
-        self.pizza = Produk.objects.create(
-            nama="Pizza Pepperoni",
-            foto="pizza_pepperoni.png",
-            harga_modal=30000,
-            harga_jual=45000,
-            stok=15,
-            satuan="porsi",
-            kategori=self.kategori_makanan,
-        )
+        # Create test users
+        self.user1 = User.objects.create_user(username="testuser1", password="password123")
+        self.user2 = User.objects.create_user(username="testuser2", password="password123")
         
-    def test_produk_str(self):
-        self.assertEqual(str(self.jus), "Jus Alpukat")
-
-    def test_kategori_str(self):
-        self.assertEqual(str(self.kategori_minuman), "Minuman")
-    
-    def test_delete_produk_success(self):
-        response = self.client.delete(f"/api/produk/delete/{1}")
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"message": "Produk berhasil dihapus"})
-        self.assertFalse(Produk.objects.filter(id=1).exists())
-
-    def test_delete_produk_not_found(self):
-        response = self.client.delete(f"/api/produk/delete/{20}")
-        self.assertEqual(response.status_code, 404)
-    
-    def test_delete_produk_invalid_id(self):
-        response = self.client.delete("/api/produk/delete/invalid")
-        self.assertEqual(response.status_code, 422)
-
-class ProdukPaginationAPITest(TestCase):
-    def setUp(self):
-        self.client = Client()
-        self.kategori = KategoriProduk.objects.create(nama="Elektronik")
+        # Create categories
+        self.kategori1 = KategoriProduk.objects.create(nama="Minuman")
+        self.kategori2 = KategoriProduk.objects.create(nama="Makanan")
         
-        for i in range(1, 21):
+        # Create test products for user1
+        for i in range(1, 11):
+            stok = 5 if i <= 3 else 20  # Create some products with low stock
             Produk.objects.create(
-                nama=f"Produk {i}",
-                foto="",
-                harga_modal=i * 10000,
-                harga_jual=i * 15000,
-                stok=i,
-                satuan="PCS",
-                kategori=self.kategori
+                nama=f"User1 Produk {i}",
+                foto="test.jpg",
+                harga_modal=Decimal(f'{i}000'),
+                harga_jual=Decimal(f'{i+2}000'),
+                stok=Decimal(stok),
+                satuan="Pcs",
+                kategori=self.kategori1 if i % 2 == 0 else self.kategori2,
+                user=self.user1
             )
+        
+        # Create test products for user2
+        for i in range(1, 6):
+            Produk.objects.create(
+                nama=f"User2 Produk {i}",
+                foto="test.jpg",
+                harga_modal=Decimal(f'{i}000'),
+                harga_jual=Decimal(f'{i+2}000'),
+                stok=Decimal(15),
+                satuan="Pcs",
+                kategori=self.kategori1,
+                user=self.user2
+            )
+        
+        self.factory = RequestFactory()
     
-    def test_get_produk_with_pagination(self):
-        response = self.client.get("/api/produk/page/1")
-        self.assertEqual(response.status_code, 200)
+    def test_get_produk_with_sort_asc(self):
+        request = MockAuthenticatedRequest(user_id=self.user1.id)
+        status, response = get_produk_paginated(request, page=1, sort="asc", q="User1")
         
-        data = response.json()
-        self.assertIn("items", data)
-        self.assertIn("total", data)
-        self.assertIn("page", data)
-        self.assertIn("per_page", data)
-        self.assertIn("total_pages", data)
-        
-        self.assertEqual(len(data["items"]), 7)
-        self.assertEqual(data["page"], 1)
-        self.assertEqual(data["per_page"], 7)
-        self.assertEqual(data["total"], 20)
-        self.assertEqual(data["total_pages"], 3)  # Total 20 items, 7 per page = 3 pages
-        
-    def test_get_produk_with_pagination_last_page(self):
-        response = self.client.get("/api/produk/page/3")
-        self.assertEqual(response.status_code, 200)
-        
-        data = response.json()
-        self.assertEqual(len(data["items"]), 6)
-        self.assertEqual(data["page"], 3)
+        self.assertEqual(status, 200)
+        # Check that products are sorted by stok ascending
+        for i in range(len(response['items']) - 1):
+            self.assertTrue(response['items'][i].stok <= response['items'][i+1].stok)
     
-    def test_get_produk_with_pagination_invalid_page(self):
-        response = self.client.get("/api/produk/page/10")
-        self.assertEqual(response.status_code, 404)
+    def test_get_produk_with_sort_desc(self):
+        request = MockAuthenticatedRequest(user_id=self.user1.id)
+        status, response = get_produk_paginated(request, page=1, sort="desc")
         
-    def test_get_produk_with_custom_per_page(self):
-        response = self.client.get("/api/produk/page/1?per_page=5")
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(status, 200)
+        # Check that products are sorted by stok descending
+        for i in range(len(response['items']) - 1):
+            self.assertTrue(response['items'][i].stok >= response['items'][i+1].stok)
+    
+    def test_get_produk_with_invalid_sort(self):
+        request = MockAuthenticatedRequest(user_id=self.user1.id)
+        response = get_produk_paginated(request, page=1, sort="invalid")
         
-        data = response.json()
-        self.assertEqual(len(data["items"]), 5)
-        self.assertEqual(data["per_page"], 5)
-        self.assertEqual(data["total_pages"], 4)
-
-    def test_get_produk_pagination_invalid_sort(self):
-        response = self.client.get("/api/produk/page/1?sort=invalid")
+        # Should return HttpResponseBadRequest
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.content.decode('utf-8'), "Invalid sort parameter. Use 'asc' or 'desc'.")
-
-    def test_get_produk_pagination_invalid_per_page(self):
-        response = self.client.get("/api/produk/page/1?per_page=abc")
-        self.assertEqual(response.status_code, 200)
+    
+    def test_get_produk_pagination(self):
+        request = MockAuthenticatedRequest(user_id=self.user1.id, GET={"per_page": "3"})
+        status, response = get_produk_paginated(request, page=2)
         
-        data = response.json()
-        self.assertEqual(data["per_page"], 7)
-        self.assertEqual(len(data["items"]), 7)
-
-class LowStockAPITest(TestCase):
-    def setUp(self):
-        self.client = Client()
-        self.kategori = KategoriProduk.objects.create(nama="Elektronik")
-
-        self.produk_stok_rendah_1 = Produk.objects.create(
-            nama="Mouse",
-            foto="https://example.com/mouse.jpg",
-            harga_modal=50000,
-            harga_jual=80000,
-            stok=5,
-            satuan="Pcs",
-            kategori=self.kategori
-        )
-
-        self.produk_stok_rendah_2 = Produk.objects.create(
-            nama="Headset",
-            foto="https://example.com/headset.jpg",
-            harga_modal=150000,
-            harga_jual=250000,
-            stok=9.5,
-            satuan="Pcs",
-            kategori=self.kategori
-        )
+        self.assertEqual(status, 200)
+        self.assertEqual(response['page'], 2)
+        self.assertEqual(response['per_page'], 3)
+        self.assertEqual(len(response['items']), 3)
+        self.assertEqual(response['total_pages'], 4)  # 10 items, 3 per page = 4 pages
+    
+    def test_page_not_found(self):
+        request = MockAuthenticatedRequest(user_id=self.user1.id)
+        status, response = get_produk_paginated(request, page=5)
         
-        self.produk_stok_kosong = Produk.objects.create(
-            nama="Webcam",
-            foto="https://example.com/webcam.jpg",
-            harga_modal=120000,
-            harga_jual=200000,
-            stok=0,
-            satuan="Pcs",
-            kategori=self.kategori
-        )
-
-        self.produk_stok_batas = Produk.objects.create(
-            nama="Laptop",
-            foto="https://example.com/laptop.jpg",
-            harga_modal=5000000,
-            harga_jual=7000000,
-            stok=10,
-            satuan="Pcs",
-            kategori=self.kategori
-        )
-
-        self.produk_stok_aman = Produk.objects.create(
-            nama="Keyboard",
-            foto="",
-            harga_modal=300000,
-            harga_jual=500000,
-            stok=20,
-            satuan="Pcs",
-            kategori=self.kategori
-        )
-
-    def test_get_low_stock_products_success(self):
-        response = self.client.get("/api/produk/low-stock")
-        self.assertEqual(response.status_code, 200)
-
-        data = response.json()
-        self.assertEqual(len(data), 3)
-
-        data = sorted(data, key=lambda x: x["id"])
-        
-        product_ids = [item["id"] for item in data]
-        self.assertIn(self.produk_stok_rendah_1.id, product_ids)
-        self.assertIn(self.produk_stok_rendah_2.id, product_ids)
-        self.assertIn(self.produk_stok_kosong.id, product_ids)
-        
-        self.assertNotIn(self.produk_stok_batas.id, product_ids)
-        self.assertNotIn(self.produk_stok_aman.id, product_ids)
-        
-        self.assertEqual(data[0]["nama"], "Mouse")
-        self.assertEqual(data[0]["foto"], "https://example.com/mouse.jpg")
-        self.assertEqual(data[0]["harga_modal"], float(self.produk_stok_rendah_1.harga_modal))
-        self.assertEqual(data[0]["harga_jual"], float(self.produk_stok_rendah_1.harga_jual))
-        self.assertEqual(data[0]["stok"], float(self.produk_stok_rendah_1.stok))
-        self.assertEqual(data[0]["satuan"], self.produk_stok_rendah_1.satuan)
-        self.assertEqual(data[0]["kategori"], "Elektronik")
-
-    def test_get_low_stock_products_empty(self):
-        Produk.objects.filter(stok__lt=10).delete()
-        
-        response = self.client.get("/api/produk/low-stock")
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), [])
-
-    def test_get_low_stock_products_no_products(self):
-        Produk.objects.all().delete()
-        
-        response = self.client.get("/api/produk/low-stock")
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), [])
-
-    def test_get_low_stock_products_invalid_url(self):
-        response = self.client.get("/api/produk/low-stok")
-        self.assertEqual(response.status_code, 404)
-
-    def test_get_low_stock_products_invalid_method(self):
-        response = self.client.post("/api/produk/low-stock")
-        self.assertEqual(response.status_code, 405) 
-        
-class ProdukSearchAPITest(TestCase):
-    def setUp(self):
-        self.client = Client()
-
-        self.kategori_makanan = KategoriProduk.objects.create(nama="Makanan")
-        self.kategori_minuman = KategoriProduk.objects.create(nama="Minuman")
-
-        self.nasi = Produk.objects.create(
-            nama="Nasi Goreng",
-            foto="nasi_goreng.png",
+        self.assertEqual(status, 404)
+        self.assertEqual(response['message'], "Page not found")
+    
+    def test_create_produk(self):
+        payload = CreateProdukSchema(
+            nama="New Product",
             harga_modal=15000,
             harga_jual=20000,
-            stok=50,
-            satuan="porsi",
-            kategori=self.kategori_makanan,
+            stok=25,
+            satuan="Box",
+            kategori="New Category"
         )
-        self.teh = Produk.objects.create(
-            nama="Es Teh Manis",
-            foto="es_teh.png",
-            harga_modal=3000,
-            harga_jual=5000,
-            stok=100,
-            satuan="gelas",
-            kategori=self.kategori_minuman,
-        )
-        self.ayam = Produk.objects.create(
-            nama="Ayam Bakar",
-            foto="ayam_bakar.png",
-            harga_modal=25000,
-            harga_jual=35000,
-            stok=20,
-            satuan="porsi",
-            kategori=self.kategori_makanan,
-        )
+        
+        request = MockAuthenticatedRequest(user_id=self.user1.id)
+        status, response = create_produk(request, payload=payload)
+        
+        self.assertEqual(status, 201)
+        self.assertEqual(response.nama, "New Product")
+        self.assertEqual(response.kategori, "New Category")
+        
+        # Check that product was created in DB
+        self.assertTrue(Produk.objects.filter(nama="New Product", user=self.user1).exists())
+        # Check that the category was created
+        self.assertTrue(KategoriProduk.objects.filter(nama="New Category").exists())
     
-    def test_search_success(self):
-        response = self.client.get("/api/produk/search?q=nasi")
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.json()), 1)
-        self.assertEqual(response.json()[0]["nama"], "Nasi Goreng")
+    def test_update_product_stock(self):
+        produk = Produk.objects.filter(user=self.user1).first()
+        payload = UpdateProdukStokSchema(stok=50)
+        
+        request = MockAuthenticatedRequest(user_id=self.user1.id)
+        status, response = update_produk_stock(request, id=produk.id, payload=payload)
+        
+        self.assertEqual(status, 200)
+        self.assertEqual(response.stok, 50.0)
+        
+        # Check DB was updated
+        updated_produk = Produk.objects.get(id=produk.id)
+        self.assertEqual(updated_produk.stok, 50)
+    
+    def test_update_product_not_found(self):
+        payload = UpdateProdukStokSchema(stok=50)
+        request = MockAuthenticatedRequest(user_id=self.user1.id)
+        
+        # Use a non-existent ID
+        status, response = update_produk_stock(request, id=9999, payload=payload)
+    
+        # Should return 422 error response, not raise exception
+        self.assertEqual(status, 422)
+        self.assertIn("message", response)
+    
+    def test_delete_produk(self):
+        produk = Produk.objects.filter(user=self.user1).first()
+        request = MockAuthenticatedRequest(user_id=self.user1.id)
+        
+        response = delete_produk(request, id=produk.id)
+        
+        self.assertEqual(response["message"], "Produk berhasil dihapus")
+        self.assertFalse(Produk.objects.filter(id=produk.id).exists())
+    
+    def test_delete_other_users_produk(self):
+        # Try to delete user2's product as user1
+        produk = Produk.objects.filter(user=self.user2).first()
+        request = MockAuthenticatedRequest(user_id=self.user1.id)
+        
+        # Should raise exception because get_object_or_404 will fail
+        with self.assertRaises(Exception):
+            delete_produk(request, id=produk.id)
+    
+    def test_low_stock_products(self):
+        request = MockAuthenticatedRequest(user_id=self.user1.id)
+        result = get_low_stock_products(request)
+        
+        self.assertEqual(len(result), 3)  # We created 3 products with stok=5
+        
+        # Check that all returned products have stock less than 10
+        for product in result:
+            self.assertTrue(product.stok < 10)
+            # Ensure products belong to user1
+            self.assertTrue("User1" in product.nama)
+            
+    def test_create_produk_negative_harga_modal(self):
+        """Test that creating a product with negative harga_modal is rejected"""
+        # Test that validation occurs during model creation
+        with self.assertRaises(ValidationError) as context:
+            CreateProdukSchema(
+                nama="Invalid Product",
+                harga_modal=-1000,  # Negative value should be rejected
+                harga_jual=20000,
+                stok=10,
+                satuan="Box",
+                kategori="Test Category"
+            )
+        
+        # Verify the error message
+        error_detail = str(context.exception)
+        self.assertIn("Harga modal minus seharusnya invalid", error_detail)
 
-    def test_search_multiple_results(self):
-        response = self.client.get("/api/produk/search?q=a")
-        self.assertEqual(response.status_code, 200)
-        self.assertGreaterEqual(len(response.json()), 2)
+    def test_create_produk_negative_harga_jual(self):
+        """Test that creating a product with negative harga_jual is rejected"""
+        with self.assertRaises(ValidationError) as context:
+            CreateProdukSchema(
+                nama="Invalid Product",
+                harga_modal=10000,
+                harga_jual=-5000,  # Negative value should be rejected
+                stok=10,
+                satuan="Box",
+                kategori="Test Category"
+            )
+        
+        error_detail = str(context.exception)
+        self.assertIn("Harga jual minus seharusnya invalid", error_detail)
 
-    def test_search_case_insensitive(self):
-        response = self.client.get("/api/produk/search?q=NASI")
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.json()), 1)
-        self.assertEqual(response.json()[0]["nama"], "Nasi Goreng")
+    def test_create_produk_negative_stok(self):
+        """Test that creating a product with negative stok is rejected"""
+        with self.assertRaises(ValidationError) as context:
+            CreateProdukSchema(
+                nama="Invalid Product",
+                harga_modal=10000,
+                harga_jual=15000,
+                stok=-5,  # Negative value should be rejected
+                satuan="Box",
+                kategori="Test Category"
+            )
+        
+        error_detail = str(context.exception)
+        self.assertIn("Stok minus seharusnya invalid", error_detail)
+    
+    def test_update_produk_negative_stok(self):
+        """Test that updating a product with negative stok is rejected"""
+        with self.assertRaises(ValidationError) as context:
+            UpdateProdukStokSchema(
+                stok=-10  # Negative value should be rejected
+            )
+        
+        error_detail = str(context.exception)
+        self.assertIn("Stok minus tidak valid", error_detail)
 
-    def test_search_no_results(self):
-        response = self.client.get("/api/produk/search?q=pizza")
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.json()), 0)
+    def test_auth_bearer_valid_token(self):
+        """Test that AuthBearer authenticates with valid token"""
+        auth = AuthBearer()
+        
+        # Create a valid token
+        token = jwt.encode({"user_id": self.user1.id}, settings.SECRET_KEY, algorithm="HS256")
+        
+        # Create a mock request with the token
+        request = self.factory.get("/", HTTP_AUTHORIZATION=f"Bearer {token}")
+        
+        # Test authentication
+        user_id = auth.authenticate(request, token)
+        self.assertEqual(user_id, self.user1.id)
 
-    def test_search_empty_query(self):
-        response = self.client.get("/api/produk/search?q=")
-        self.assertEqual(response.status_code, 200)
-        self.assertGreaterEqual(len(response.json()), 3)  # Harusnya mengembalikan semua produk
+    def test_auth_bearer_invalid_token(self):
+        """Test that AuthBearer rejects invalid token"""
+        auth = AuthBearer()
+        
+        # Create an invalid token with wrong secret
+        token = jwt.encode({"user_id": self.user1.id}, "wrong_secret", algorithm="HS256")
+        
+        # Test authentication
+        user_id = auth.authenticate(None, token)
+        self.assertIsNone(user_id)
 
-    def test_search_special_characters(self):
-        response = self.client.get("/api/produk/search?q=@!#$$%")
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.json()), 0)
+    def test_auth_bearer_missing_user_id(self):
+        """Test that AuthBearer rejects token without user_id"""
+        auth = AuthBearer()
+        
+        # Create token without user_id
+        token = jwt.encode({"some_field": "value"}, settings.SECRET_KEY, algorithm="HS256")
+        
+        # Test authentication
+        user_id = auth.authenticate(None, token)
+        self.assertIsNone(user_id)
 
-    def test_search_numeric_query(self):
-        response = self.client.get("/api/produk/search?q=123")
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.json()), 0)
+    def test_get_produk_default(self):
+        """Test that get_produk_default calls get_produk_paginated with page=1"""
+        request = MockAuthenticatedRequest(user_id=self.user1.id)
+        
+        # Mock get_produk_paginated to verify it's called with correct parameters
+        with patch('produk.api.get_produk_paginated') as mock_paginated:
+            mock_paginated.return_value = (200, {"items": [], "total": 0, "page": 1})
+            
+            # Call the default endpoint
+            get_produk_default(request, sort="asc")
+            
+            # Verify get_produk_paginated was called with page=1 and sort="asc"
+            mock_paginated.assert_called_once_with(request, page=1, sort="asc")
 
+    def test_get_produk_invalid_per_page(self):
+        """Test that get_produk_paginated handles invalid per_page parameter"""
+        # Create a request with invalid per_page (not an integer)
+        request = MockAuthenticatedRequest(user_id=self.user1.id, GET={"per_page": "invalid"})
+        
+        # Call the function
+        status, response = get_produk_paginated(request, page=1)
+        
+        # Verify default per_page was used (7)
+        self.assertEqual(status, 200)
+        self.assertEqual(response["per_page"], 7)

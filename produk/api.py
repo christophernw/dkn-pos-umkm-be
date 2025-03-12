@@ -1,143 +1,125 @@
-from ninja import Router
+from ninja import Router, UploadedFile
 from django.shortcuts import get_object_or_404
 from django.http import HttpResponseBadRequest
+from backend import settings
 from produk.models import Produk, KategoriProduk
-from produk.schemas import PaginatedResponseSchema, ProdukSchema, CreateProdukSchema
+from ninja.security import HttpBearer
+import jwt
+from django.http import HttpResponse
+from produk.schemas import (
+    PaginatedResponseSchema,
+    ProdukResponseSchema,
+    CreateProdukSchema,
+    UpdateProdukStokSchema,
+)
+from django.contrib.auth.models import User
 
-router = Router()
-
-def get_produk_queryset(sort=None):
-    if sort not in [None, "asc", "desc"]:
+class AuthBearer(HttpBearer):
+    def authenticate(self, request, token):
+        try:
+            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+            user_id = payload.get("user_id")
+            if user_id:
+                return user_id
+        except jwt.PyJWTError:
+            return None
         return None
-        
-    order_by_field = "stok" if sort == "asc" else "-stok"
-    return Produk.objects.select_related("kategori").order_by(order_by_field, "id")
 
-def format_produk_response(produk_list):
-    return [
-        ProdukSchema(
-            id=p.id,
-            nama=p.nama,
-            foto=p.foto,
-            harga_modal=float(p.harga_modal),
-            harga_jual=float(p.harga_jual),
-            stok=float(p.stok),
-            satuan=p.satuan,
-            kategori=p.kategori.nama,
-        )
-        for p in produk_list
-    ]
+router = Router(auth=AuthBearer())
 
-@router.get("", response=list[ProdukSchema])
-def get_produk(request, sort: str = None):
-    queryset = get_produk_queryset(sort)
-    if queryset is None:
-        return HttpResponseBadRequest("Invalid sort parameter. Use 'asc' or 'desc'.")
-    
-    return format_produk_response(queryset)
+@router.get("", response={200: PaginatedResponseSchema, 404: dict})
+def get_produk_default(request, sort: str = None):
+    return get_produk_paginated(request, page=1, sort=sort)
+
 
 @router.get("/page/{page}", response={200: PaginatedResponseSchema, 404: dict})
-def get_produk_paginated(request, page: int, sort: str = None):
-    queryset = get_produk_queryset(sort)
-    if queryset is None:
+def get_produk_paginated(request, page: int, sort: str = None, q: str = ""):
+    if sort not in [None, "asc", "desc"]:
         return HttpResponseBadRequest("Invalid sort parameter. Use 'asc' or 'desc'.")
+
+    user_id = request.auth
+    order_by_field = "stok" if sort == "asc" else "-stok"
     
-    per_page = 7
-    if 'per_page' in request.GET:
-        try:
-            per_page = int(request.GET.get('per_page'))
-        except ValueError:
-            pass
+    queryset = Produk.objects.filter(user_id=user_id)
+    if q:
+        queryset = queryset.filter(nama__icontains=q)
     
+    queryset = queryset.select_related("kategori").order_by(order_by_field, "id")
+
+    try:
+        per_page = int(request.GET.get("per_page", 7))
+    except ValueError:
+        per_page = 7
+
     total = queryset.count()
     total_pages = (total + per_page - 1) // per_page
-    
+
     if page > total_pages and total > 0:
         return 404, {"message": "Page not found"}
-    
+
     offset = (page - 1) * per_page
-    page_items = queryset[offset:offset + per_page]
-    
+    page_items = queryset[offset : offset + per_page]
+
     return 200, {
-        "items": format_produk_response(page_items),
+        "items": [ProdukResponseSchema.from_orm(p) for p in page_items],
         "total": total,
         "page": page,
         "per_page": per_page,
-        "total_pages": total_pages
+        "total_pages": total_pages,
     }
 
-@router.post("/create", response={201: ProdukSchema, 422: dict})
-def create_produk(request):
-    print(request)
 
-    nama = request.POST.get("nama")
-    foto = request.FILES.get("foto")
-    harga_modal = request.POST.get("harga_modal")
-    harga_jual = request.POST.get("harga_jual")
-    stok = request.POST.get("stok")
-    satuan = request.POST.get("satuan")
-    kategori_nama = request.POST.get("kategori")
-
-    try:
-        harga_modal = float(harga_modal)
-        harga_jual = float(harga_jual)
-        stok = float(stok)
-    except ValueError:
-        return 422, {"detail": "Harga atau stok harus berupa angka"}
-
-    if harga_modal < 0 or harga_jual < 0:
-        return 422, {"detail": "Harga minus seharusnya invalid"}
-
-    if stok < 0:
-        return 422, {"detail": "Stok minus seharusnya invalid"}
-
-    kategori_obj, _ = KategoriProduk.objects.get_or_create(nama=kategori_nama)
+@router.post("/create", response={201: ProdukResponseSchema, 422: dict})
+def create_produk(request, payload: CreateProdukSchema, foto: UploadedFile = None):
+    user_id = request.auth
+    user = get_object_or_404(User, id=user_id)
+    
+    kategori_obj, _ = KategoriProduk.objects.get_or_create(nama=payload.kategori)
 
     produk = Produk.objects.create(
-        nama=nama,
+        nama=payload.nama,
         foto=foto,
-        harga_modal=harga_modal,
-        harga_jual=harga_jual,
-        stok=stok,
-        satuan=satuan,
-        kategori=kategori_obj
+        harga_modal=payload.harga_modal,
+        harga_jual=payload.harga_jual,
+        stok=payload.stok,
+        satuan=payload.satuan,
+        kategori=kategori_obj,
+        user=user,
     )
+
+    return 201, ProdukResponseSchema.from_orm(produk)
+
+@router.patch("/update/{id}", response={200: ProdukResponseSchema, 404: dict, 422: dict})
+def update_produk_stock(request, id: int, payload: UpdateProdukStokSchema):
+    user_id = request.auth
     
-    return 201, ProdukSchema(
-        id=produk.id,
-        nama=produk.nama,
-        foto=produk.foto,
-        harga_modal=float(produk.harga_modal),
-        harga_jual=float(produk.harga_jual),
-        stok=float(produk.stok),
-        satuan=produk.satuan,
-        kategori=kategori_obj.nama,
-    )
-  
+    try:
+        # Get the product and verify ownership
+        produk = get_object_or_404(Produk, id=id, user_id=user_id)
+        
+        # Update only the stock field
+        produk.stok = payload.stok
+        produk.save(update_fields=['stok'])
+        
+        return 200, ProdukResponseSchema.from_orm(produk)
+    
+    except Exception as e:
+        return 422, {"message": str(e)}
+
 @router.delete("/delete/{id}")
 def delete_produk(request, id: int):
-    produk = get_object_or_404(Produk, id=id)
+    user_id = request.auth
+    produk = get_object_or_404(Produk, id=id, user_id=user_id)
     produk.delete()
     return {"message": "Produk berhasil dihapus"}
 
-@router.get("/search", response=list[ProdukSchema])
-def search_produk(request, q: str = ""):
-    produk_list = Produk.objects.filter(nama__icontains=q)
-    return [
-        {
-            "id": p.id,
-            "nama": p.nama,
-            "foto": p.foto,
-            "harga_modal": p.harga_modal,
-            "harga_jual": p.harga_jual,
-            "stok": p.stok,
-            "satuan": p.satuan,
-            "kategori": p.kategori.nama,
-        }
-        for p in produk_list
-    ]
-    
-@router.get("/low-stock", response=list[ProdukSchema])
+
+@router.get("/low-stock", response=list[ProdukResponseSchema])
 def get_low_stock_products(request):
-    queryset = Produk.objects.select_related("kategori").filter(stok__lt=10).order_by("id")
-    return format_produk_response(queryset)
+    user_id = request.auth
+    products = (
+        Produk.objects.select_related("kategori")
+        .filter(stok__lt=10, user_id=user_id)
+        .order_by("id")
+    )
+    return [ProdukResponseSchema.from_orm(p) for p in products]
