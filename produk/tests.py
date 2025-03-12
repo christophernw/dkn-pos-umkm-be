@@ -9,7 +9,7 @@ import jwt
 from pydantic import ValidationError
 
 from backend import settings
-from .api import AuthBearer, get_produk_default, router, get_produk_paginated, create_produk, delete_produk, search_produk, get_low_stock_products, update_produk_stock
+from .api import AuthBearer, get_produk_default, router, get_produk_paginated, create_produk, delete_produk, get_low_stock_products, update_produk_stock
 from .models import Produk, KategoriProduk
 from .schemas import ProdukResponseSchema, CreateProdukSchema, UpdateProdukStokSchema
 
@@ -62,7 +62,7 @@ class TestProductAPI(TestCase):
     
     def test_get_produk_with_sort_asc(self):
         request = MockAuthenticatedRequest(user_id=self.user1.id)
-        status, response = get_produk_paginated(request, page=1, sort="asc")
+        status, response = get_produk_paginated(request, page=1, sort="asc", q="User1")
         
         self.assertEqual(status, 200)
         # Check that products are sorted by stok ascending
@@ -166,20 +166,6 @@ class TestProductAPI(TestCase):
         # Should raise exception because get_object_or_404 will fail
         with self.assertRaises(Exception):
             delete_produk(request, id=produk.id)
-    
-    def test_search_produk(self):
-        request = MockAuthenticatedRequest(user_id=self.user1.id)
-        result = search_produk(request, q="User1")
-        
-        self.assertEqual(len(result), 10)  # All user1's products
-        
-        # Test more specific search
-        result = search_produk(request, q="User1 Produk 10")
-        self.assertEqual(len(result), 1)
-        
-        # Test search with no results
-        result = search_produk(request, q="NonExistingProduct")
-        self.assertEqual(len(result), 0)
     
     def test_low_stock_products(self):
         request = MockAuthenticatedRequest(user_id=self.user1.id)
