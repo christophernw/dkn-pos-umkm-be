@@ -20,7 +20,6 @@ class TokenValidationRequest(BaseModel):
 @router.post("/process-session")
 def process_session(request, session_data: SessionData):
     user_data = session_data.user
-    print(user_data)
 
     try:
         user = User.objects.get(email=user_data.get("email"))

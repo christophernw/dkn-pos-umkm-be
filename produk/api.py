@@ -33,13 +33,18 @@ def get_produk_default(request, sort: str = None):
 
 
 @router.get("/page/{page}", response={200: PaginatedResponseSchema, 404: dict})
-def get_produk_paginated(request, page: int, sort: str = None):
+def get_produk_paginated(request, page: int, sort: str = None, q: str = ""):
     if sort not in [None, "asc", "desc"]:
         return HttpResponseBadRequest("Invalid sort parameter. Use 'asc' or 'desc'.")
 
     user_id = request.auth
     order_by_field = "stok" if sort == "asc" else "-stok"
-    queryset = Produk.objects.filter(user_id=user_id).select_related("kategori").order_by(order_by_field, "id")
+    
+    queryset = Produk.objects.filter(user_id=user_id)
+    if q:
+        queryset = queryset.filter(nama__icontains=q)
+    
+    queryset = queryset.select_related("kategori").order_by(order_by_field, "id")
 
     try:
         per_page = int(request.GET.get("per_page", 7))
@@ -107,25 +112,6 @@ def delete_produk(request, id: int):
     produk = get_object_or_404(Produk, id=id, user_id=user_id)
     produk.delete()
     return {"message": "Produk berhasil dihapus"}
-
-
-@router.get("/search", response=list[ProdukResponseSchema])
-def search_produk(request, q: str = ""):
-    user_id = request.auth
-    produk_list = Produk.objects.filter(nama__icontains=q, user_id=user_id)
-    return [
-        {
-            "id": p.id,
-            "nama": p.nama,
-            "foto": p.foto,
-            "harga_modal": p.harga_modal,
-            "harga_jual": p.harga_jual,
-            "stok": p.stok,
-            "satuan": p.satuan,
-            "kategori": p.kategori.nama,
-        }
-        for p in produk_list
-    ]
 
 
 @router.get("/low-stock", response=list[ProdukResponseSchema])
