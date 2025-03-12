@@ -15,7 +15,7 @@ from .schemas import ProdukResponseSchema, CreateProdukSchema, UpdateProdukStokS
 
 class MockAuthenticatedRequest:
     """Mock request with authentication for testing"""
-    def __init__(self, user_id=1, method="GET", body=None, get_params=None):
+    def __init__(self, user_id=1, method="get_params", body=None, get_params=None):
         self.auth = user_id  # Simulating authenticated user
         self.method = method
         self._body = json.dumps(body).encode() if body else None
@@ -86,7 +86,7 @@ class TestProductAPI(TestCase):
         self.assertEqual(response.status_code, 400)
     
     def test_get_produk_pagination(self):
-        request = MockAuthenticatedRequest(user_id=self.user1.id, GET={"per_page": "3"})
+        request = MockAuthenticatedRequest(user_id=self.user1.id, get_params={"per_page": "3"})
         status, response = get_produk_paginated(request, page=2)
         
         self.assertEqual(status, 200)
@@ -289,7 +289,7 @@ class TestProductAPI(TestCase):
     def test_get_produk_invalid_per_page(self):
         """Test that get_produk_paginated handles invalid per_page parameter"""
         # Create a request with invalid per_page (not an integer)
-        request = MockAuthenticatedRequest(user_id=self.user1.id, GET={"per_page": "invalid"})
+        request = MockAuthenticatedRequest(user_id=self.user1.id, get_params={"per_page": "invalid"})
         
         # Call the function
         status, response = get_produk_paginated(request, page=1)
