@@ -1,6 +1,9 @@
 # Use an official Python image as the base
 FROM python:3.10
 
+# Create a non-root user and group
+RUN groupadd -r myuser && useradd -r -g myuser myuser
+
 # Set the working directory in the container
 WORKDIR /app
 
@@ -12,6 +15,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the entire project into the container
 COPY . .
+
+# Change ownership of the working directory to the non-root user
+RUN chown -R myuser:myuser /app
+
+# Switch to the non-root user
+USER myuser
 
 # Run migrations and collect static files
 RUN python manage.py collectstatic --noinput

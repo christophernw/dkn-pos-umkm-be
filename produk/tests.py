@@ -15,11 +15,11 @@ from .schemas import ProdukResponseSchema, CreateProdukSchema, UpdateProdukStokS
 
 class MockAuthenticatedRequest:
     """Mock request with authentication for testing"""
-    def __init__(self, user_id=1, method="GET", body=None, GET=None):
+    def __init__(self, user_id=1, method="GET", body=None, get_params=None):
         self.auth = user_id  # Simulating authenticated user
         self.method = method
         self._body = json.dumps(body).encode() if body else None
-        self.GET = GET or {}
+        self.GET = get_params or {}
 
 class TestProductAPI(TestCase):
     def setUp(self):
