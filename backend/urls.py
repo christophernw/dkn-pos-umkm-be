@@ -18,9 +18,13 @@ Including another URLconf
 from ninja import NinjaAPI
 from django.contrib import admin
 from django.urls import path
+from backend import settings
 from backend.api import api
+from django.conf.urls.static import static
 
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/", api.urls),
 ]
+
+urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
