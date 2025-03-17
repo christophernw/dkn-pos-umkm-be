@@ -320,3 +320,43 @@ class TestProductAPI(TestCase):
             status, response = create_produk(request, payload=payload, foto=dummy_file)
             self.assertEqual(status, 422)
             self.assertEqual(response["message"], "Format file tidak valid! Harap unggah PNG, JPG, atau JPEG.")
+
+    def test_create_produk_valid_file(self):
+        """Test that creating a product with a valid image file (<=3MB) succeeds"""
+        payload = CreateProdukSchema(
+            nama="Valid Image Product",
+            harga_modal=10000,
+            harga_jual=15000,
+            stok=10,
+            satuan="Kg",
+            kategori="Valid Category"
+        )
+
+        valid_file = SimpleUploadedFile("valid_image.jpg", b"\xFF\xD8\xFF" + b"A" * (2 * 1024 * 1024), content_type="image/jpeg")
+
+        with patch("produk.api.imghdr.what", return_value="jpeg"):
+            request = MockAuthenticatedRequest(user_id=self.user1.id)
+            status, response = create_produk(request, payload=payload, foto=valid_file)
+
+            self.assertEqual(status, 201)
+            self.assertEqual(response.nama, "Valid Image Product")
+
+    def test_create_produk_large_file(self):
+        """Test that creating a product with a file larger than 3MB is rejected"""
+        payload = CreateProdukSchema(
+            nama="Large File Product",
+            harga_modal=15000,
+            harga_jual=20000,
+            stok=25,
+            satuan="Box",
+            kategori="Test Category"
+        )
+        
+        large_file = SimpleUploadedFile("large_image.jpg", b"\xFF\xD8\xFF" + b"A" * (4 * 1024 * 1024), content_type="image/jpeg")
+        
+        with patch("produk.api.imghdr.what", return_value="jpeg"):
+            request = MockAuthenticatedRequest(user_id=self.user1.id)
+            status, response = create_produk(request, payload=payload, foto=large_file)
+
+            self.assertEqual(status, 422)
+            self.assertEqual(response["message"], "Ukuran file terlalu besar! Maksimal 3MB.")

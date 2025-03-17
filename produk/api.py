@@ -69,6 +69,8 @@ def get_produk_paginated(request, page: int, sort: str = None, q: str = ""):
         "total_pages": total_pages,
     }
 
+MAX_FILE_SIZE_MB = 3
+MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
 @router.post("/create", response={201: ProdukResponseSchema, 422: dict})
 def create_produk(request, payload: CreateProdukSchema, foto: UploadedFile = None):
@@ -82,6 +84,8 @@ def create_produk(request, payload: CreateProdukSchema, foto: UploadedFile = Non
         file_type = imghdr.what(foto)
         if file_type not in allowed_types:
             return 422, {"message": "Format file tidak valid! Harap unggah PNG, JPG, atau JPEG."}
+        if foto.size > MAX_FILE_SIZE_BYTES:
+            return 422, {"message": f"Ukuran file terlalu besar! Maksimal {MAX_FILE_SIZE_MB}MB."}
     
     produk = Produk.objects.create(
         nama=payload.nama,
