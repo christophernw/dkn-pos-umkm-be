@@ -5,7 +5,7 @@ from django.http import HttpResponseBadRequest
 from backend import settings
 from produk.models import Produk, KategoriProduk
 from ninja.security import HttpBearer
-import jwt
+import jwt, imghdr
 from django.http import HttpResponse
 from produk.schemas import (
     PaginatedResponseSchema,
@@ -106,6 +106,8 @@ def update_produk(request, id: int, payload: UpdateProdukSchema):
     produk.save()
 
     return 200, ProdukResponseSchema.from_orm(produk)
+MAX_FILE_SIZE_MB = 3
+MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
 @router.post("/create", response={201: ProdukResponseSchema, 422: dict})
 def create_produk(request, payload: CreateProdukSchema, foto: UploadedFile = None):
@@ -114,6 +116,14 @@ def create_produk(request, payload: CreateProdukSchema, foto: UploadedFile = Non
 
     kategori_obj, _ = KategoriProduk.objects.get_or_create(nama=payload.kategori)
 
+    if foto:
+        allowed_types = ["jpeg", "png", "jpg", "webp"]
+        file_type = imghdr.what(foto)
+        if file_type not in allowed_types:
+            return 422, {"message": "Format file tidak valid! Harap unggah PNG, JPG, atau JPEG."}
+        if foto.size > MAX_FILE_SIZE_BYTES:
+            return 422, {"message": f"Ukuran file terlalu besar! Maksimal {MAX_FILE_SIZE_MB}MB."}
+    
     produk = Produk.objects.create(
         nama=payload.nama,
         foto=foto,

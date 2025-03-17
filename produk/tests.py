@@ -4,6 +4,7 @@ from django.contrib.auth.models import User
 from decimal import Decimal
 import json
 from unittest.mock import patch, MagicMock
+from django.core.files.uploadedfile import SimpleUploadedFile
 
 import jwt
 from pydantic import ValidationError
@@ -297,10 +298,75 @@ class TestProductAPI(TestCase):
         # Verify default per_page was used (7)
         self.assertEqual(status, 200)
         self.assertEqual(response["per_page"], 7)
+
+    def test_create_produk_invalid_file_type(self):
+        """Test that creating a product with an invalid image file type returns an error"""
+
+        payload = CreateProdukSchema(
+            nama="Invalid Product",
+            harga_modal=15000,
+            harga_jual=20000,
+            stok=25,
+            satuan="Box",
+            kategori="Invalid Category"
+        )
         
-class ProdukUpdateTest(TestCase):    
+        # Create a dummy file that simulates a PDF file
+        dummy_file = SimpleUploadedFile("test.pdf", b"%PDF-1.4", content_type="application/pdf")
+        
+        # Patch imghdr.what so that it returns a type not allowed (e.g., "pdf")
+        with patch("produk.api.imghdr.what", return_value="pdf"):
+            request = MockAuthenticatedRequest(user_id=self.user1.id)
+            status, response = create_produk(request, payload=payload, foto=dummy_file)
+            self.assertEqual(status, 422)
+            self.assertEqual(response["message"], "Format file tidak valid! Harap unggah PNG, JPG, atau JPEG.")
+
+    def test_create_produk_valid_file(self):
+        """Test that creating a product with a valid image file (<=3MB) succeeds"""
+        payload = CreateProdukSchema(
+            nama="Valid Image Product",
+            harga_modal=10000,
+            harga_jual=15000,
+            stok=10,
+            satuan="Kg",
+            kategori="Valid Category"
+        )
+
+        valid_file = SimpleUploadedFile("valid_image.jpg", b"\xFF\xD8\xFF" + b"A" * (2 * 1024 * 1024), content_type="image/jpeg")
+
+        with patch("produk.api.imghdr.what", return_value="jpeg"):
+            request = MockAuthenticatedRequest(user_id=self.user1.id)
+            status, response = create_produk(request, payload=payload, foto=valid_file)
+
+            self.assertEqual(status, 201)
+            self.assertEqual(response.nama, "Valid Image Product")
+
+    def test_create_produk_large_file(self):
+        """Test that creating a product with a file larger than 3MB is rejected"""
+        payload = CreateProdukSchema(
+            nama="Large File Product",
+            harga_modal=15000,
+            harga_jual=20000,
+            stok=25,
+            satuan="Box",
+            kategori="Test Category"
+        )
+        
+        large_file = SimpleUploadedFile("large_image.jpg", b"\xFF\xD8\xFF" + b"A" * (4 * 1024 * 1024), content_type="image/jpeg")
+        
+        with patch("produk.api.imghdr.what", return_value="jpeg"):
+            request = MockAuthenticatedRequest(user_id=self.user1.id)
+            status, response = create_produk(request, payload=payload, foto=large_file)
+
+            self.assertEqual(status, 422)
+            self.assertEqual(response["message"], "Ukuran file terlalu besar! Maksimal 3MB.")
+        
+class ProdukUpdateTest(TestCase):
     def setUp(self):
         """Setup data awal untuk pengujian"""
+        self.user1 = User.objects.create_user(username="testuser1", password="password123")
+        self.token = self.generate_token(self.user1.id)
+
         self.kategori = KategoriProduk.objects.create(nama="Elektronik")
         self.kategori_baru = KategoriProduk.objects.create(nama="Gadget")
         self.produk = Produk.objects.create(
@@ -309,20 +375,28 @@ class ProdukUpdateTest(TestCase):
             harga_jual=15000,
             stok=10,
             satuan="pcs",
-            kategori=self.kategori
+            kategori=self.kategori,
+            user=self.user1
         )
+
+    def generate_token(self, user_id):
+        """Generate JWT token for authentication"""
+        payload = {"user_id": user_id}
+        return jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
+
 
     def test_update_produk_success(self):
         """Cek apakah produk berhasil diperbarui dengan beberapa field"""
         response = self.client.put(
             f"/api/produk/update/{self.produk.id}",
-            json.dumps({
+            data=json.dumps({
                 "nama": "Produk A - Update",
                 "harga_modal": 12000,
                 "stok": 8,
                 "kategori": "Gadget"
             }),
-            content_type="application/json"
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.token}"
         )
         self.assertEqual(response.status_code, 200)
 
@@ -336,8 +410,9 @@ class ProdukUpdateTest(TestCase):
         """Cek jika produk tidak ditemukan"""
         response = self.client.put(
             "/api/produk/update/9999",
-            json.dumps({"nama": "Produk Tidak Ada"}),
-            content_type="application/json"
+            data=json.dumps({"nama": "Produk Tidak Ada"}),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.token}"
         )
         self.assertEqual(response.status_code, 404)
 
@@ -345,8 +420,9 @@ class ProdukUpdateTest(TestCase):
         """Cek apakah produk bisa diperbarui dengan hanya satu field"""
         response = self.client.put(
             f"/api/produk/update/{self.produk.id}",
-            json.dumps({"stok": 5}),
-            content_type="application/json"
+            data=json.dumps({"stok": 5}),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.token}"
         )
         self.assertEqual(response.status_code, 200)
 
@@ -357,8 +433,9 @@ class ProdukUpdateTest(TestCase):
         """Cek validasi harga negatif"""
         response = self.client.put(
             f"/api/produk/update/{self.produk.id}",
-            json.dumps({"harga_modal": -5000}),
-            content_type="application/json"
+            data=json.dumps({"harga_modal": -5000}),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.token}"
         )
         self.assertEqual(response.status_code, 400)
 
@@ -366,8 +443,9 @@ class ProdukUpdateTest(TestCase):
         """Cek validasi stok negatif"""
         response = self.client.put(
             f"/api/produk/update/{self.produk.id}",
-            json.dumps({"stok": -5}),
-            content_type="application/json"
+            data=json.dumps({"stok": -5}),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.token}"
         )
         self.assertEqual(response.status_code, 400)
 
@@ -375,8 +453,9 @@ class ProdukUpdateTest(TestCase):
         """Cek apakah sistem menangani input dengan tipe data salah"""
         response = self.client.put(
             f"/api/produk/update/{self.produk.id}",
-            json.dumps({"harga_modal": "invalid_string"}),
-            content_type="application/json"
+            data=json.dumps({"harga_modal": "invalid_string"}),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.token}"
         )
         self.assertEqual(response.status_code, 422)
 
@@ -384,8 +463,9 @@ class ProdukUpdateTest(TestCase):
         """Cek apakah sistem menangani request kosong"""
         response = self.client.put(
             f"/api/produk/update/{self.produk.id}",
-            json.dumps({}),
-            content_type="application/json"
+            data=json.dumps({}),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.token}"
         )
         self.assertEqual(response.status_code, 200)  # Tidak ada perubahan, tapi tidak error
 
@@ -393,12 +473,13 @@ class ProdukUpdateTest(TestCase):
         """Cek apakah sistem bisa menerima data yang tidak berubah"""
         response = self.client.put(
             f"/api/produk/update/{self.produk.id}",
-            json.dumps({
+            data=json.dumps({
                 "nama": self.produk.nama,
                 "harga_modal": self.produk.harga_modal,
                 "stok": self.produk.stok
             }),
-            content_type="application/json"
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.token}"
         )
         self.assertEqual(response.status_code, 200)  # Harus tetap berhasil
 
@@ -406,12 +487,13 @@ class ProdukUpdateTest(TestCase):
         """Cek apakah sistem menangani nilai besar dengan benar"""
         response = self.client.put(
             f"/api/produk/update/{self.produk.id}",
-            json.dumps({
+            data=json.dumps({
                 "harga_modal": 9999999.99,
                 "harga_jual": 9999999.99,
                 "stok": 1000000
             }),
-            content_type="application/json"
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.token}"
         )
         self.assertEqual(response.status_code, 200)
 
@@ -424,7 +506,8 @@ class ProdukUpdateTest(TestCase):
         """Cek apakah sistem menangani JSON yang tidak valid"""
         response = self.client.put(
             f"/api/produk/update/{self.produk.id}",
-            "INVALID_JSON",
-            content_type="application/json"
+            data="INVALID_JSON",
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.token}"
         )
         self.assertEqual(response.status_code, 400)
