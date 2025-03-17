@@ -4,6 +4,7 @@ from django.contrib.auth.models import User
 from decimal import Decimal
 import json
 from unittest.mock import patch, MagicMock
+from django.core.files.uploadedfile import SimpleUploadedFile
 
 import jwt
 from pydantic import ValidationError
@@ -297,3 +298,25 @@ class TestProductAPI(TestCase):
         # Verify default per_page was used (7)
         self.assertEqual(status, 200)
         self.assertEqual(response["per_page"], 7)
+
+    def test_create_produk_invalid_file_type(self):
+        """Test that creating a product with an invalid image file type returns an error"""
+
+        payload = CreateProdukSchema(
+            nama="Invalid Product",
+            harga_modal=15000,
+            harga_jual=20000,
+            stok=25,
+            satuan="Box",
+            kategori="Invalid Category"
+        )
+        
+        # Create a dummy file that simulates a PDF file
+        dummy_file = SimpleUploadedFile("test.pdf", b"%PDF-1.4", content_type="application/pdf")
+        
+        # Patch imghdr.what so that it returns a type not allowed (e.g., "pdf")
+        with patch("produk.api.imghdr.what", return_value="pdf"):
+            request = MockAuthenticatedRequest(user_id=self.user1.id)
+            status, response = create_produk(request, payload=payload, foto=dummy_file)
+            self.assertEqual(status, 422)
+            self.assertEqual(response["message"], "Format file tidak valid! Harap unggah PNG, JPG, atau JPEG.")
