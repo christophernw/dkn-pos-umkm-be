@@ -1,4 +1,5 @@
 from django.db import models
+from django.contrib.auth.models import User
 from produk.models import Produk
 
 class StatusTransaksi(models.TextChoices):
@@ -34,6 +35,7 @@ class Transaksi(models.Model):
     catatan = models.TextField(blank=True, null=True)
     namaPelanggan = models.CharField(max_length=255, blank=True, null=True)
     nomorTeleponPelanggan = models.CharField(max_length=15, blank=True, null=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="transaksi")
 
 class Pemasukan(models.Model):
     transaksi = models.OneToOneField(Transaksi, on_delete=models.CASCADE, related_name='pemasukan')
@@ -45,5 +47,3 @@ class Pengeluaran(models.Model):
     transaksi = models.OneToOneField(Transaksi, on_delete=models.CASCADE, related_name='pengeluaran')
     kategori = models.CharField(max_length=50, choices=KategoriPengeluaran.choices)
     totalPengeluaran = models.FloatField()
-
-
