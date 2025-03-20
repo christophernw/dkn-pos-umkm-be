@@ -3,6 +3,10 @@ from django.contrib.auth.models import User
 from rest_framework_simplejwt.tokens import RefreshToken
 from authentication.api import router  # Adjust import if needed
 from ninja.testing import TestClient
+from rest_framework.test import APIClient
+from django.urls import reverse
+
+from authentication.models import Business, BusinessUser
 
 class AuthenticationTests(TestCase):
     def setUp(self):
@@ -40,3 +44,51 @@ class AuthenticationTests(TestCase):
         response = self.client.post("/validate-token", json={"token": "invalid_token"})
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.json()["valid"])
+
+class AddUserTests(TestCase):
+    def setUp(self):
+        self.client = TestClient(router)
+
+        # Buat pengguna pemilik bisnis
+        self.owner = User.objects.create_user(username="owner", email="owner@example.com", password="password")
+        self.owner_token = str(RefreshToken.for_user(self.owner).access_token)
+
+        # Buat bisnis terkait pemilik
+        self.business = Business.objects.create(owner=self.owner)
+
+    def test_add_user_success(self):
+        """Menguji apakah owner bisa menambahkan pengguna baru ke bisnisnya."""
+        payload = {
+            "name": "newuser",
+            "email": "newuser@example.com",
+            "role": "Karyawan"
+        }
+
+        response = self.client.post(
+            "/add-user",
+            json=payload,
+            headers={"Authorization": f"Bearer {self.owner_token}"}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["user"]["email"], "newuser@example.com")
+        self.assertEqual(response.json()["user"]["role"], "Karyawan")
+
+    def test_add_user_existing_email(self):
+        """Menguji penambahan user dengan email yang sudah ada."""
+        User.objects.create_user(username="existinguser", email="existing@example.com", password="password")
+
+        payload = {
+            "name": "existinguser",
+            "email": "existing@example.com",
+            "role": "Karyawan"
+        }
+
+        response = self.client.post(
+            "/add-user",
+            json=payload,
+            headers={"Authorization": f"Bearer {self.owner_token}"}
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("error", response.json())
