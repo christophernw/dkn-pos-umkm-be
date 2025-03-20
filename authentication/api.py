@@ -92,3 +92,66 @@ def validate_token(request, token_data: TokenValidationRequest):
         return {"valid": True}
     except TokenError:
         return {"valid": False}
+    
+@router.post("/add-user", response={200: dict, 400: dict}, auth=AuthBearer())
+def add_user(request, payload: AddUserRequest):
+
+    name = payload.name.strip()
+    role = payload.role.strip()
+    email = payload.email.strip().lower()
+
+    try:
+        with transaction.atomic():
+            if User.objects.filter(email=email).exists():
+                return 400, {"error": "Email sudah digunakan."}
+            
+            # Buat user baru
+            user = User.objects.create_user(username=name, email=email)
+            
+            # Cari bisnis milik pengguna
+            try:
+                business = Business.objects.get(owner=request.auth)
+            except Business.DoesNotExist:
+                return 400, {"error": "Bisnis tidak ditemukan untuk user ini."}
+            
+            # Cek apakah user sudah terdaftar dalam bisnis
+            if BusinessUser.objects.filter(user=user, business=business).exists():
+                return 400, {"error": "Pengguna sudah terdaftar di bisnis ini."}
+                
+            # Buat relasi BusinessUser
+            BusinessUser.objects.create(user=user, business=business, role=role)
+
+            return {"message": "User berhasil ditambahkan.", 
+                    "user": {
+                        "id": user.id,
+                        "name": user.username,
+                        "email": user.email,
+                        "role": role
+                    }}
+
+    except ValidationError as e:
+        return 400, {"error": str(e)}    
+    except Exception as e:
+        return 400, {"error": f"Terjadi kesalahan: {str(e)}"}
+    
+@router.get("/users", response={200: list[dict], 401: dict}, auth=AuthBearer())
+def get_users(request):
+    try:
+        business = Business.objects.get(owner=request.user)
+        
+        business_users = BusinessUser.objects.filter(business=business)
+
+        users_data = [
+            {
+                "id": bu.user.id,
+                "name": bu.user.username,
+                "email": bu.user.email,
+                "role": bu.role
+            }
+            for bu in business_users
+        ]
+
+        return users_data
+
+    except Business.DoesNotExist:
+        return 400, {"error": "Anda tidak memiliki bisnis yang terdaftar."}
