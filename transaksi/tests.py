@@ -538,3 +538,59 @@ class TransaksiTest(TestCase):
         get_response = client.get(f"/api/transaksi/pemasukan/{pemasukan_id}")
         updated_transaction = get_response.json()["transaksi"]
         self.assertEqual(updated_transaction["foto"], "/api/media/updated_image.jpg")
+        
+    def test_get_pemasukan_paginated(self):
+        """Test paginated income list"""
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+        
+        # Create 5 test income records
+        for i in range(5):
+            data = {
+                "status": "LUNAS",
+                "catatan": f"Test payment {i}",
+                "daftarProduk": [self.produk_list[0].id],
+                "kategori": "PENJUALAN",
+                "totalPemasukan": 1000 * (i + 1),
+                "hargaModal": 500 * (i + 1),
+            }
+            response = client.post("/api/transaksi/pemasukan/create", data, format="json")
+            self.assertEqual(response.status_code, 200)
+        
+        # Test basic pagination - first page
+        response = client.get("/api/transaksi/pemasukan/page/1?per_page=3")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        
+        # Verify structure and counts
+        self.assertEqual(data["total"], 5)
+        self.assertEqual(data["page"], 1)
+        self.assertEqual(data["per_page"], 3)
+        self.assertEqual(data["total_pages"], 2)
+        self.assertEqual(len(data["items"]), 3)
+        
+        # Test second page
+        response = client.get("/api/transaksi/pemasukan/page/2?per_page=3")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data["items"]), 2)  # 2 items on second page
+        
+        # Test sorting (ascending)
+        response = client.get("/api/transaksi/pemasukan/page/1?sort=asc")
+        self.assertEqual(response.status_code, 200)
+        
+        # Test search filter
+        client.post("/api/transaksi/pemasukan/create", {
+            "status": "LUNAS",
+            "catatan": "Unique searchable text",
+            "daftarProduk": [self.produk_list[0].id],
+            "kategori": "PENJUALAN",
+            "totalPemasukan": 9999,
+            "hargaModal": 5000,
+        }, format="json")
+        
+        response = client.get("/api/transaksi/pemasukan/page/1?q=Unique")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["total"], 1)
+        self.assertIn("Unique", data["items"][0]["transaksi"]["catatan"])
