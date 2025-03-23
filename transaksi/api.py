@@ -1,6 +1,7 @@
 from ninja import Router, Query
 from typing import List, Optional
 from django.db.models import Q
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 from .models import Pemasukan, Pengeluaran, Produk, Transaksi
 from .schemas import (
@@ -15,29 +16,42 @@ from .schemas import (
 router = Router()
 
 
-@router.post("/pemasukan/create", response=PemasukanRead)
+@router.post("/pemasukan/create", response={200: PemasukanRead, 422: dict})
 def create_pemasukan(request, payload: PemasukanCreate):
-
-    transaksi = Transaksi.objects.create(
-        status=payload.status,
-        catatan=payload.catatan,
-        namaPelanggan=payload.namaPelanggan,
-        nomorTeleponPelanggan=payload.nomorTeleponPelanggan,
-        foto=payload.foto,
-    )
-
-    transaksi.save()
-    transaksi.daftarProduk.set(Produk.objects.filter(id__in=payload.daftarProduk))
-
-    pemasukan = Pemasukan.objects.create(
-        transaksi=transaksi,
-        kategori=payload.kategori,
-        totalPemasukan=payload.totalPemasukan,
-        hargaModal=payload.hargaModal,
-    )
-
-    return PemasukanRead.from_orm(pemasukan)
-
+    """Create a new income transaction with associated products."""
+    try:
+        with transaction.atomic():
+            # Validate products exist before creating transaction
+            product_ids = payload.daftarProduk
+            products = list(Produk.objects.filter(id__in=product_ids))
+            
+            if len(products) != len(product_ids):
+                return 422, {"error": "One or more products not found"}
+            
+            # Create transaction record
+            transaksi = Transaksi.objects.create(
+                status=payload.status,
+                catatan=payload.catatan,
+                namaPelanggan=payload.namaPelanggan,
+                nomorTeleponPelanggan=payload.nomorTeleponPelanggan,
+                foto=payload.foto,
+            )
+            
+            # Associate products with transaction
+            transaksi.daftarProduk.set(products)
+            
+            # Create pemasukan record
+            pemasukan = Pemasukan.objects.create(
+                transaksi=transaksi,
+                kategori=payload.kategori,
+                totalPemasukan=payload.totalPemasukan,
+                hargaModal=payload.hargaModal,
+            )
+            
+            return PemasukanRead.from_orm(pemasukan)
+            
+    except Exception as e:
+        return 422, {"error": f"Failed to create transaction: {str(e)}"}
 
 @router.post("/pengeluaran/create", response=PengeluaranRead)
 def create_pengeluaran(request, payload: PengeluaranCreate):
