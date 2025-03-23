@@ -151,3 +151,14 @@ class TransaksiUpdate(BaseModel):
     nomorTeleponPelanggan: Optional[str] = None
     foto: Optional[str] = None
     daftarProduk: Optional[List[int]] = None
+
+
+from typing import List
+
+
+class PaginatedPemasukanResponseSchema(BaseModel):
+    items: List[PemasukanRead]
+    total: int
+    page: int
+    per_page: int
+    total_pages: int

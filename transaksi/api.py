@@ -1,6 +1,7 @@
-from ninja import Router
+from ninja import Router, Query
+from typing import List, Optional
+from django.db.models import Q
 from django.shortcuts import get_object_or_404
-from typing import List
 from .models import Pemasukan, Pengeluaran, Produk, Transaksi
 from .schemas import (
     PemasukanCreate,
@@ -8,6 +9,7 @@ from .schemas import (
     PengeluaranCreate,
     PengeluaranRead,
     TransaksiUpdate,
+    PaginatedPemasukanResponseSchema,
 )
 
 router = Router()
@@ -154,3 +156,75 @@ def update_transaksi(request, transaksi_id: int, payload: TransaksiUpdate):
         return 200, {"message": "Transaction updated successfully"}
     except Exception as e:
         return 404, {"error": str(e)}
+
+
+# Add this to your existing router
+
+
+@router.get(
+    "/pemasukan/page/{page}",
+    response={200: PaginatedPemasukanResponseSchema, 404: dict, 400: dict},
+)
+def get_pemasukan_paginated(
+    request,
+    page: int,
+    sort: Optional[str] = None,
+    q: Optional[str] = "",
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+):
+    """
+    Implementasi pagination untuk daftar pemasukan
+    """
+    if sort not in [None, "asc", "desc"]:
+        return 400, {"message": "Invalid sort parameter. Use 'asc' or 'desc'."}
+
+    # Default sort by date descending
+    order_by_field = (
+        "transaksi__tanggalTransaksi"
+        if sort == "asc"
+        else "-transaksi__tanggalTransaksi"
+    )
+
+    # Get base queryset of non-deleted records
+    queryset = Pemasukan.objects.filter(transaksi__isDeleted=False)
+
+    # Apply search filter
+    if q:
+        queryset = queryset.filter(
+            Q(transaksi__catatan__icontains=q)
+            | Q(kategori__icontains=q)
+            | Q(transaksi__namaPelanggan__icontains=q)
+        )
+
+    # Apply date filters
+    if start_date:
+        queryset = queryset.filter(transaksi__tanggalTransaksi__date__gte=start_date)
+
+    if end_date:
+        queryset = queryset.filter(transaksi__tanggalTransaksi__date__lte=end_date)
+
+    queryset = queryset.order_by(order_by_field, "id")
+
+    # Pagination logic
+    try:
+        per_page = int(request.GET.get("per_page", 10))
+    except ValueError:
+        per_page = 10
+
+    total = queryset.count()
+    total_pages = (total + per_page - 1) // per_page if total > 0 else 1
+
+    if page > total_pages and total > 0:
+        return 404, {"message": "Page not found"}
+
+    offset = (page - 1) * per_page
+    page_items = queryset[offset : offset + per_page]
+
+    return 200, {
+        "items": [PemasukanRead.from_orm(p) for p in page_items],
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": total_pages,
+    }
