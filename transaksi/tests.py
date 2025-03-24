@@ -65,7 +65,7 @@ class TransaksiTest(TestCase):
             "daftarProduk": [],
             "kategori": "",
             "totalPemasukan": -50000,
-            "hargaModal": -30000,
+            "harga_modal": -30000,
         }
         response = client.post("/api/transaksi/pemasukan/create", data, format="json")
         self.assertEqual(response.status_code, 422)
@@ -80,12 +80,76 @@ class TransaksiTest(TestCase):
             "nomorTeleponPelanggan": "08987654321",
             "foto": "invoice.jpg",
             "daftarProduk": [self.produk_list[0].id],
-            "kategori": "PEMBELIAN_STOK",
+            "kategori": "BIAYA_OPERASIONAL",
             "totalPengeluaran": 10000,
         }
         response = client.post("/api/transaksi/pengeluaran/create", data, format="json")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(Pengeluaran.objects.count(), 1)
+        
+    def test_create_pengeluaran_pembelian_stok(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+
+        data = {
+            "status": "LUNAS",
+            "catatan": "PEMBELIAN_STOK",
+            "namaPelanggan": "Supplier B",
+            "nomorTeleponPelanggan": "08234567890",
+            "foto": "invoice.jpg",
+            "daftarProduk": [self.produk_list[0].id, self.produk_list[1].id],
+            "kategori": "PEMBELIAN_STOK",
+            "totalPengeluaran": 99999
+        }
+
+        expected_total = sum([self.produk_list[0].harga_modal, self.produk_list[1].harga_modal])
+
+        response = client.post("/api/transaksi/pengeluaran/create", data, format="json")
+        self.assertEqual(response.status_code, 200)
+        
+        pengeluaran = Pengeluaran.objects.last()
+        self.assertIsNotNone(pengeluaran)
+        self.assertEqual(pengeluaran.totalPengeluaran, expected_total)
+
+    def test_create_pengeluaran_empty_produk_list(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+
+        data = {
+            "status": "LUNAS",
+            "catatan": "Pembelian stok kosong",
+            "namaPelanggan": "Supplier D",
+            "nomorTeleponPelanggan": "08456789012",
+            "foto": "invoice.jpg",
+            "daftarProduk": [],
+            "kategori": "PEMBELIAN_STOK",
+            "totalPengeluaran": 0
+        }
+
+        response = client.post("/api/transaksi/pengeluaran/create", data, format="json")
+        self.assertEqual(response.status_code, 200)
+        
+        pengeluaran = Pengeluaran.objects.last()
+        self.assertIsNotNone(pengeluaran)
+        self.assertEqual(pengeluaran.totalPengeluaran, 0)
+
+    def test_create_pengeluaran_negative_amount(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+
+        data = {
+            "status": "LUNAS",
+            "catatan": "Pengeluaran negatif",
+            "namaPelanggan": "Supplier E",
+            "nomorTeleponPelanggan": "08567890123",
+            "foto": "invoice.jpg",
+            "daftarProduk": [self.produk_list[0].id],
+            "kategori": "BIAYA_OPERASIONAL",
+            "totalPengeluaran": -5000
+        }
+
+        response = client.post("/api/transaksi/pengeluaran/create", data, format="json")
+        self.assertEqual(response.status_code, 422)
 
     def test_get_pemasukan_list(self):
         response = self.client.get("/api/transaksi/pemasukan/daftar")

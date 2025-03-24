@@ -126,7 +126,7 @@ class PemasukanCreate(BaseModel):
     daftarProduk: List[int]  
     kategori: KategoriPemasukanEnum
     totalPemasukan: float
-    hargaModal: float
+    hargaModal: float = Field(..., ge=0, description="Total pengeluaran harus >= 0")
     
 class PengeluaranCreate(BaseModel):
     status: StatusTransaksiEnum
@@ -136,4 +136,4 @@ class PengeluaranCreate(BaseModel):
     foto: Optional[str] = None
     daftarProduk: List[int]  
     kategori: KategoriPengeluaranEnum
-    totalPengeluaran: float
+    totalPengeluaran: float = Field(..., ge=0, description="Total pengeluaran harus >= 0")
