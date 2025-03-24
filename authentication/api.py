@@ -104,11 +104,9 @@ def add_user(request, payload: AddUserRequest):
         with transaction.atomic():
             if User.objects.filter(email=email).exists():
                 return 400, {"error": "Email sudah digunakan."}
-            
-            # Buat user baru
+        
             user = User.objects.create_user(username=name, email=email)
             
-            # Cari bisnis milik pengguna
             try:
                 business = Business.objects.get(owner=request.auth)
             except Business.DoesNotExist:

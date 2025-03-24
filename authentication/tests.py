@@ -92,3 +92,36 @@ class AddUserTests(TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn("error", response.json())
+
+class GetUsersTests(TestCase):
+    def setUp(self):
+        self.client = TestClient(router)
+
+        # Buat owner bisnis
+        self.owner = User.objects.create_user(username="owner", email="owner@example.com", password="password")
+        self.owner_token = str(RefreshToken.for_user(self.owner).access_token)
+
+        # Buat employee bisnis
+        self.employee = User.objects.create_user(username="employee", email="employee@example.com", password="password")
+
+        # Buat bisnis yang dimiliki oleh owner
+        self.business = Business.objects.create(owner=self.owner)
+
+        # Tambahkan employee ke bisnis
+        BusinessUser.objects.create(business=self.business, user=self.employee, role="Karyawan")
+
+    def test_get_users_success(self):
+        """Cek apakah owner bisa mendapatkan daftar pengguna bisnisnya"""
+        response = self.client.get(
+            "/users",
+            headers={"Authorization": f"Bearer {self.owner_token}"}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["name"], "employee")
+        self.assertEqual(data[0]["email"], "employee@example.com")
+        self.assertEqual(data[0]["role"], "Karyawan")
+
