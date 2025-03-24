@@ -30,6 +30,9 @@ class UserResponse(BaseModel):
     email: str
     role: str
 
+class ErrorResponse(BaseModel):
+    error: str
+
 @router.post("/process-session")
 def process_session(request, session_data: SessionData):
     user_data = session_data.user
@@ -86,6 +89,9 @@ def add_user(request, payload: AddUserRequest):
     email = payload.email.strip().lower()
     owner = User.objects.get(id=request.auth)
 
+    if User.objects.filter(email=email).exists():
+        return 400, {"error": "User sudah terdaftar."}
+
     try:
         user = User.objects.create_user(
             username=name,
@@ -97,14 +103,16 @@ def add_user(request, payload: AddUserRequest):
     except IntegrityError:
         return 400, {"error": "User sudah terdaftar."}
         
-@router.post("/get-users", response={200: list[dict], 401: dict}, auth=AuthBearer())
+@router.get("/get-users", response={200: list[dict], 401: dict}, auth=AuthBearer())
 def get_users(request):
     try:
-        user = request.auth
-        if user.role == "Pemilik":
-            users = User.objects.filter(owner=user)
+        user = User.objects.get(id=request.auth)
+        if user.role == "Pemilik" or user.role == "pemilik":
+            users = User.objects.filter(owner=user) | User.objects.filter(id=user.id)
         else:
-            users = User.objects.filter(owner=user.owner)
+            users = User.objects.filter(owner=user.owner)| User.objects.filter(id=user.id)
+            if user.owner:
+                users = users | User.objects.filter(id=user.owner.id)
         users_data = [
             {
                 "id": u.id,
@@ -114,10 +122,12 @@ def get_users(request):
             }
             for u in users
         ]
-        print(users)
+
+        users_data.sort(key=lambda u: u['role'] != "Pemilik")  
+
         return users_data
     except Exception as e:
-        return 400, {"error": f"Terjadi kesalahan: {str(e)}"}
+        return 401, {"error": f"Terjadi kesalahan: {str(e)}"}
 
 # @router.post("/add-user", response={200: dict, 400: dict}, auth=AuthBearer())
 # def add_user(request, payload: AddUserRequest):
