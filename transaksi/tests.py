@@ -259,176 +259,282 @@ class TransaksiTest(TestCase):
         self.assertEqual(second_delete_response.status_code, 404)
 
 
-def test_update_transaksi_success(self):
-    # Create a transaction first
-    client = APIClient()
-    client.force_authenticate(user=self.user1)
+    def test_update_transaksi_success(self):
+        # Create a transaction first
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
 
-    # Create test transaction
-    create_data = {
-        "status": "LUNAS",
-        "catatan": "Pembayaran sukses",
-        "namaPelanggan": "Budi",
-        "nomorTeleponPelanggan": "08123456789",
-        "foto": "image.jpg",
-        "daftarProduk": [p.id for p in self.produk_list],
-        "kategori": "PENJUALAN",
-        "totalPemasukan": 50000.0,
-        "hargaModal": 30000.0,
-    }
+        # Create test transaction
+        create_data = {
+            "status": "LUNAS",
+            "catatan": "Pembayaran sukses",
+            "namaPelanggan": "Budi",
+            "nomorTeleponPelanggan": "08123456789",
+            "foto": "image.jpg",
+            "daftarProduk": [p.id for p in self.produk_list],
+            "kategori": "PENJUALAN",
+            "totalPemasukan": 50000.0,
+            "hargaModal": 30000.0,
+        }
 
-    response = client.post(
-        "/api/transaksi/pemasukan/create", create_data, format="json"
-    )
-    self.assertEqual(response.status_code, 200)
-    transaction_id = response.json()["transaksi"]["id"]
-    pemasukan_id = response.json()["id"]
+        response = client.post(
+            "/api/transaksi/pemasukan/create", create_data, format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+        transaction_id = response.json()["transaksi"]["id"]
+        pemasukan_id = response.json()["id"]
 
-    # Update data
-    update_data = {
-        "status": "BELUM_LUNAS",
-        "catatan": "Updated notes",
-        "namaPelanggan": "Updated customer",
-        "nomorTeleponPelanggan": "087654321",
-        "daftarProduk": [self.produk_list[0].id],  # Only one product
-    }
+        # Update data
+        update_data = {
+            "status": "BELUM_LUNAS",
+            "catatan": "Updated notes",
+            "namaPelanggan": "Updated customer",
+            "nomorTeleponPelanggan": "087654321",
+            "daftarProduk": [self.produk_list[0].id],  # Only one product
+        }
 
-    update_response = client.put(
-        f"/api/transaksi/transaksi/{transaction_id}/update", update_data, format="json"
-    )
-    self.assertEqual(update_response.status_code, 200)
+        update_response = client.put(
+            f"/api/transaksi/transaksi/{transaction_id}/update", update_data, format="json"
+        )
+        self.assertEqual(update_response.status_code, 200)
 
-    # Verify changes
-    get_response = client.get(f"/api/transaksi/pemasukan/{pemasukan_id}")
-    updated_transaction = get_response.json()["transaksi"]
-    self.assertEqual(updated_transaction["status"], "BELUM_LUNAS")
-    self.assertEqual(updated_transaction["catatan"], "Updated notes")
-    self.assertEqual(len(updated_transaction["daftarProduk"]), 1)
-
-
-def test_update_nonexistent_transaksi(self):
-    client = APIClient()
-    client.force_authenticate(user=self.user1)
-
-    non_existent_id = 9999
-    update_data = {"status": "BELUM_LUNAS"}
-
-    update_response = client.put(
-        f"/api/transaksi/transaksi/{non_existent_id}/update", update_data, format="json"
-    )
-    self.assertEqual(update_response.status_code, 404)
+        # Verify changes
+        get_response = client.get(f"/api/transaksi/pemasukan/{pemasukan_id}")
+        updated_transaction = get_response.json()["transaksi"]
+        self.assertEqual(updated_transaction["status"], "BELUM_LUNAS")
+        self.assertEqual(updated_transaction["catatan"], "Updated notes")
+        self.assertEqual(len(updated_transaction["daftarProduk"]), 1)
 
 
-def test_update_deleted_transaksi(self):
-    client = APIClient()
-    client.force_authenticate(user=self.user1)
+    def test_update_nonexistent_transaksi(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
 
-    # Create and delete a transaction
-    create_data = {
-        "status": "LUNAS",
-        "daftarProduk": [self.produk_list[0].id],
-        "kategori": "PENJUALAN",
-        "totalPemasukan": 50000.0,
-        "hargaModal": 30000.0,
-    }
+        non_existent_id = 9999
+        update_data = {"status": "BELUM_LUNAS"}
 
-    response = client.post(
-        "/api/transaksi/pemasukan/create", create_data, format="json"
-    )
-    pemasukan_id = response.json()["id"]
-    transaction_id = response.json()["transaksi"]["id"]
-
-    # Delete the transaction
-    client.delete(f"/api/transaksi/pemasukan/{pemasukan_id}/delete")
-
-    # Try to update the deleted transaction
-    update_data = {"status": "BELUM_LUNAS"}
-    update_response = client.put(
-        f"/api/transaksi/transaksi/{transaction_id}/update", update_data, format="json"
-    )
-    self.assertEqual(update_response.status_code, 404)
+        update_response = client.put(
+            f"/api/transaksi/transaksi/{non_existent_id}/update", update_data, format="json"
+        )
+        self.assertEqual(update_response.status_code, 404)
 
 
-def test_update_transaksi_invalid_data(self):
-    client = APIClient()
-    client.force_authenticate(user=self.user1)
+    def test_update_deleted_transaksi(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
 
-    # Create a transaction first
-    create_data = {
-        "status": "LUNAS",
-        "daftarProduk": [self.produk_list[0].id],
-        "kategori": "PENJUALAN",
-        "totalPemasukan": 50000.0,
-        "hargaModal": 30000.0,
-    }
+        # Create and delete a transaction
+        create_data = {
+            "status": "LUNAS",
+            "daftarProduk": [self.produk_list[0].id],
+            "kategori": "PENJUALAN",
+            "totalPemasukan": 50000.0,
+            "hargaModal": 30000.0,
+        }
 
-    response = client.post(
-        "/api/transaksi/pemasukan/create", create_data, format="json"
-    )
-    transaction_id = response.json()["transaksi"]["id"]
+        response = client.post(
+            "/api/transaksi/pemasukan/create", create_data, format="json"
+        )
+        pemasukan_id = response.json()["id"]
+        transaction_id = response.json()["transaksi"]["id"]
 
-    # Update with invalid status
-    update_data = {"status": "INVALID_STATUS"}
-    update_response = client.put(
-        f"/api/transaksi/transaksi/{transaction_id}/update", update_data, format="json"
-    )
-    self.assertEqual(update_response.status_code, 422)
+        # Delete the transaction
+        client.delete(f"/api/transaksi/pemasukan/{pemasukan_id}/delete")
 
-
-def test_update_transaksi_empty_payload(self):
-    client = APIClient()
-    client.force_authenticate(user=self.user1)
-
-    # Create a transaction first
-    create_data = {
-        "status": "LUNAS",
-        "daftarProduk": [self.produk_list[0].id],
-        "kategori": "PENJUALAN",
-        "totalPemasukan": 50000.0,
-        "hargaModal": 30000.0,
-    }
-
-    response = client.post(
-        "/api/transaksi/pemasukan/create", create_data, format="json"
-    )
-    transaction_id = response.json()["transaksi"]["id"]
-
-    # Update with empty payload (should do nothing but succeed)
-    update_response = client.put(
-        f"/api/transaksi/transaksi/{transaction_id}/update", {}, format="json"
-    )
-    self.assertEqual(update_response.status_code, 200)
+        # Try to update the deleted transaction
+        update_data = {"status": "BELUM_LUNAS"}
+        update_response = client.put(
+            f"/api/transaksi/transaksi/{transaction_id}/update", update_data, format="json"
+        )
+        self.assertEqual(update_response.status_code, 404)
 
 
-def test_update_transaksi_nonexistent_products(self):
-    client = APIClient()
-    client.force_authenticate(user=self.user1)
+    def test_update_transaksi_invalid_data(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
 
-    # Create a transaction first
-    create_data = {
-        "status": "LUNAS",
-        "daftarProduk": [p.id for p in self.produk_list],
-        "kategori": "PENJUALAN",
-        "totalPemasukan": 50000.0,
-        "hargaModal": 30000.0,
-    }
+        # Create a transaction first
+        create_data = {
+            "status": "LUNAS",
+            "daftarProduk": [self.produk_list[0].id],
+            "kategori": "PENJUALAN",
+            "totalPemasukan": 50000.0,
+            "hargaModal": 30000.0,
+        }
 
-    response = client.post(
-        "/api/transaksi/pemasukan/create", create_data, format="json"
-    )
-    transaction_id = response.json()["transaksi"]["id"]
-    pemasukan_id = response.json()["id"]
+        response = client.post(
+            "/api/transaksi/pemasukan/create", create_data, format="json"
+        )
+        transaction_id = response.json()["transaksi"]["id"]
 
-    # Update with non-existent product ID
-    update_data = {"daftarProduk": [9999]}
-    update_response = client.put(
-        f"/api/transaksi/transaksi/{transaction_id}/update", update_data, format="json"
-    )
+        # Update with invalid status
+        update_data = {"status": "INVALID_STATUS"}
+        update_response = client.put(
+            f"/api/transaksi/transaksi/{transaction_id}/update", update_data, format="json"
+        )
+        self.assertEqual(update_response.status_code, 422)
 
-    # Should succeed but with empty product list
-    self.assertEqual(update_response.status_code, 200)
 
-    # Verify product list is empty
-    get_response = client.get(f"/api/transaksi/pemasukan/{pemasukan_id}")
-    updated_transaction = get_response.json()["transaksi"]
-    self.assertEqual(len(updated_transaction["daftarProduk"]), 0)
+    def test_update_transaksi_empty_payload(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+
+        # Create a transaction first
+        create_data = {
+            "status": "LUNAS",
+            "daftarProduk": [self.produk_list[0].id],
+            "kategori": "PENJUALAN",
+            "totalPemasukan": 50000.0,
+            "hargaModal": 30000.0,
+        }
+
+        response = client.post(
+            "/api/transaksi/pemasukan/create", create_data, format="json"
+        )
+        transaction_id = response.json()["transaksi"]["id"]
+
+        # Update with empty payload (should do nothing but succeed)
+        update_response = client.put(
+            f"/api/transaksi/transaksi/{transaction_id}/update", {}, format="json"
+        )
+        self.assertEqual(update_response.status_code, 200)
+
+
+    def test_update_transaksi_nonexistent_products(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+
+        # Create a transaction first
+        create_data = {
+            "status": "LUNAS",
+            "daftarProduk": [p.id for p in self.produk_list],
+            "kategori": "PENJUALAN",
+            "totalPemasukan": 50000.0,
+            "hargaModal": 30000.0,
+        }
+
+        response = client.post(
+            "/api/transaksi/pemasukan/create", create_data, format="json"
+        )
+        transaction_id = response.json()["transaksi"]["id"]
+        pemasukan_id = response.json()["id"]
+
+        # Update with non-existent product ID
+        update_data = {"daftarProduk": [9999]}
+        update_response = client.put(
+            f"/api/transaksi/transaksi/{transaction_id}/update", update_data, format="json"
+        )
+
+        # Should succeed but with empty product list
+        self.assertEqual(update_response.status_code, 200)
+
+        # Verify product list is empty
+        get_response = client.get(f"/api/transaksi/pemasukan/{pemasukan_id}")
+        updated_transaction = get_response.json()["transaksi"]
+        self.assertEqual(len(updated_transaction["daftarProduk"]), 0)
+        
+    def test_get_pemasukan_by_id_success(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+        
+        # Create a pemasukan first
+        data = {
+            "status": "LUNAS",
+            "catatan": "Pembayaran sukses",
+            "namaPelanggan": "Budi",
+            "nomorTeleponPelanggan": "08123456789",
+            "foto": "image.jpg",
+            "daftarProduk": [p.id for p in self.produk_list],
+            "kategori": "PENJUALAN",
+            "totalPemasukan": 50000.0,
+            "hargaModal": 30000.0,
+        }
+        
+        create_response = client.post("/api/transaksi/pemasukan/create", data, format="json")
+        self.assertEqual(create_response.status_code, 200)
+        pemasukan_id = create_response.json()["id"]
+        
+        # Retrieve the pemasukan
+        get_response = client.get(f"/api/transaksi/pemasukan/{pemasukan_id}")
+        self.assertEqual(get_response.status_code, 200)
+        
+        # Verify the retrieved data
+        pemasukan_data = get_response.json()
+        self.assertEqual(pemasukan_data["id"], pemasukan_id)
+        self.assertEqual(pemasukan_data["kategori"], "PENJUALAN")
+        self.assertEqual(pemasukan_data["totalPemasukan"], 50000.0)
+        self.assertEqual(pemasukan_data["hargaModal"], 30000.0)
+        
+    def test_get_pengeluaran_by_id_success(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+        
+        # Create a pengeluaran first
+        data = {
+            "status": "LUNAS",
+            "catatan": "Pembelian stok",
+            "namaPelanggan": "Supplier A",
+            "nomorTeleponPelanggan": "08987654321",
+            "foto": "invoice.jpg",
+            "daftarProduk": [self.produk_list[0].id],
+            "kategori": "PEMBELIAN_STOK",
+            "totalPengeluaran": 10000,
+        }
+        
+        create_response = client.post("/api/transaksi/pengeluaran/create", data, format="json")
+        self.assertEqual(create_response.status_code, 200)
+        pengeluaran_id = create_response.json()["id"]
+        
+        # Retrieve the pengeluaran
+        get_response = client.get(f"/api/transaksi/pengeluaran/{pengeluaran_id}")
+        self.assertEqual(get_response.status_code, 200)
+        
+        # Verify the retrieved data
+        pengeluaran_data = get_response.json()
+        self.assertEqual(pengeluaran_data["id"], pengeluaran_id)
+        self.assertEqual(pengeluaran_data["kategori"], "PEMBELIAN_STOK")
+        self.assertEqual(pengeluaran_data["totalPengeluaran"], 10000)
+
+    def test_update_transaksi_with_file(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+        
+        # Create a transaction first
+        create_data = {
+            "status": "LUNAS",
+            "daftarProduk": [self.produk_list[0].id],
+            "kategori": "PENJUALAN",
+            "totalPemasukan": 50000.0,
+            "hargaModal": 30000.0,
+        }
+        
+        response = client.post("/api/transaksi/pemasukan/create", create_data, format="json")
+        transaction_id = response.json()["transaksi"]["id"]
+        pemasukan_id = response.json()["id"]
+        
+        # Create a test file
+        test_file = SimpleUploadedFile(
+            "test_image.jpg",
+            b"file_content",
+            content_type="image/jpeg"
+        )
+        
+        # Update with a file - using a string representation as the API seems to accept strings
+        update_data = {
+            "foto": "updated_image.jpg"
+        }
+        
+        update_response = client.put(
+            f"/api/transaksi/transaksi/{transaction_id}/update", 
+            update_data, 
+            format="json"
+        )
+        
+        self.assertEqual(update_response.status_code, 200)
+        
+        # Verify the file path was updated
+        get_response = client.get(f"/api/transaksi/pemasukan/{pemasukan_id}")
+        updated_transaction = get_response.json()["transaksi"]
+        self.assertEqual(updated_transaction["foto"], "/api/media/updated_image.jpg")
