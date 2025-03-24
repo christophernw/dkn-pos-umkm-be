@@ -168,3 +168,69 @@ class TransaksiTest(TestCase):
         
         second_delete_response = client.delete(f"/api/transaksi/pengeluaran/{pengeluaran_id}/delete")
         self.assertEqual(second_delete_response.status_code, 404)
+
+    def test_delete_pemasukan_success(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+        
+        data = {
+            "status": "LUNAS",
+            "catatan": "Pembayaran sukses",
+            "namaPelanggan": "Budi",
+            "nomorTeleponPelanggan": "08123456789",
+            "foto": "image.jpg",
+            "daftarProduk": [p.id for p in self.produk_list],
+            "kategori": "PENJUALAN",
+            "totalPemasukan": 50000.0,
+            "hargaModal": 30000.0,
+        }
+        
+        response = client.post("/api/transaksi/pemasukan/create", data, format="json")
+        self.assertEqual(response.status_code, 200)
+        pemasukan_id = response.json()['id']
+        transaction_id = response.json()['transaksi']['id']
+        
+        delete_response = client.delete(f"/api/transaksi/pemasukan/{pemasukan_id}/delete")
+        self.assertEqual(delete_response.status_code, 200)
+        
+        get_response = client.get(f"/api/transaksi/pemasukan/{pemasukan_id}")
+        self.assertEqual(get_response.status_code, 404)
+        
+        from .models import Transaksi
+        transaction = Transaksi.objects.get(id=transaction_id)
+        self.assertTrue(transaction.isDeleted)
+
+    def test_delete_pemasukan_not_found(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+        
+        non_existent_id = 9999
+        
+        delete_response = client.delete(f"/api/transaksi/pemasukan/{non_existent_id}/delete")
+        self.assertEqual(delete_response.status_code, 404)
+
+    def test_delete_pemasukan_already_deleted(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+        
+        data = {
+            "status": "LUNAS",
+            "catatan": "Pembayaran sukses", 
+            "namaPelanggan": "Budi",
+            "nomorTeleponPelanggan": "08123456789",
+            "foto": "image.jpg",
+            "daftarProduk": [p.id for p in self.produk_list],
+            "kategori": "PENJUALAN",
+            "totalPemasukan": 50000.0,
+            "hargaModal": 30000.0,
+        }
+        
+        response = client.post("/api/transaksi/pemasukan/create", data, format="json")
+        self.assertEqual(response.status_code, 200)
+        pemasukan_id = response.json()['id']
+        
+        delete_response = client.delete(f"/api/transaksi/pemasukan/{pemasukan_id}/delete")
+        self.assertEqual(delete_response.status_code, 200)
+        
+        second_delete_response = client.delete(f"/api/transaksi/pemasukan/{pemasukan_id}/delete")
+        self.assertEqual(second_delete_response.status_code, 404)
