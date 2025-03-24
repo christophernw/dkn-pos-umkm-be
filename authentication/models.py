@@ -1,14 +1,19 @@
 from django.db import models
-from django.contrib.auth.models import User
+from django.contrib.auth.models import AbstractUser, Group, Permission
 
-class Business(models.Model):
-    owner = models.OneToOneField(User, on_delete=models.CASCADE, related_name="business")
-    
+class User(AbstractUser):
+    ROLE_CHOICES = [("Pemilik", "Pemilik"), ("Karyawan", "Karyawan")]
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default="Karyawan")
 
-class BusinessUser(models.Model):
-    business = models.ForeignKey(Business, on_delete=models.CASCADE, related_name="members")
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="business_membership")
-    role = models.CharField(max_length=20, choices=[("Pemilik", "Pemilik"), ("Karyawan", "Karyawan")])
+    owner = models.ForeignKey(
+        "self",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="employees",
+        limit_choices_to={"role": "Pemilik"},
+    )
 
-    class Meta:
-        unique_together = ("business", "user")  
+    # Tambahkan related_name untuk menghindari konflik
+    groups = models.ManyToManyField(Group, related_name="authentication_users", blank=True)
+    user_permissions = models.ManyToManyField(Permission, related_name="authentication_user_permissions", blank=True)

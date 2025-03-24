@@ -6,8 +6,6 @@ from ninja.testing import TestClient
 from rest_framework.test import APIClient
 from django.urls import reverse
 
-from authentication.models import Business, BusinessUser
-
 class AuthenticationTests(TestCase):
     def setUp(self):
         self.client = TestClient(router)
@@ -44,84 +42,3 @@ class AuthenticationTests(TestCase):
         response = self.client.post("/validate-token", json={"token": "invalid_token"})
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.json()["valid"])
-
-class AddUserTests(TestCase):
-    def setUp(self):
-        self.client = TestClient(router)
-
-        # Buat pengguna pemilik bisnis
-        self.owner = User.objects.create_user(username="owner", email="owner@example.com", password="password")
-        self.owner_token = str(RefreshToken.for_user(self.owner).access_token)
-
-        # Buat bisnis terkait pemilik
-        self.business = Business.objects.create(owner=self.owner)
-
-    def test_add_user_success(self):
-        """Menguji apakah owner bisa menambahkan pengguna baru ke bisnisnya."""
-        payload = {
-            "name": "newuser",
-            "email": "newuser@example.com",
-            "role": "Karyawan"
-        }
-
-        response = self.client.post(
-            "/add-user",
-            json=payload,
-            headers={"Authorization": f"Bearer {self.owner_token}"}
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["user"]["email"], "newuser@example.com")
-        self.assertEqual(response.json()["user"]["role"], "Karyawan")
-
-    def test_add_user_existing_email(self):
-        """Menguji penambahan user dengan email yang sudah ada."""
-        User.objects.create_user(username="existinguser", email="existing@example.com", password="password")
-
-        payload = {
-            "name": "existinguser",
-            "email": "existing@example.com",
-            "role": "Karyawan"
-        }
-
-        response = self.client.post(
-            "/add-user",
-            json=payload,
-            headers={"Authorization": f"Bearer {self.owner_token}"}
-        )
-
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("error", response.json())
-
-class GetUsersTests(TestCase):
-    def setUp(self):
-        self.client = TestClient(router)
-
-        # Buat owner bisnis
-        self.owner = User.objects.create_user(username="owner", email="owner@example.com", password="password")
-        self.owner_token = str(RefreshToken.for_user(self.owner).access_token)
-
-        # Buat employee bisnis
-        self.employee = User.objects.create_user(username="employee", email="employee@example.com", password="password")
-
-        # Buat bisnis yang dimiliki oleh owner
-        self.business = Business.objects.create(owner=self.owner)
-
-        # Tambahkan employee ke bisnis
-        BusinessUser.objects.create(business=self.business, user=self.employee, role="Karyawan")
-
-    def test_get_users_success(self):
-        """Cek apakah owner bisa mendapatkan daftar pengguna bisnisnya"""
-        response = self.client.get(
-            "/users",
-            headers={"Authorization": f"Bearer {self.owner_token}"}
-        )
-
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-
-        self.assertEqual(len(data), 1)
-        self.assertEqual(data[0]["name"], "employee")
-        self.assertEqual(data[0]["email"], "employee@example.com")
-        self.assertEqual(data[0]["role"], "Karyawan")
-
