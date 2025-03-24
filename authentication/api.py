@@ -135,7 +135,9 @@ def add_user(request, payload: AddUserRequest):
 @router.get("/users", response={200: list[dict], 401: dict}, auth=AuthBearer())
 def get_users(request):
     try:
-        business = Business.objects.get(owner=request.user)
+        user = request.auth
+
+        business = Business.objects.get(owner=user)
         
         business_users = BusinessUser.objects.filter(business=business)
 
