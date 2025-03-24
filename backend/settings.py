@@ -111,7 +111,7 @@ if ENV == 'staging':
             'PORT': os.environ.get('DB_PORT'),
         }
     }
-else:
+elif ENV == 'dev-staging-yhoga':
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
@@ -120,6 +120,13 @@ else:
             'PASSWORD': env('DB_PASSWORD'),
             'HOST': env('DB_HOST'),
             'PORT': env('DB_PORT'),
+        }
+    }
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
         }
     }
 
