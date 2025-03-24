@@ -7,32 +7,16 @@ from pydantic import BaseModel
 from rest_framework_simplejwt.tokens import RefreshToken, AccessToken
 from rest_framework_simplejwt.exceptions import TokenError
 from produk.api import AuthBearer
+from .schemas import (
+    SessionData,
+    RefreshTokenRequest,
+    TokenValidationRequest,
+    AddUserRequest,
+    UserResponse,
+    ErrorResponse
+)
 
 router = Router()
-
-class SessionData(BaseModel):
-    user: dict
-    
-class RefreshTokenRequest(BaseModel):
-    refresh: str
-
-class TokenValidationRequest(BaseModel):
-    token: str
-
-class AddUserRequest(BaseModel):
-    name: str
-    email: str
-    role: str
-
-class UserResponse(BaseModel):
-    id: int
-    name: str
-    email: str
-    role: str
-
-class ErrorResponse(BaseModel):
-    error: str
-
 @router.post("/process-session")
 def process_session(request, session_data: SessionData):
     user_data = session_data.user

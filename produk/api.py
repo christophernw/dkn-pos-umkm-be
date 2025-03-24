@@ -43,8 +43,6 @@ def get_produk_paginated(request, page: int, sort: str = None, q: str = ""):
     order_by_field = "stok" if sort == "asc" else "-stok"
 
     if user.role == "Karyawan":
-        if not user.owner:
-            return 404, {"message": "Karyawan tidak memiliki pemilik"}
         queryset = Produk.objects.filter(user=user.owner)
     else:
         queryset = Produk.objects.filter(user=user)
