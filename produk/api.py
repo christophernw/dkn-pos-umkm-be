@@ -99,7 +99,7 @@ def get_produk_by_id(request, id: int):
     try:
         produk = get_object_or_404(Produk, id=id, user_id=user_id)
         return 200, ProdukResponseSchema.from_orm(produk)
-    except Exception as e:
+    except Exception:
         return 404, {"message": "Produk tidak ditemukan"}
 
 

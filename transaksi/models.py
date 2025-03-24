@@ -32,9 +32,9 @@ class Transaksi(models.Model):
     tanggalTransaksi = models.DateTimeField(auto_now_add=True)
     isDeleted = models.BooleanField(default=False)
     foto = models.ImageField(upload_to='transaksi/', blank=True, null=True)
-    catatan = models.TextField(blank=True, null=True)
-    namaPelanggan = models.CharField(max_length=255, blank=True, null=True)
-    nomorTeleponPelanggan = models.CharField(max_length=15, blank=True, null=True)
+    catatan = models.TextField(blank=True)
+    namaPelanggan = models.CharField(max_length=255, blank=True)
+    nomorTeleponPelanggan = models.CharField(max_length=15, blank=True)
 
 class Pemasukan(models.Model):
     transaksi = models.OneToOneField(Transaksi, on_delete=models.CASCADE, related_name='pemasukan')

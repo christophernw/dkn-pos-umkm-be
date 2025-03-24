@@ -515,7 +515,7 @@ class TransaksiTest(TestCase):
         pemasukan_id = response.json()["id"]
         
         # Create a test file
-        test_file = SimpleUploadedFile(
+        SimpleUploadedFile(
             "test_image.jpg",
             b"file_content",
             content_type="image/jpeg"

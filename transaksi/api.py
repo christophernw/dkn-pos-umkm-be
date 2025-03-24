@@ -91,6 +91,7 @@ def delete_pengeluaran(request, pengeluaran_id: int):
         return 200, {"message": "Pengeluaran deleted successfully"}
     except:
         return 404, {"error": "Pengeluaran not found"}
+        raise
 
 
 @router.delete("/pemasukan/{pemasukan_id}/delete", response={200: dict, 404: dict})
@@ -107,10 +108,11 @@ def delete_pemasukan(request, pemasukan_id: int):
         return 200, {"message": "Pemasukan deleted successfully"}
     except:
         return 404, {"error": "Pemasukan not found"}
+        raise
 
 
 @router.put(
-    "/transaksi/{transaksi_id}/update", response={200: dict, 404: dict, 422: dict}
+    "/transaksi/{transaksi_id}/update", response={200: dict, 404: dict}
 )
 def update_transaksi(request, transaksi_id: int, payload: TransaksiUpdate):
     try:
@@ -146,7 +148,5 @@ def update_transaksi(request, transaksi_id: int, payload: TransaksiUpdate):
         transaksi.save()
 
         return 200, {"message": "Transaction updated successfully"}
-    except ValueError as e:
-        return 422, {"error": str(e)}
     except Exception as e:
         return 404, {"error": str(e)}
