@@ -183,24 +183,35 @@ def get_pemasukan_paginated(
     request,
     page: int,
     sort: Optional[str] = None,
+    sort_by: Optional[str] = "date",  # New parameter to specify sort field
     q: Optional[str] = "",
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
 ):
     """
-    Implementasi pagination untuk daftar pemasukan
+    Implementasi pagination untuk daftar pemasukan dengan sorting
     """
     if sort not in [None, "asc", "desc"]:
         return 400, {"message": "Invalid sort parameter. Use 'asc' or 'desc'."}
+    
+    if sort_by not in ["date", "amount"]:
+        return 400, {"message": "Invalid sort_by parameter. Use 'date' or 'amount'."}
 
-    # Default sort by date descending
-    order_by_field = (
-        "transaksi__tanggalTransaksi"
-        if sort == "asc"
-        else "-transaksi__tanggalTransaksi"
-    )
+    # Determine sort field based on sort_by parameter
+    if sort_by == "date":
+        order_by_field = (
+            "transaksi__tanggalTransaksi"
+            if sort == "asc"
+            else "-transaksi__tanggalTransaksi"
+        )
+    else:  # sort by amount (nominal)
+        order_by_field = (
+            "totalPemasukan"
+            if sort == "asc"
+            else "-totalPemasukan"
+        )
 
-    # Get base queryset of non-deleted records
+    # Base queryset of non-deleted records
     queryset = Pemasukan.objects.filter(transaksi__isDeleted=False)
 
     # Apply search filter
@@ -218,6 +229,7 @@ def get_pemasukan_paginated(
     if end_date:
         queryset = queryset.filter(transaksi__tanggalTransaksi__date__lte=end_date)
 
+    # Apply ordering
     queryset = queryset.order_by(order_by_field, "id")
 
     # Pagination logic
