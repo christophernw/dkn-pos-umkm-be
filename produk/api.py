@@ -14,6 +14,7 @@ from produk.schemas import (
 )
 from authentication.models import User
 
+
 class AuthBearer(HttpBearer):
     def authenticate(self, request, token):
         try:
@@ -28,6 +29,7 @@ class AuthBearer(HttpBearer):
 
 router = Router(auth=AuthBearer())
 
+
 @router.get("", response={200: PaginatedResponseSchema, 404: dict})
 def get_produk_default(request, sort: str = None):
     return get_produk_paginated(request, page=1, sort=sort)
@@ -39,12 +41,14 @@ def get_produk_paginated(request, page: int, sort: str = None, q: str = ""):
         return HttpResponseBadRequest("Invalid sort parameter. Use 'asc' or 'desc'.")
 
     user_id = request.auth
-    user = get_object_or_404(User, id=user_id)
+    user = User.objects.get(id=user_id)
     order_by_field = "stok" if sort == "asc" else "-stok"
 
     if user.role == "Karyawan":
+        # Jika user adalah Karyawan, ambil produk yang dimiliki oleh owner
         queryset = Produk.objects.filter(user=user.owner)
     else:
+        # Jika user adalah Pemilik, ambil produk yang dimiliki oleh user tersebut
         queryset = Produk.objects.filter(user=user)
 
     if q:
@@ -108,24 +112,14 @@ def get_produk_by_id(request, id: int):
     "/update/{id}", response={200: ProdukResponseSchema, 404: dict, 422: dict}
 )
 def update_produk(
-    request, id: int, payload: CreateProdukSchema, foto: UploadedFile = None
+    request, id: int, payload: UpdateProdukStokSchema
 ):
     user_id = request.auth
 
     try:
         produk = get_object_or_404(Produk, id=id, user_id=user_id)
-
-        produk.nama = payload.nama
-        produk.harga_modal = payload.harga_modal
-        produk.harga_jual = payload.harga_jual
+        
         produk.stok = payload.stok
-        produk.satuan = payload.satuan
-
-        kategori_obj, _ = KategoriProduk.objects.get_or_create(nama=payload.kategori)
-        produk.kategori = kategori_obj
-
-        if foto:
-            produk.foto = foto
 
         produk.save()
 
@@ -152,3 +146,4 @@ def get_low_stock_products(request):
         .order_by("id")
     )
     return [ProdukResponseSchema.from_orm(p) for p in products]
+
