@@ -149,3 +149,6 @@ def get_low_stock_products(request):
         .order_by("id")
     )
     return [ProdukResponseSchema.from_orm(p) for p in products]
+
+
+#test
