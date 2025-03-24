@@ -92,3 +92,18 @@ def delete_pengeluaran(request, pengeluaran_id: int):
         return 200, {"message": "Pengeluaran deleted successfully"}
     except:
         return 404, {"error": "Pengeluaran not found"}
+    
+@router.delete("/pemasukan/{pemasukan_id}/delete", response={200: dict, 404: dict})
+def delete_pemasukan(request, pemasukan_id: int):
+    try:
+        pemasukan = get_object_or_404(Pemasukan, id=pemasukan_id)
+        
+        transaksi = pemasukan.transaksi
+        transaksi.isDeleted = True
+        transaksi.save()
+
+        pemasukan.delete()
+        
+        return 200, {"message": "Pemasukan deleted successfully"}
+    except:
+        return 404, {"error": "Pemasukan not found"}
