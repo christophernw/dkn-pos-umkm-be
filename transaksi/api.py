@@ -45,12 +45,20 @@ def create_pengeluaran(request, payload: PengeluaranCreate):
         foto=payload.foto,
     )
     
-    transaksi.daftarProduk.set(Produk.objects.filter(id__in=payload.daftarProduk))
+    produk_list = Produk.objects.filter(id__in=payload.daftarProduk)
+    transaksi.daftarProduk.set(produk_list)
+    
+    if payload.kategori == "PEMBELIAN_STOK":
+        total_pengeluaran = sum(produk.harga_modal for produk in produk_list)
+    else:
+        total_pengeluaran = payload.totalPengeluaran
+        
+    transaksi.save()
     
     pengeluaran = Pengeluaran.objects.create(
         transaksi=transaksi,
         kategori=payload.kategori,
-        totalPengeluaran=payload.totalPengeluaran,
+        totalPengeluaran=total_pengeluaran,
     )
     
     return PengeluaranRead.from_orm(pengeluaran)
