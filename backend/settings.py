@@ -111,17 +111,6 @@ if ENV == 'staging':
             'PORT': os.environ.get('DB_PORT'),
         }
     }
-elif ENV == 'dev-staging-yhoga':
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.postgresql',
-            'NAME': env('DB_NAME'),
-            'USER': env('DB_USER'),
-            'PASSWORD': env('DB_PASSWORD'),
-            'HOST': env('DB_HOST'),
-            'PORT': env('DB_PORT'),
-        }
-    }
 else:
     DATABASES = {
         'default': {
