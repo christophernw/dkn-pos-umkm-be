@@ -104,3 +104,67 @@ class TransaksiTest(TestCase):
     def test_get_pengeluaran_by_id_not_found(self):
         response = self.client.get("/api/transaksi/pengeluaran/999")
         self.assertEqual(response.status_code, 404)
+
+    def test_delete_pengeluaran_success(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+        
+        data = {
+            "status": "LUNAS",
+            "catatan": "Pembelian stok",
+            "namaPelanggan": "Supplier A",
+            "nomorTeleponPelanggan": "08987654321",
+            "foto": "invoice.jpg",
+            "daftarProduk": [self.produk_list[0].id],
+            "kategori": "PEMBELIAN_STOK",
+            "totalPengeluaran": 10000,
+        }
+        
+        response = client.post("/api/transaksi/pengeluaran/create", data, format="json")
+        self.assertEqual(response.status_code, 200)
+        pengeluaran_id = response.json()['id']
+        transaction_id = response.json()['transaksi']['id']
+        
+        delete_response = client.delete(f"/api/transaksi/pengeluaran/{pengeluaran_id}/delete")
+        self.assertEqual(delete_response.status_code, 200)
+        
+        get_response = client.get(f"/api/transaksi/pengeluaran/{pengeluaran_id}")
+        self.assertEqual(get_response.status_code, 404)
+        
+        from .models import Transaksi
+        transaction = Transaksi.objects.get(id=transaction_id)
+        self.assertTrue(transaction.isDeleted)
+
+    def test_delete_pengeluaran_not_found(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+        
+        non_existent_id = 9999
+        
+        delete_response = client.delete(f"/api/transaksi/pengeluaran/{non_existent_id}/delete")
+        self.assertEqual(delete_response.status_code, 404)
+
+    def test_delete_pengeluaran_already_deleted(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+        
+        data = {
+            "status": "LUNAS",
+            "catatan": "Pembelian stok",
+            "namaPelanggan": "Supplier A",
+            "nomorTeleponPelanggan": "08987654321",
+            "foto": "invoice.jpg",
+            "daftarProduk": [self.produk_list[0].id],
+            "kategori": "PEMBELIAN_STOK",
+            "totalPengeluaran": 10000,
+        }
+        
+        response = client.post("/api/transaksi/pengeluaran/create", data, format="json")
+        self.assertEqual(response.status_code, 200)
+        pengeluaran_id = response.json()['id']
+        
+        delete_response = client.delete(f"/api/transaksi/pengeluaran/{pengeluaran_id}/delete")
+        self.assertEqual(delete_response.status_code, 200)
+        
+        second_delete_response = client.delete(f"/api/transaksi/pengeluaran/{pengeluaran_id}/delete")
+        self.assertEqual(second_delete_response.status_code, 404)
