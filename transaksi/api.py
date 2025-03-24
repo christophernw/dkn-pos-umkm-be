@@ -76,3 +76,19 @@ def read_pemasukan_by_id(request, pemasukan_id: int):
 def read_pengeluaran_by_id(request, pengeluaran_id: int):
     pengeluaran = get_object_or_404(Pengeluaran, id=pengeluaran_id)
     return PengeluaranRead.from_orm(pengeluaran)
+
+@router.delete("/pengeluaran/{pengeluaran_id}/delete", response={200: dict, 404: dict})
+def delete_pengeluaran(request, pengeluaran_id: int):
+    try:
+        pengeluaran = get_object_or_404(Pengeluaran, id=pengeluaran_id)
+        
+
+        transaksi = pengeluaran.transaksi
+        transaksi.isDeleted = True
+        transaksi.save()
+
+        pengeluaran.delete()
+        
+        return 200, {"message": "Pengeluaran deleted successfully"}
+    except:
+        return 404, {"error": "Pengeluaran not found"}
