@@ -116,6 +116,55 @@ def get_users(request):
     except Exception as e:
         return 401, {"error": f"Terjadi kesalahan: {str(e)}"}
 
+@router.post("/send-invitation", response={200: dict, 400: dict}, auth=AuthBearer())
+def send_invitation(request, payload: InvitationRequest):
+    name = payload.name.strip()
+    email = payload.email.strip().lower()
+    role = payload.role.strip()
+    owner = User.objects.get(id=request.auth)
+
+    if User.objects.filter(email=email).exists():
+        return 400, {"error": "User sudah terdaftar."}
+
+    if Invitation.objects.filter(email=email).exists():
+        return 400, {"error": "Undangan sudah dikirim ke email ini."}
+
+    expiration = now() + timedelta(days=1)
+    token_payload = {"email": email, "name": name, "role": role, "owner_id": owner.id, "exp": expiration}
+    token = jwt.encode(token_payload, settings.SECRET_KEY, algorithm="HS256")
+
+    try:
+        invitation = Invitation.objects.create(
+            email=email, name=name, role=role, owner=owner, token=token, expires_at=expiration
+        )
+        return 200, {"message": "Invitation sent", "token": token}
+    except IntegrityError:
+        return 400, {"error": "Invitation already exists."}
+    
+@router.post("/validate-invitation")
+def validate_invitation(request, payload: TokenValidationRequest):
+    try:
+        decoded = jwt.decode(payload.token, settings.SECRET_KEY, algorithms=["HS256"])
+        email = decoded.get("email")
+        name = decoded.get("name")
+        role = decoded.get("role")
+        owner_id = decoded.get("owner_id")
+
+        invitation = Invitation.objects.filter(email=email, token=payload.token).first()
+        if not invitation:
+            return {"valid": False, "error": "Invalid invitation"}
+
+        user = User.objects.create_user(username=name, email=email, role=role, owner_id=owner_id)
+        invitation.delete()
+        return {
+            "valid": True,
+            "message": "User successfully registered",
+        }
+    except jwt.ExpiredSignatureError:
+        return {"valid": False, "error": "Token expired"}
+    except jwt.DecodeError:
+        return {"valid": False, "error": "Invalid token"}
+
 
     
 
