@@ -31,6 +31,35 @@ class TransaksiTest(TestCase):
                 user=self.user1
             )
             self.produk_list.append(produk)
+            
+        self.transaksi1 = Transaksi.objects.create(
+            status="LUNAS",
+            catatan="Pembayaran sukses",
+            namaPelanggan="Budi",
+            nomorTeleponPelanggan="08123456789"
+        )
+        self.transaksi1.daftarProduk.set(self.produk_list)  
+        
+        self.pemasukan = Pemasukan.objects.create(
+            transaksi=self.transaksi1,
+            kategori="PENJUALAN",
+            totalPemasukan=50000.0,
+            hargaModal=30000.0,
+        )
+        
+        self.transaksi2 = Transaksi.objects.create(
+            status="LUNAS",
+            catatan="Pembayaran sukses",
+            namaPelanggan="Budi",
+            nomorTeleponPelanggan="08123456789"
+        )
+        self.transaksi2.daftarProduk.set(self.produk_list)  
+        
+        self.pengeluaran = Pengeluaran.objects.create(
+            transaksi=self.transaksi2,
+            kategori="PENGELUARAN_DI_LUAR_USAHA",
+            totalPengeluaran=50000.0,
+        )
 
     def test_create_pemasukan_success(self):
         client = APIClient()
@@ -50,7 +79,7 @@ class TransaksiTest(TestCase):
         
         response = client.post("/api/transaksi/pemasukan/create", data, format="json")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(Pemasukan.objects.count(), 1)
+        self.assertEqual(Pemasukan.objects.count(), 2) # 2 soalnya ada 1 pemasukan yang sudah ada di setup
 
     def test_create_pemasukan_invalid_data(self):
         client = APIClient()
@@ -85,7 +114,7 @@ class TransaksiTest(TestCase):
         }
         response = client.post("/api/transaksi/pengeluaran/create", data, format="json")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(Pengeluaran.objects.count(), 1)
+        self.assertEqual(Pengeluaran.objects.count(), 2) # 2 soalnya ada 1 pengeluaran yang sudah ada di setup
         
     def test_create_pengeluaran_pembelian_stok(self):
         client = APIClient()
@@ -161,9 +190,17 @@ class TransaksiTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIsInstance(response.json(), list)
 
+    def test_get_pemasukan_by_id(self):
+        response = self.client.get("/api/transaksi/pemasukan/1")
+        self.assertEqual(response.status_code, 200)
+        
     def test_get_pemasukan_by_id_not_found(self):
         response = self.client.get("/api/transaksi/pemasukan/999")
         self.assertEqual(response.status_code, 404)
+        
+    def test_get_pengeluaran_by_id(self):
+        response = self.client.get("/api/transaksi/pengeluaran/1")
+        self.assertEqual(response.status_code, 200)
 
     def test_get_pengeluaran_by_id_not_found(self):
         response = self.client.get("/api/transaksi/pengeluaran/999")
