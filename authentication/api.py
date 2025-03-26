@@ -19,6 +19,8 @@ from .schemas import (
     InvitationRequest,
 )
 
+USER_ALREADY_EXISTS_ERROR = "User sudah terdaftar."
+
 router = Router()
 @router.post("/process-session")
 def process_session(request, session_data: SessionData):
@@ -77,7 +79,7 @@ def add_user(request, payload: AddUserRequest):
     owner = User.objects.get(id=request.auth)
 
     if User.objects.filter(email=email).exists():
-        return 400, {"error": "User sudah terdaftar."}
+        return 400, {"error": USER_ALREADY_EXISTS_ERROR}
 
     try:
         user = User.objects.create_user(
@@ -88,7 +90,7 @@ def add_user(request, payload: AddUserRequest):
         )
         return 200, {"message": "User berhasil ditambahkan.", "user_id": user.id}
     except IntegrityError:
-        return 400, {"error": "User sudah terdaftar."}
+        return 400, {"error": USER_ALREADY_EXISTS_ERROR}
         
 @router.get("/get-users", response={200: list[dict], 401: dict}, auth=AuthBearer())
 def get_users(request):
@@ -124,7 +126,7 @@ def send_invitation(request, payload: InvitationRequest):
     owner = User.objects.get(id=request.auth)
 
     if User.objects.filter(email=email).exists():
-        return 400, {"error": "User sudah terdaftar."}
+        return 400, {"error": USER_ALREADY_EXISTS_ERROR}
 
     if Invitation.objects.filter(email=email).exists():
         return 400, {"error": "Undangan sudah dikirim ke email ini."}
@@ -134,7 +136,7 @@ def send_invitation(request, payload: InvitationRequest):
     token = jwt.encode(token_payload, settings.SECRET_KEY, algorithm="HS256")
 
     try:
-        invitation = Invitation.objects.create(
+        Invitation.objects.create(
             email=email, name=name, role=role, owner=owner, token=token, expires_at=expiration
         )
         return 200, {"message": "Invitation sent", "token": token}
@@ -154,7 +156,7 @@ def validate_invitation(request, payload: TokenValidationRequest):
         if not invitation:
             return {"valid": False, "error": "Invalid invitation"}
 
-        user = User.objects.create_user(username=name, email=email, role=role, owner_id=owner_id)
+        User.objects.create_user(username=name, email=email, role=role, owner_id=owner_id)
         invitation.delete()
         return {
             "valid": True,
