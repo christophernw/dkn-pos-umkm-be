@@ -22,3 +22,8 @@ class UserResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     error: str
+
+class InvitationRequest(BaseModel):
+    email: str
+    name: str
+    role: str

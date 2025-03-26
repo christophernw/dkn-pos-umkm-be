@@ -1,8 +1,12 @@
+from datetime import timedelta
+from django.conf import settings
 from django.test import TestCase
-from authentication.models import User
+import jwt
+from authentication.models import Invitation, User
 from rest_framework_simplejwt.tokens import RefreshToken
 from authentication.api import router 
 from ninja.testing import TestClient
+from django.utils.timezone import now
 
 class AuthenticationTests(TestCase):
     def setUp(self):
@@ -91,3 +95,89 @@ class GetUsersTests(TestCase):
         self.assertEqual(len(users), 2)
         self.assertTrue(any(user['role'] == "Pemilik" for user in users)) 
         self.assertTrue(any(user['role'] == "Karyawan" for user in users))  
+
+class SendInvitationTests(TestCase):
+    def setUp(self):
+        self.client = TestClient(router)
+        self.owner = User.objects.create_user(username="owner", email="owner@example.com", password="password", role="Pemilik")
+        self.refresh = RefreshToken.for_user(self.owner)
+
+    def test_send_invitation_success(self):
+        response = self.client.post("/send-invitation", json={
+            "name": "New User",
+            "email": "newuser@example.com",
+            "role": "Karyawan"
+        }, headers={"Authorization": f"Bearer {str(self.refresh.access_token)}"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["message"], "Invitation sent")
+
+    def test_send_invitation_existing_user(self):
+        User.objects.create_user(username="existing", email="existing@example.com", password="password", role="Karyawan")
+
+        response = self.client.post("/send-invitation", json={
+            "name": "Existing User",
+            "email": "existing@example.com",
+            "role": "Karyawan"
+        }, headers={"Authorization": f"Bearer {str(self.refresh.access_token)}"})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"], "User sudah terdaftar.")
+
+    def test_send_invitation_already_invited(self):
+        Invitation.objects.create(
+            email="invited@example.com", name="Invited User", role="Karyawan",
+            owner=self.owner, token="dummy", expires_at=now() + timedelta(days=1)
+        )
+
+        response = self.client.post("/send-invitation", json={
+            "name": "Invited User",
+            "email": "invited@example.com",
+            "role": "Karyawan"
+        }, headers={"Authorization": f"Bearer {str(self.refresh.access_token)}"})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"], "Undangan sudah dikirim ke email ini.")
+
+
+class ValidateInvitationTests(TestCase):
+    def setUp(self):
+        self.client = TestClient(router)
+        self.owner = User.objects.create_user(username="owner", email="owner@example.com", password="password", role="Pemilik")
+        self.refresh = RefreshToken.for_user(self.owner)
+
+    def test_validate_invitation_success(self):
+        expiration = now() + timedelta(days=1)
+        token_payload = {"email": "newuser@example.com", "name": "New User", "role": "Karyawan", "owner_id": self.owner.id, "exp": expiration}
+        token = jwt.encode(token_payload, settings.SECRET_KEY, algorithm="HS256")
+
+        Invitation.objects.create(email="newuser@example.com", name="New User", role="Karyawan",
+                                  owner=self.owner, token=token, expires_at=expiration)
+
+        response = self.client.post("/validate-invitation", json={"token": token})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["valid"])
+        self.assertEqual(response.json()["message"], "User successfully registered")
+        self.assertTrue(User.objects.filter(email="newuser@example.com").exists())
+
+    def test_validate_invitation_expired(self):
+        expired_time = now() - timedelta(days=1)
+        token_payload = {"email": "expired@example.com", "name": "Expired User", "role": "Karyawan", "owner_id": self.owner.id, "exp": expired_time}
+        expired_token = jwt.encode(token_payload, settings.SECRET_KEY, algorithm="HS256")
+
+        Invitation.objects.create(email="expired@example.com", name="Expired User", role="Karyawan",
+                                  owner=self.owner, token=expired_token, expires_at=expired_time)
+
+        response = self.client.post("/validate-invitation", json={"token": expired_token})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()["valid"])
+        self.assertEqual(response.json()["error"], "Token expired")
+
+    def test_validate_invitation_invalid_token(self):
+        response = self.client.post("/validate-invitation", json={"token": "invalid_token"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()["valid"])
+        self.assertEqual(response.json()["error"], "Invalid token")
