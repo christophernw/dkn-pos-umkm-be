@@ -1,5 +1,7 @@
 from datetime import timedelta
+from unittest.mock import patch
 from django.conf import settings
+from django.db import IntegrityError
 from django.test import TestCase
 import jwt
 from authentication.models import Invitation, User
@@ -44,34 +46,6 @@ class AuthenticationTests(TestCase):
         response = self.client.post("/validate-token", json={"token": "invalid_token"})
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.json()["valid"])
-
-class AddUserTests(TestCase):
-    def setUp(self):
-        self.client = TestClient(router)
-        self.owner = User.objects.create_user(username="owner", email="owner@example.com", password="password", role="Pemilik")
-        self.karyawan = User.objects.create_user(username="karyawan", email="karyawan@example.com", password="password", role="Karyawan")
-        self.refresh = RefreshToken.for_user(self.owner)
-        
-    def test_add_user_valid(self):
-        response = self.client.post("/add-user", json={
-            "name": "New Karyawan",
-            "email": "new_karyawan@example.com",
-            "role": "Karyawan"
-        }, headers={"Authorization": f"Bearer {str(self.refresh.access_token)}"})
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["message"], "User berhasil ditambahkan.")
-        
-    def test_add_user_invalid(self):
-        response = self.client.post("/add-user", json={
-            "name": "Karyawan Duplicate",
-            "email": "karyawan@example.com", 
-            "role": "Karyawan"
-        }, headers={"Authorization": f"Bearer {str(self.refresh.access_token)}"})
-
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("User sudah terdaftar", response.json()["error"])
-
 
 class GetUsersTests(TestCase):
     def setUp(self):
@@ -138,6 +112,17 @@ class SendInvitationTests(TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["error"], "Undangan sudah dikirim ke email ini.")
+
+    @patch("authentication.models.Invitation.objects.create", side_effect=IntegrityError)
+    def test_send_invitation_integrity_error(self, mock_create):
+        response = self.client.post("/send-invitation", json={
+            "name": "Error User",
+            "email": "error@example.com",
+            "role": "Karyawan"
+        }, headers={"Authorization": f"Bearer {str(self.refresh.access_token)}"})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"], "Invitation already exists.")
 
 
 class ValidateInvitationTests(TestCase):

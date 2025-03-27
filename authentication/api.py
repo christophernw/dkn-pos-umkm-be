@@ -10,6 +10,7 @@ from rest_framework_simplejwt.exceptions import TokenError
 from produk.api import AuthBearer
 from django.conf import settings
 from django.utils.timezone import now
+from django.db.utils import IntegrityError
 
 from .schemas import (
     SessionData,
@@ -67,56 +68,29 @@ def validate_token(request, token_data: TokenValidationRequest):
         return {"valid": True}
     except TokenError:
         return {"valid": False}
-
-
-from django.db.utils import IntegrityError
-
-@router.post("/add-user", response={200: dict, 400: dict}, auth=AuthBearer())
-def add_user(request, payload: AddUserRequest):
-    name = payload.name.strip()
-    role = payload.role.strip()
-    email = payload.email.strip().lower()
-    owner = User.objects.get(id=request.auth)
-
-    if User.objects.filter(email=email).exists():
-        return 400, {"error": USER_ALREADY_EXISTS_ERROR}
-
-    try:
-        user = User.objects.create_user(
-            username=name,
-            email=email,
-            role=role,
-            owner=owner,
-        )
-        return 200, {"message": "User berhasil ditambahkan.", "user_id": user.id}
-    except IntegrityError:
-        return 400, {"error": USER_ALREADY_EXISTS_ERROR}
         
 @router.get("/get-users", response={200: list[dict], 401: dict}, auth=AuthBearer())
 def get_users(request):
-    try:
-        user = User.objects.get(id=request.auth)
-        if user.role == "Pemilik" or user.role == "pemilik":
-            users = User.objects.filter(owner=user) | User.objects.filter(id=user.id)
-        else:
-            users = User.objects.filter(owner=user.owner)| User.objects.filter(id=user.id)
-            if user.owner:
-                users = users | User.objects.filter(id=user.owner.id)
-        users_data = [
-            {
-                "id": u.id,
-                "name": u.username,
-                "email": u.email,
-                "role": u.role
-            }
-            for u in users
-        ]
+    user = User.objects.get(id=request.auth)
+    if user.role == "Pemilik" or user.role == "pemilik":
+        users = User.objects.filter(owner=user) | User.objects.filter(id=user.id)
+    else:
+        users = User.objects.filter(owner=user.owner)| User.objects.filter(id=user.id)
+        if user.owner:
+            users = users | User.objects.filter(id=user.owner.id)
+    users_data = [
+        {
+            "id": u.id,
+            "name": u.username,
+            "email": u.email,
+            "role": u.role
+        }
+        for u in users
+    ]
 
-        users_data.sort(key=lambda u: u['role'] != "Pemilik")  
+    users_data.sort(key=lambda u: u['role'] != "Pemilik")  
 
-        return users_data
-    except Exception as e:
-        return 401, {"error": f"Terjadi kesalahan: {str(e)}"}
+    return users_data
 
 @router.post("/send-invitation", response={200: dict, 400: dict}, auth=AuthBearer())
 def send_invitation(request, payload: InvitationRequest):
