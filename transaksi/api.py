@@ -2,7 +2,13 @@ from ninja import Router
 from django.shortcuts import get_object_or_404
 from typing import List
 from .models import Pemasukan, Pengeluaran, Produk, Transaksi
-from .schemas import PemasukanCreate, PemasukanRead, PengeluaranCreate, PengeluaranRead, TransaksiUpdate
+from .schemas import (
+    PemasukanCreate,
+    PemasukanRead,
+    PengeluaranCreate,
+    PengeluaranRead,
+    TransaksiUpdate,
+)
 
 router = Router()
 
@@ -111,9 +117,7 @@ def delete_pemasukan(request, pemasukan_id: int):
         raise
 
 
-@router.put(
-    "/transaksi/{transaksi_id}/update", response={200: dict, 404: dict}
-)
+@router.put("/transaksi/{transaksi_id}/update", response={200: dict, 404: dict})
 def update_transaksi(request, transaksi_id: int, payload: TransaksiUpdate):
     try:
         transaksi = get_object_or_404(Transaksi, id=transaksi_id)
