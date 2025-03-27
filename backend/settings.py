@@ -57,6 +57,7 @@ INSTALLED_APPS = [
     'authentication',
     'corsheaders',
     'rest_framework',
+    'transaksi',
 ]
 
 MIDDLEWARE = [
@@ -111,10 +112,11 @@ if ENV == 'staging':
         }
     }
 else:
+    # Use SQLite for testing
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
-            'NAME': BASE_DIR / 'db.sqlite3',
+            'NAME': ':memory:',
         }
     }
 
@@ -167,3 +169,5 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
 
 ]
+
+#testing asdfasdfasdf
