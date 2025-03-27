@@ -29,6 +29,3 @@ class Invitation(models.Model):
     token = models.CharField(max_length=512, unique=True)
     expires_at = models.DateTimeField()
 
-    def is_valid(self):
-        return self.expires_at > now()
-
