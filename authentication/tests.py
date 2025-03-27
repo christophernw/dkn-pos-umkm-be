@@ -166,3 +166,14 @@ class ValidateInvitationTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.json()["valid"])
         self.assertEqual(response.json()["error"], "Invalid token")
+
+    def test_validate_invitation_not_found(self):
+        expiration = now() + timedelta(days=1)
+        token_payload = {"email": "notfound@example.com", "name": "NotFound", "role": "Karyawan", "owner_id": self.owner.id, "exp": expiration}
+        token = jwt.encode(token_payload, settings.SECRET_KEY, algorithm="HS256")
+        
+        response = self.client.post("/validate-invitation", json={"token": token})
+        
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()["valid"])
+        self.assertEqual(response.json()["error"], "Invalid invitation")
