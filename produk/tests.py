@@ -1,299 +1,596 @@
-from django.test import TestCase, Client, RequestFactory
-from django.urls import reverse
-from authentication.models import User
 from decimal import Decimal
-import json
-from unittest.mock import patch, MagicMock
+from django.test import TestCase
+from rest_framework.test import APIClient
+from django.contrib.auth.models import User
 
-import jwt
-from pydantic import ValidationError
+from produk.models import KategoriProduk, Produk
+from .models import Pemasukan, Pengeluaran, Transaksi
+from .schemas import PemasukanCreate, PengeluaranCreate
 
-from backend import settings
-from .api import AuthBearer, get_produk_default, router, get_produk_paginated, create_produk, delete_produk, get_low_stock_products, update_produk
-from .models import Produk, KategoriProduk
-from .schemas import ProdukResponseSchema, CreateProdukSchema, UpdateProdukStokSchema
 
-class MockAuthenticatedRequest:
-    """Mock request with authentication for testing"""
-    def __init__(self, user_id=1, method="get_params", body=None, get_params=None):
-        self.auth = user_id  # Simulating authenticated user
-        self.method = method
-        self._body = json.dumps(body).encode() if body else None
-        self.GET = get_params or {}
-
-class TestProductAPI(TestCase):
+class TransaksiTest(TestCase):
     def setUp(self):
         # Create test users
-        self.user1 = User.objects.create_user(username="testuser1", password="password123")
-        self.user2 = User.objects.create_user(username="testuser2", password="password123")
-        
+        self.user1 = User.objects.create_user(
+            username="testuser1", password="password123"
+        )
+        self.user2 = User.objects.create_user(
+            username="testuser2", password="password123"
+        )
+
         # Create categories
         self.kategori1 = KategoriProduk.objects.create(nama="Minuman")
         self.kategori2 = KategoriProduk.objects.create(nama="Makanan")
-        
-        # Create test products for user1
-        for i in range(1, 11):
-            stok = 5 if i <= 3 else 20  # Create some products with low stock
-            Produk.objects.create(
+
+        self.produk_list = []
+        for i in range(1, 4):
+            stok = i * 10
+            produk = Produk.objects.create(
                 nama=f"User1 Produk {i}",
                 foto="test.jpg",
-                harga_modal=Decimal(f'{i}000'),
-                harga_jual=Decimal(f'{i+2}000'),
+                harga_modal=Decimal(f"{i}000"),
+                harga_jual=Decimal(f"{i+2}000"),
                 stok=Decimal(stok),
                 satuan="Pcs",
                 kategori=self.kategori1 if i % 2 == 0 else self.kategori2,
-                user=self.user1
+                user=self.user1,
             )
+            self.produk_list.append(produk)
+
+    def test_create_pemasukan_success(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+
+        data = {
+            "status": "LUNAS",
+            "catatan": "Pembayaran sukses",
+            "namaPelanggan": "Budi",
+            "nomorTeleponPelanggan": "08123456789",
+            "foto": "image.jpg",
+            "daftarProduk": [p.id for p in self.produk_list],
+            "kategori": "PENJUALAN",
+            "totalPemasukan": 50000.0,
+            "hargaModal": 30000.0,
+        }
+
+        response = client.post("/api/transaksi/pemasukan/create", data, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(Pemasukan.objects.count(), 1)
+
+    def test_create_pemasukan_invalid_data(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user2)
+
+        data = {
+            "status": "",
+            "catatan": "",
+            "namaPelanggan": "",
+            "nomorTeleponPelanggan": "",
+            "foto": "",
+            "daftarProduk": [],
+            "kategori": "",
+            "totalPemasukan": -50000,
+            "hargaModal": -30000,
+        }
+        response = client.post("/api/transaksi/pemasukan/create", data, format="json")
+        self.assertEqual(response.status_code, 422)
+
+    def test_create_pengeluaran_success(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+        data = {
+            "status": "LUNAS",
+            "catatan": "Pembelian stok",
+            "namaPelanggan": "Supplier A",
+            "nomorTeleponPelanggan": "08987654321",
+            "foto": "invoice.jpg",
+            "daftarProduk": [self.produk_list[0].id],
+            "kategori": "PEMBELIAN_STOK",
+            "totalPengeluaran": 10000,
+        }
+        response = client.post("/api/transaksi/pengeluaran/create", data, format="json")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(Pengeluaran.objects.count(), 1)
+
+    def test_get_pemasukan_list(self):
+        response = self.client.get("/api/transaksi/pemasukan/daftar")
+        self.assertEqual(response.status_code, 200)
+        self.assertIsInstance(response.json(), list)
+
+    def test_get_pengeluaran_list(self):
+        response = self.client.get("/api/transaksi/pengeluaran/daftar")
+        self.assertEqual(response.status_code, 200)
+        self.assertIsInstance(response.json(), list)
+
+    def test_get_pemasukan_by_id_not_found(self):
+        response = self.client.get("/api/transaksi/pemasukan/999")
+        self.assertEqual(response.status_code, 404)
+
+    def test_get_pengeluaran_by_id_not_found(self):
+        response = self.client.get("/api/transaksi/pengeluaran/999")
+        self.assertEqual(response.status_code, 404)
+
+    def test_delete_pengeluaran_success(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+
+        data = {
+            "status": "LUNAS",
+            "catatan": "Pembelian stok",
+            "namaPelanggan": "Supplier A",
+            "nomorTeleponPelanggan": "08987654321",
+            "foto": "invoice.jpg",
+            "daftarProduk": [self.produk_list[0].id],
+            "kategori": "PEMBELIAN_STOK",
+            "totalPengeluaran": 10000,
+        }
+
+        response = client.post("/api/transaksi/pengeluaran/create", data, format="json")
+        self.assertEqual(response.status_code, 200)
+        pengeluaran_id = response.json()["id"]
+        transaction_id = response.json()["transaksi"]["id"]
+
+        delete_response = client.delete(
+            f"/api/transaksi/pengeluaran/{pengeluaran_id}/delete"
+        )
+        self.assertEqual(delete_response.status_code, 200)
+
+        get_response = client.get(f"/api/transaksi/pengeluaran/{pengeluaran_id}")
+        self.assertEqual(get_response.status_code, 404)
+
+        from .models import Transaksi
+
+        transaction = Transaksi.objects.get(id=transaction_id)
+        self.assertTrue(transaction.isDeleted)
+
+    def test_delete_pengeluaran_not_found(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+
+        non_existent_id = 9999
+
+        delete_response = client.delete(
+            f"/api/transaksi/pengeluaran/{non_existent_id}/delete"
+        )
+        self.assertEqual(delete_response.status_code, 404)
+
+    def test_delete_pengeluaran_already_deleted(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+
+        data = {
+            "status": "LUNAS",
+            "catatan": "Pembelian stok",
+            "namaPelanggan": "Supplier A",
+            "nomorTeleponPelanggan": "08987654321",
+            "foto": "invoice.jpg",
+            "daftarProduk": [self.produk_list[0].id],
+            "kategori": "PEMBELIAN_STOK",
+            "totalPengeluaran": 10000,
+        }
+
+        response = client.post("/api/transaksi/pengeluaran/create", data, format="json")
+        self.assertEqual(response.status_code, 200)
+        pengeluaran_id = response.json()["id"]
+
+        delete_response = client.delete(
+            f"/api/transaksi/pengeluaran/{pengeluaran_id}/delete"
+        )
+        self.assertEqual(delete_response.status_code, 200)
+
+        second_delete_response = client.delete(
+            f"/api/transaksi/pengeluaran/{pengeluaran_id}/delete"
+        )
+        self.assertEqual(second_delete_response.status_code, 404)
+
+    def test_delete_pemasukan_success(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+
+        data = {
+            "status": "LUNAS",
+            "catatan": "Pembayaran sukses",
+            "namaPelanggan": "Budi",
+            "nomorTeleponPelanggan": "08123456789",
+            "foto": "image.jpg",
+            "daftarProduk": [p.id for p in self.produk_list],
+            "kategori": "PENJUALAN",
+            "totalPemasukan": 50000.0,
+            "hargaModal": 30000.0,
+        }
+
+        response = client.post("/api/transaksi/pemasukan/create", data, format="json")
+        self.assertEqual(response.status_code, 200)
+        pemasukan_id = response.json()["id"]
+        transaction_id = response.json()["transaksi"]["id"]
+
+        delete_response = client.delete(
+            f"/api/transaksi/pemasukan/{pemasukan_id}/delete"
+        )
+        self.assertEqual(delete_response.status_code, 200)
+
+        get_response = client.get(f"/api/transaksi/pemasukan/{pemasukan_id}")
+        self.assertEqual(get_response.status_code, 404)
+
+        from .models import Transaksi
+
+        transaction = Transaksi.objects.get(id=transaction_id)
+        self.assertTrue(transaction.isDeleted)
+
+    def test_delete_pemasukan_not_found(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+
+        non_existent_id = 9999
+
+        delete_response = client.delete(
+            f"/api/transaksi/pemasukan/{non_existent_id}/delete"
+        )
+        self.assertEqual(delete_response.status_code, 404)
+
+    def test_delete_pemasukan_already_deleted(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+
+        data = {
+            "status": "LUNAS",
+            "catatan": "Pembayaran sukses",
+            "namaPelanggan": "Budi",
+            "nomorTeleponPelanggan": "08123456789",
+            "foto": "image.jpg",
+            "daftarProduk": [p.id for p in self.produk_list],
+            "kategori": "PENJUALAN",
+            "totalPemasukan": 50000.0,
+            "hargaModal": 30000.0,
+        }
+
+        response = client.post("/api/transaksi/pemasukan/create", data, format="json")
+        self.assertEqual(response.status_code, 200)
+        pemasukan_id = response.json()["id"]
+
+        delete_response = client.delete(
+            f"/api/transaksi/pemasukan/{pemasukan_id}/delete"
+        )
+        self.assertEqual(delete_response.status_code, 200)
+
+        second_delete_response = client.delete(
+            f"/api/transaksi/pemasukan/{pemasukan_id}/delete"
+        )
+        self.assertEqual(second_delete_response.status_code, 404)
+
+
+    def test_update_transaksi_success(self):
+        # Create a transaction first
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+
+        # Create test transaction
+        create_data = {
+            "status": "LUNAS",
+            "catatan": "Pembayaran sukses",
+            "namaPelanggan": "Budi",
+            "nomorTeleponPelanggan": "08123456789",
+            "foto": "image.jpg",
+            "daftarProduk": [p.id for p in self.produk_list],
+            "kategori": "PENJUALAN",
+            "totalPemasukan": 50000.0,
+            "hargaModal": 30000.0,
+        }
+
+        response = client.post(
+            "/api/transaksi/pemasukan/create", create_data, format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+        transaction_id = response.json()["transaksi"]["id"]
+        pemasukan_id = response.json()["id"]
+
+        # Update data
+        update_data = {
+            "status": "BELUM_LUNAS",
+            "catatan": "Updated notes",
+            "namaPelanggan": "Updated customer",
+            "nomorTeleponPelanggan": "087654321",
+            "daftarProduk": [self.produk_list[0].id],  # Only one product
+        }
+
+        update_response = client.put(
+            f"/api/transaksi/transaksi/{transaction_id}/update", update_data, format="json"
+        )
+        self.assertEqual(update_response.status_code, 200)
+
+        # Verify changes
+        get_response = client.get(f"/api/transaksi/pemasukan/{pemasukan_id}")
+        updated_transaction = get_response.json()["transaksi"]
+        self.assertEqual(updated_transaction["status"], "BELUM_LUNAS")
+        self.assertEqual(updated_transaction["catatan"], "Updated notes")
+        self.assertEqual(len(updated_transaction["daftarProduk"]), 1)
+
+
+    def test_update_nonexistent_transaksi(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+
+        non_existent_id = 9999
+        update_data = {"status": "BELUM_LUNAS"}
+
+        update_response = client.put(
+            f"/api/transaksi/transaksi/{non_existent_id}/update", update_data, format="json"
+        )
+        self.assertEqual(update_response.status_code, 404)
+
+
+    def test_update_deleted_transaksi(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+
+        # Create and delete a transaction
+        create_data = {
+            "status": "LUNAS",
+            "daftarProduk": [self.produk_list[0].id],
+            "kategori": "PENJUALAN",
+            "totalPemasukan": 50000.0,
+            "hargaModal": 30000.0,
+        }
+
+        response = client.post(
+            "/api/transaksi/pemasukan/create", create_data, format="json"
+        )
+        pemasukan_id = response.json()["id"]
+        transaction_id = response.json()["transaksi"]["id"]
+
+        # Delete the transaction
+        client.delete(f"/api/transaksi/pemasukan/{pemasukan_id}/delete")
+
+        # Try to update the deleted transaction
+        update_data = {"status": "BELUM_LUNAS"}
+        update_response = client.put(
+            f"/api/transaksi/transaksi/{transaction_id}/update", update_data, format="json"
+        )
+        self.assertEqual(update_response.status_code, 404)
+
+
+    def test_update_transaksi_invalid_data(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+
+        # Create a transaction first
+        create_data = {
+            "status": "LUNAS",
+            "daftarProduk": [self.produk_list[0].id],
+            "kategori": "PENJUALAN",
+            "totalPemasukan": 50000.0,
+            "hargaModal": 30000.0,
+        }
+
+        response = client.post(
+            "/api/transaksi/pemasukan/create", create_data, format="json"
+        )
+        transaction_id = response.json()["transaksi"]["id"]
+
+        # Update with invalid status
+        update_data = {"status": "INVALID_STATUS"}
+        update_response = client.put(
+            f"/api/transaksi/transaksi/{transaction_id}/update", update_data, format="json"
+        )
+        self.assertEqual(update_response.status_code, 422)
+
+
+    def test_update_transaksi_empty_payload(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+
+        # Create a transaction first
+        create_data = {
+            "status": "LUNAS",
+            "daftarProduk": [self.produk_list[0].id],
+            "kategori": "PENJUALAN",
+            "totalPemasukan": 50000.0,
+            "hargaModal": 30000.0,
+        }
+
+        response = client.post(
+            "/api/transaksi/pemasukan/create", create_data, format="json"
+        )
+        transaction_id = response.json()["transaksi"]["id"]
+
+        # Update with empty payload (should do nothing but succeed)
+        update_response = client.put(
+            f"/api/transaksi/transaksi/{transaction_id}/update", {}, format="json"
+        )
+        self.assertEqual(update_response.status_code, 200)
+
+
+    def test_update_transaksi_nonexistent_products(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+
+        # Create a transaction first
+        create_data = {
+            "status": "LUNAS",
+            "daftarProduk": [p.id for p in self.produk_list],
+            "kategori": "PENJUALAN",
+            "totalPemasukan": 50000.0,
+            "hargaModal": 30000.0,
+        }
+
+        response = client.post(
+            "/api/transaksi/pemasukan/create", create_data, format="json"
+        )
+        transaction_id = response.json()["transaksi"]["id"]
+        pemasukan_id = response.json()["id"]
+
+        # Update with non-existent product ID
+        update_data = {"daftarProduk": [9999]}
+        update_response = client.put(
+            f"/api/transaksi/transaksi/{transaction_id}/update", update_data, format="json"
+        )
+
+        # Should succeed but with empty product list
+        self.assertEqual(update_response.status_code, 200)
+
+        # Verify product list is empty
+        get_response = client.get(f"/api/transaksi/pemasukan/{pemasukan_id}")
+        updated_transaction = get_response.json()["transaksi"]
+        self.assertEqual(len(updated_transaction["daftarProduk"]), 0)
         
-        # Create test products for user2
-        for i in range(1, 6):
-            Produk.objects.create(
-                nama=f"User2 Produk {i}",
-                foto="test.jpg",
-                harga_modal=Decimal(f'{i}000'),
-                harga_jual=Decimal(f'{i+2}000'),
-                stok=Decimal(15),
-                satuan="Pcs",
-                kategori=self.kategori1,
-                user=self.user2
-            )
+    def test_get_pemasukan_by_id_success(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
         
-        self.factory = RequestFactory()
-    
-    def test_get_produk_with_sort_asc(self):
-        request = MockAuthenticatedRequest(user_id=self.user1.id)
-        status, response = get_produk_paginated(request, page=1, sort="asc", q="User1")
+        # Create a pemasukan first
+        data = {
+            "status": "LUNAS",
+            "catatan": "Pembayaran sukses",
+            "namaPelanggan": "Budi",
+            "nomorTeleponPelanggan": "08123456789",
+            "foto": "image.jpg",
+            "daftarProduk": [p.id for p in self.produk_list],
+            "kategori": "PENJUALAN",
+            "totalPemasukan": 50000.0,
+            "hargaModal": 30000.0,
+        }
         
-        self.assertEqual(status, 200)
-        # Check that products are sorted by stok ascending
-        for i in range(len(response['items']) - 1):
-            self.assertTrue(response['items'][i].stok <= response['items'][i+1].stok)
-    
-    def test_get_produk_with_sort_desc(self):
-        request = MockAuthenticatedRequest(user_id=self.user1.id)
-        status, response = get_produk_paginated(request, page=1, sort="desc")
+        create_response = client.post("/api/transaksi/pemasukan/create", data, format="json")
+        self.assertEqual(create_response.status_code, 200)
+        pemasukan_id = create_response.json()["id"]
         
-        self.assertEqual(status, 200)
-        # Check that products are sorted by stok descending
-        for i in range(len(response['items']) - 1):
-            self.assertTrue(response['items'][i].stok >= response['items'][i+1].stok)
-    
-    def test_get_produk_with_invalid_sort(self):
-        request = MockAuthenticatedRequest(user_id=self.user1.id)
-        response = get_produk_paginated(request, page=1, sort="invalid")
+        # Retrieve the pemasukan
+        get_response = client.get(f"/api/transaksi/pemasukan/{pemasukan_id}")
+        self.assertEqual(get_response.status_code, 200)
         
-        # Should return HttpResponseBadRequest
-        self.assertEqual(response.status_code, 400)
-    
-    def test_get_produk_pagination(self):
-        request = MockAuthenticatedRequest(user_id=self.user1.id, get_params={"per_page": "3"})
-        status, response = get_produk_paginated(request, page=2)
+        # Verify the retrieved data
+        pemasukan_data = get_response.json()
+        self.assertEqual(pemasukan_data["id"], pemasukan_id)
+        self.assertEqual(pemasukan_data["kategori"], "PENJUALAN")
+        self.assertEqual(pemasukan_data["totalPemasukan"], 50000.0)
+        self.assertEqual(pemasukan_data["hargaModal"], 30000.0)
         
-        self.assertEqual(status, 200)
-        self.assertEqual(response['page'], 2)
-        self.assertEqual(response['per_page'], 3)
-        self.assertEqual(len(response['items']), 3)
-        self.assertEqual(response['total_pages'], 4)  # 10 items, 3 per page = 4 pages
-    
-    def test_page_not_found(self):
-        request = MockAuthenticatedRequest(user_id=self.user1.id)
-        status, response = get_produk_paginated(request, page=5)
+    def test_get_pengeluaran_by_id_success(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
         
-        self.assertEqual(status, 404)
-        self.assertEqual(response['message'], "Page not found")
-    
-    def test_create_produk(self):
-        payload = CreateProdukSchema(
-            nama="New Product",
-            harga_modal=15000,
-            harga_jual=20000,
-            stok=25,
-            satuan="Box",
-            kategori="New Category"
+        # Create a pengeluaran first
+        data = {
+            "status": "LUNAS",
+            "catatan": "Pembelian stok",
+            "namaPelanggan": "Supplier A",
+            "nomorTeleponPelanggan": "08987654321",
+            "foto": "invoice.jpg",
+            "daftarProduk": [self.produk_list[0].id],
+            "kategori": "PEMBELIAN_STOK",
+            "totalPengeluaran": 10000,
+        }
+        
+        create_response = client.post("/api/transaksi/pengeluaran/create", data, format="json")
+        self.assertEqual(create_response.status_code, 200)
+        pengeluaran_id = create_response.json()["id"]
+        
+        # Retrieve the pengeluaran
+        get_response = client.get(f"/api/transaksi/pengeluaran/{pengeluaran_id}")
+        self.assertEqual(get_response.status_code, 200)
+        
+        # Verify the retrieved data
+        pengeluaran_data = get_response.json()
+        self.assertEqual(pengeluaran_data["id"], pengeluaran_id)
+        self.assertEqual(pengeluaran_data["kategori"], "PEMBELIAN_STOK")
+        self.assertEqual(pengeluaran_data["totalPengeluaran"], 10000)
+
+    def test_update_transaksi_with_file(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+        
+        # Create a transaction first
+        create_data = {
+            "status": "LUNAS",
+            "daftarProduk": [self.produk_list[0].id],
+            "kategori": "PENJUALAN",
+            "totalPemasukan": 50000.0,
+            "hargaModal": 30000.0,
+        }
+        
+        response = client.post("/api/transaksi/pemasukan/create", create_data, format="json")
+        transaction_id = response.json()["transaksi"]["id"]
+        pemasukan_id = response.json()["id"]
+        
+        # Create a test file
+        SimpleUploadedFile(
+            "test_image.jpg",
+            b"file_content",
+            content_type="image/jpeg"
         )
         
-        request = MockAuthenticatedRequest(user_id=self.user1.id)
-        status, response = create_produk(request, payload=payload)
+        # Update with a file - using a string representation as the API seems to accept strings
+        update_data = {
+            "foto": "updated_image.jpg"
+        }
         
-        self.assertEqual(status, 201)
-        self.assertEqual(response.nama, "New Product")
-        self.assertEqual(response.kategori, "New Category")
+        update_response = client.put(
+            f"/api/transaksi/transaksi/{transaction_id}/update", 
+            update_data, 
+            format="json"
+        )
         
-        # Check that product was created in DB
-        self.assertTrue(Produk.objects.filter(nama="New Product", user=self.user1).exists())
-        # Check that the category was created
-        self.assertTrue(KategoriProduk.objects.filter(nama="New Category").exists())
-    
-    def test_update_product_stock(self):
-        produk = Produk.objects.filter(user=self.user1).first()
-        payload = UpdateProdukStokSchema(stok=50)
+        self.assertEqual(update_response.status_code, 200)
         
-        request = MockAuthenticatedRequest(user_id=self.user1.id)
-        status, response = update_produk(request, id=produk.id, payload=payload)
+        # Verify the file path was updated
+        get_response = client.get(f"/api/transaksi/pemasukan/{pemasukan_id}")
+        updated_transaction = get_response.json()["transaksi"]
+        self.assertEqual(updated_transaction["foto"], "/api/media/updated_image.jpg")
         
-        self.assertEqual(status, 200)
-        self.assertEqual(response.stok, 50.0)
+    def test_get_pemasukan_paginated(self):
+        """Test paginated income list"""
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
         
-        # Check DB was updated
-        updated_produk = Produk.objects.get(id=produk.id)
-        self.assertEqual(updated_produk.stok, 50)
-    
-    def test_update_product_not_found(self):
-        payload = UpdateProdukStokSchema(stok=50)
-        request = MockAuthenticatedRequest(user_id=self.user1.id)
+        # Create 5 test income records
+        for i in range(5):
+            data = {
+                "status": "LUNAS",
+                "catatan": f"Test payment {i}",
+                "daftarProduk": [self.produk_list[0].id],
+                "kategori": "PENJUALAN",
+                "totalPemasukan": 1000 * (i + 1),
+                "hargaModal": 500 * (i + 1),
+            }
+            response = client.post("/api/transaksi/pemasukan/create", data, format="json")
+            self.assertEqual(response.status_code, 200)
         
-        # Use a non-existent ID
-        status, response = update_produk(request, id=9999, payload=payload)
-    
-        # Should return 422 error response, not raise exception
-        self.assertEqual(status, 422)
-        self.assertIn("message", response)
-    
-    def test_delete_produk(self):
-        produk = Produk.objects.filter(user=self.user1).first()
-        request = MockAuthenticatedRequest(user_id=self.user1.id)
+        # Test basic pagination - first page
+        response = client.get("/api/transaksi/pemasukan/page/1?per_page=3")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
         
-        response = delete_produk(request, id=produk.id)
+        # Verify structure and counts
+        self.assertEqual(data["total"], 5)
+        self.assertEqual(data["page"], 1)
+        self.assertEqual(data["per_page"], 3)
+        self.assertEqual(data["total_pages"], 2)
+        self.assertEqual(len(data["items"]), 3)
         
-        self.assertEqual(response["message"], "Produk berhasil dihapus")
-        self.assertFalse(Produk.objects.filter(id=produk.id).exists())
-    
-    def test_delete_other_users_produk(self):
-        # Try to delete user2's product as user1
-        produk = Produk.objects.filter(user=self.user2).first()
-        request = MockAuthenticatedRequest(user_id=self.user1.id)
+        # Test second page
+        response = client.get("/api/transaksi/pemasukan/page/2?per_page=3")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data["items"]), 2)  # 2 items on second page
         
-        # Should raise exception because get_object_or_404 will fail
-        with self.assertRaises(Exception):
-            delete_produk(request, id=produk.id)
-    
-    def test_low_stock_products(self):
-        request = MockAuthenticatedRequest(user_id=self.user1.id)
-        result = get_low_stock_products(request)
+        # Test sorting (ascending)
+        response = client.get("/api/transaksi/pemasukan/page/1?sort=asc")
+        self.assertEqual(response.status_code, 200)
         
-        self.assertEqual(len(result), 3)  # We created 3 products with stok=5
+        # Test search filter
+        client.post("/api/transaksi/pemasukan/create", {
+            "status": "LUNAS",
+            "catatan": "Unique searchable text",
+            "daftarProduk": [self.produk_list[0].id],
+            "kategori": "PENJUALAN",
+            "totalPemasukan": 9999,
+            "hargaModal": 5000,
+        }, format="json")
         
-        # Check that all returned products have stock less than 10
-        for product in result:
-            self.assertTrue(product.stok < 10)
-            # Ensure products belong to user1
-            self.assertTrue("User1" in product.nama)
-            
-    def test_create_produk_negative_harga_modal(self):
-        """Test that creating a product with negative harga_modal is rejected"""
-        # Test that validation occurs during model creation
-        with self.assertRaises(ValidationError) as context:
-            CreateProdukSchema(
-                nama="Invalid Product",
-                harga_modal=-1000,  # Negative value should be rejected
-                harga_jual=20000,
-                stok=10,
-                satuan="Box",
-                kategori="Test Category"
-            )
-        
-        # Verify the error message
-        error_detail = str(context.exception)
-        self.assertIn("Harga modal minus seharusnya invalid", error_detail)
-
-    def test_create_produk_negative_harga_jual(self):
-        """Test that creating a product with negative harga_jual is rejected"""
-        with self.assertRaises(ValidationError) as context:
-            CreateProdukSchema(
-                nama="Invalid Product",
-                harga_modal=10000,
-                harga_jual=-5000,  # Negative value should be rejected
-                stok=10,
-                satuan="Box",
-                kategori="Test Category"
-            )
-        
-        error_detail = str(context.exception)
-        self.assertIn("Harga jual minus seharusnya invalid", error_detail)
-
-    def test_create_produk_negative_stok(self):
-        """Test that creating a product with negative stok is rejected"""
-        with self.assertRaises(ValidationError) as context:
-            CreateProdukSchema(
-                nama="Invalid Product",
-                harga_modal=10000,
-                harga_jual=15000,
-                stok=-5,  # Negative value should be rejected
-                satuan="Box",
-                kategori="Test Category"
-            )
-        
-        error_detail = str(context.exception)
-        self.assertIn("Stok minus seharusnya invalid", error_detail)
-    
-    def test_update_produk_negative_stok(self):
-        """Test that updating a product with negative stok is rejected"""
-        with self.assertRaises(ValidationError) as context:
-            UpdateProdukStokSchema(
-                stok=-10  # Negative value should be rejected
-            )
-        
-        error_detail = str(context.exception)
-        self.assertIn("Stok minus tidak valid", error_detail)
-
-    def test_auth_bearer_valid_token(self):
-        """Test that AuthBearer authenticates with valid token"""
-        auth = AuthBearer()
-        
-        # Create a valid token
-        token = jwt.encode({"user_id": self.user1.id}, settings.SECRET_KEY, algorithm="HS256")
-        
-        # Create a mock request with the token
-        request = self.factory.get("/", HTTP_AUTHORIZATION=f"Bearer {token}")
-        
-        # Test authentication
-        user_id = auth.authenticate(request, token)
-        self.assertEqual(user_id, self.user1.id)
-
-    def test_auth_bearer_invalid_token(self):
-        """Test that AuthBearer rejects invalid token"""
-        auth = AuthBearer()
-        
-        # Create an invalid token with wrong secret
-        token = jwt.encode({"user_id": self.user1.id}, "wrong_secret", algorithm="HS256")
-        
-        # Test authentication
-        user_id = auth.authenticate(None, token)
-        self.assertIsNone(user_id)
-
-    def test_auth_bearer_missing_user_id(self):
-        """Test that AuthBearer rejects token without user_id"""
-        auth = AuthBearer()
-        
-        # Create token without user_id
-        token = jwt.encode({"some_field": "value"}, settings.SECRET_KEY, algorithm="HS256")
-        
-        # Test authentication
-        user_id = auth.authenticate(None, token)
-        self.assertIsNone(user_id)
-
-    def test_get_produk_default(self):
-        """Test that get_produk_default calls get_produk_paginated with page=1"""
-        request = MockAuthenticatedRequest(user_id=self.user1.id)
-        
-        # Mock get_produk_paginated to verify it's called with correct parameters
-        with patch('produk.api.get_produk_paginated') as mock_paginated:
-            mock_paginated.return_value = (200, {"items": [], "total": 0, "page": 1})
-            
-            # Call the default endpoint
-            get_produk_default(request, sort="asc")
-            
-            # Verify get_produk_paginated was called with page=1 and sort="asc"
-            mock_paginated.assert_called_once_with(request, page=1, sort="asc")
-
-    def test_get_produk_invalid_per_page(self):
-        """Test that get_produk_paginated handles invalid per_page parameter"""
-        # Create a request with invalid per_page (not an integer)
-        request = MockAuthenticatedRequest(user_id=self.user1.id, get_params={"per_page": "invalid"})
-        
-        # Call the function
-        status, response = get_produk_paginated(request, page=1)
-        
-        # Verify default per_page was used (7)
-        self.assertEqual(status, 200)
-        self.assertEqual(response["per_page"], 7)
+        response = client.get("/api/transaksi/pemasukan/page/1?q=Unique")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["total"], 1)
+        self.assertIn("Unique", data["items"][0]["transaksi"]["catatan"])
