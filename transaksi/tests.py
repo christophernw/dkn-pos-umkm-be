@@ -594,3 +594,87 @@ class TransaksiTest(TestCase):
         data = response.json()
         self.assertEqual(data["total"], 1)
         self.assertIn("Unique", data["items"][0]["transaksi"]["catatan"])
+
+    def test_get_pemasukan_sorted_by_date(self):
+        """Test sorting income transactions by date"""
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+        
+        # Create multiple transactions with different dates
+        for i in range(3):
+            data = {
+                "status": "LUNAS",
+                "daftarProduk": [self.produk_list[0].id],
+                "kategori": "PENJUALAN",
+                "totalPemasukan": 1000,
+                "hargaModal": 500,
+            }
+            response = client.post("/api/transaksi/pemasukan/create", data, format="json")
+            self.assertEqual(response.status_code, 200)
+            
+            # Add a small delay to ensure different timestamps
+            import time
+            time.sleep(1)
+        
+        # Test ascending sort (oldest first)
+        response = client.get("/api/transaksi/pemasukan/page/1?sort=asc&sort_by=date")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        
+        # Verify ascending order
+        dates = [item["tanggalTransaksi"] for item in data["items"]]
+        self.assertEqual(dates, sorted(dates))
+        
+        # Test descending sort (newest first)
+        response = client.get("/api/transaksi/pemasukan/page/1?sort=desc&sort_by=date")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        
+        # Verify descending order
+        dates = [item["tanggalTransaksi"] for item in data["items"]]
+        self.assertEqual(dates, sorted(dates, reverse=True))
+
+    def test_get_pemasukan_sorted_by_amount(self):
+        """Test sorting income transactions by amount"""
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+        
+        # Create multiple transactions with different amounts
+        amounts = [1000, 500, 1500]
+        for amount in amounts:
+            data = {
+                "status": "LUNAS",
+                "daftarProduk": [self.produk_list[0].id],
+                "kategori": "PENJUALAN",
+                "totalPemasukan": amount,
+                "hargaModal": 300,
+            }
+            response = client.post("/api/transaksi/pemasukan/create", data, format="json")
+            self.assertEqual(response.status_code, 200)
+        
+        # Test ascending sort (lowest amount first)
+        response = client.get("/api/transaksi/pemasukan/page/1?sort=asc&sort_by=amount")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        
+        # Verify ascending order
+        sorted_amounts = [item["totalPemasukan"] for item in data["items"]]
+        self.assertEqual(sorted_amounts, sorted(sorted_amounts))
+        
+        # Test descending sort (highest amount first)
+        response = client.get("/api/transaksi/pemasukan/page/1?sort=desc&sort_by=amount")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        
+        # Verify descending order
+        sorted_amounts = [item["totalPemasukan"] for item in data["items"]]
+        self.assertEqual(sorted_amounts, sorted(sorted_amounts, reverse=True))
+
+    def test_get_pemasukan_invalid_sort_by_parameter(self):
+        """Test invalid sort_by parameter"""
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+        
+        response = client.get("/api/transaksi/pemasukan/page/1?sort_by=invalid")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Invalid sort_by parameter", response.json()["message"])
