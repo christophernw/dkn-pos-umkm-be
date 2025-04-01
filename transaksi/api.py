@@ -34,7 +34,7 @@ def create_transaction_base(
 ) -> Tuple[bool, Union[Transaksi, str]]:
     """Create a base transaction with common fields."""
 
-    products_valid, products, error = validate_products(product_ids)
+    _, products, _ = validate_products(product_ids)
         
     transaksi = Transaksi.objects.create(
         status=status,
@@ -51,8 +51,6 @@ def create_transaction_base(
 def apply_filters(
     queryset: QuerySet,
     q: str = "",
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None
 ) -> QuerySet:
     """Apply common filters to a queryset."""
     # Apply search filter
@@ -98,7 +96,7 @@ def create_pemasukan(request, payload: PemasukanCreate):
     """Create a new income transaction with associated products."""
 
     with transaction.atomic():
-        success, result = create_transaction_base(
+        _, result = create_transaction_base(
             payload.status,
             payload.catatan,
             payload.namaPelanggan,
@@ -129,7 +127,7 @@ def create_pengeluaran(request, payload: PengeluaranCreate):
     """Create a new expense transaction with associated products."""
 
     with transaction.atomic():
-        success, result = create_transaction_base(
+        _, result = create_transaction_base(
             payload.status,
             payload.catatan,
             payload.namaPelanggan,
@@ -300,13 +298,13 @@ def get_pemasukan_paginated(
     queryset = Pemasukan.objects.filter(transaksi__isDeleted=False)
     
     # Apply filters
-    queryset = apply_filters(queryset, q, start_date, end_date)
+    queryset = apply_filters(queryset, q)
 
     # Apply ordering
     queryset = queryset.order_by(order_by_field, "id")
 
     # Paginate results
-    status, pagination_data = paginate_queryset(queryset, page, request)
+    _, pagination_data = paginate_queryset(queryset, page, request)
     
         
     # Convert models to schemas
