@@ -21,8 +21,6 @@ router = Router()
 def validate_products(product_ids: List[int]) -> Tuple[bool, List[Produk], str]:
     """Validate that all products exist."""
     products = list(Produk.objects.filter(id__in=product_ids))
-    if len(products) != len(product_ids):
-        return False, [], "One or more products not found"
     return True, products, ""
 
 
@@ -35,23 +33,19 @@ def create_transaction_base(
     product_ids: List[int]
 ) -> Tuple[bool, Union[Transaksi, str]]:
     """Create a base transaction with common fields."""
-    try:
-        products_valid, products, error = validate_products(product_ids)
-        if not products_valid:
-            return False, error
-            
-        transaksi = Transaksi.objects.create(
-            status=status,
-            catatan=catatan,
-            namaPelanggan=nama_pelanggan,
-            nomorTeleponPelanggan=nomor_telepon,
-            foto=foto,
-        )
+
+    products_valid, products, error = validate_products(product_ids)
         
-        transaksi.daftarProduk.set(products)
-        return True, transaksi
-    except Exception as e:
-        return False, f"Failed to create transaction: {str(e)}"
+    transaksi = Transaksi.objects.create(
+        status=status,
+        catatan=catatan,
+        namaPelanggan=nama_pelanggan,
+        nomorTeleponPelanggan=nomor_telepon,
+        foto=foto,
+    )
+    
+    transaksi.daftarProduk.set(products)
+    return True, transaksi
 
 
 def apply_filters(
@@ -68,13 +62,6 @@ def apply_filters(
             | Q(kategori__icontains=q)
             | Q(transaksi__namaPelanggan__icontains=q)
         )
-
-    # Apply date filters
-    if start_date:
-        queryset = queryset.filter(transaksi__tanggalTransaksi__date__gte=start_date)
-
-    if end_date:
-        queryset = queryset.filter(transaksi__tanggalTransaksi__date__lte=end_date)
         
     return queryset
 
@@ -86,16 +73,12 @@ def paginate_queryset(
     default_per_page: int = 10
 ) -> Tuple[int, Dict[str, Any]]:
     """Paginate a queryset and return pagination metadata."""
-    try:
-        per_page = int(request.GET.get("per_page", default_per_page))
-    except ValueError:
-        per_page = default_per_page
+    
+    per_page = int(request.GET.get("per_page", default_per_page))
 
     total = queryset.count()
     total_pages = (total + per_page - 1) // per_page if total > 0 else 1
 
-    if page > total_pages and total > 0:
-        return 404, {"message": "Page not found"}
 
     offset = (page - 1) * per_page
     page_items = queryset[offset : offset + per_page]
@@ -113,66 +96,60 @@ def paginate_queryset(
 @router.post("/pemasukan/create", response={200: PemasukanRead, 422: dict})
 def create_pemasukan(request, payload: PemasukanCreate):
     """Create a new income transaction with associated products."""
-    try:
-        with transaction.atomic():
-            success, result = create_transaction_base(
-                payload.status,
-                payload.catatan,
-                payload.namaPelanggan,
-                payload.nomorTeleponPelanggan,
-                payload.foto,
-                payload.daftarProduk
-            )
+
+    with transaction.atomic():
+        success, result = create_transaction_base(
+            payload.status,
+            payload.catatan,
+            payload.namaPelanggan,
+            payload.nomorTeleponPelanggan,
+            payload.foto,
+            payload.daftarProduk
+        )
+        
+
             
-            if not success:
-                return 422, {"error": result}
-                
-            transaksi = result
-            
-            # Create pemasukan record
-            pemasukan = Pemasukan.objects.create(
-                transaksi=transaksi,
-                kategori=payload.kategori,
-                totalPemasukan=payload.totalPemasukan,
-                hargaModal=payload.hargaModal,
-            )
-            
-            return 200, PemasukanRead.from_orm(pemasukan)
-            
-    except Exception as e:
-        return 422, {"error": f"Failed to create transaction: {str(e)}"}
+        transaksi = result
+        
+        # Create pemasukan record
+        pemasukan = Pemasukan.objects.create(
+            transaksi=transaksi,
+            kategori=payload.kategori,
+            totalPemasukan=payload.totalPemasukan,
+            hargaModal=payload.hargaModal,
+        )
+        
+        return 200, PemasukanRead.from_orm(pemasukan)
+        
+
 
 
 @router.post("/pengeluaran/create", response={200: PengeluaranRead, 422: dict})
 def create_pengeluaran(request, payload: PengeluaranCreate):
     """Create a new expense transaction with associated products."""
-    try:
-        with transaction.atomic():
-            success, result = create_transaction_base(
-                payload.status,
-                payload.catatan,
-                payload.namaPelanggan,
-                payload.nomorTeleponPelanggan,
-                payload.foto,
-                payload.daftarProduk
-            )
+
+    with transaction.atomic():
+        success, result = create_transaction_base(
+            payload.status,
+            payload.catatan,
+            payload.namaPelanggan,
+            payload.nomorTeleponPelanggan,
+            payload.foto,
+            payload.daftarProduk
+        )
+        
             
-            if not success:
-                return 422, {"error": result}
-                
-            transaksi = result
-            
-            # Create pengeluaran record
-            pengeluaran = Pengeluaran.objects.create(
-                transaksi=transaksi,
-                kategori=payload.kategori,
-                totalPengeluaran=payload.totalPengeluaran,
-            )
-            
-            return 200, PengeluaranRead.from_orm(pengeluaran)
-            
-    except Exception as e:
-        return 422, {"error": f"Failed to create transaction: {str(e)}"}
+        transaksi = result
+        
+        # Create pengeluaran record
+        pengeluaran = Pengeluaran.objects.create(
+            transaksi=transaksi,
+            kategori=payload.kategori,
+            totalPengeluaran=payload.totalPengeluaran,
+        )
+        
+        return 200, PengeluaranRead.from_orm(pengeluaran)
+        
 
 
 # API Endpoints for retrieving transaction lists
@@ -281,8 +258,6 @@ def update_transaksi(request, transaksi_id: int, payload: TransaksiUpdate):
         transaksi.save()
         
         return 200, {"message": "Transaction updated successfully"}
-    except ValueError as e:
-        return 422, {"error": str(e)}
     except Exception as e:
         return 404, {"error": str(e)}
 
@@ -303,8 +278,6 @@ def get_pemasukan_paginated(
 ):
     """Implementasi pagination untuk daftar pemasukan dengan sorting."""
     # Validate sort parameters
-    if sort not in [None, "asc", "desc"]:
-        return 400, {"message": "Invalid sort parameter. Use 'asc' or 'desc'."}
     
     if sort_by not in ["date", "amount"]:
         return 400, {"message": "Invalid sort_by parameter. Use 'date' or 'amount'."}
@@ -335,8 +308,6 @@ def get_pemasukan_paginated(
     # Paginate results
     status, pagination_data = paginate_queryset(queryset, page, request)
     
-    if status != 200:
-        return status, pagination_data
         
     # Convert models to schemas
     pagination_data["items"] = [PemasukanRead.from_orm(p) for p in pagination_data["items"]]
