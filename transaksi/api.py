@@ -311,3 +311,5 @@ def get_pemasukan_paginated(
     pagination_data["items"] = [PemasukanRead.from_orm(p) for p in pagination_data["items"]]
     
     return 200, pagination_data
+
+#asdfsdfasdf
