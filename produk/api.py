@@ -12,7 +12,7 @@ from produk.schemas import (
     CreateProdukSchema,
     UpdateProdukStokSchema,
 )
-from django.contrib.auth.models import User
+from authentication.models import User
 
 
 class AuthBearer(HttpBearer):
@@ -41,9 +41,14 @@ def get_produk_paginated(request, page: int, sort: str = None, q: str = ""):
         return HttpResponseBadRequest("Invalid sort parameter. Use 'asc' or 'desc'.")
 
     user_id = request.auth
+    user = User.objects.get(id=user_id)
     order_by_field = "stok" if sort == "asc" else "-stok"
 
-    queryset = Produk.objects.filter(user_id=user_id)
+    if user.role == "Karyawan":
+        queryset = Produk.objects.filter(user=user.owner)
+    else:
+        queryset = Produk.objects.filter(user=user)
+
     if q:
         queryset = queryset.filter(nama__icontains=q)
 
@@ -105,24 +110,14 @@ def get_produk_by_id(request, id: int):
     "/update/{id}", response={200: ProdukResponseSchema, 404: dict, 422: dict}
 )
 def update_produk(
-    request, id: int, payload: CreateProdukSchema, foto: UploadedFile = None
+    request, id: int, payload: UpdateProdukStokSchema
 ):
     user_id = request.auth
 
     try:
         produk = get_object_or_404(Produk, id=id, user_id=user_id)
-
-        produk.nama = payload.nama
-        produk.harga_modal = payload.harga_modal
-        produk.harga_jual = payload.harga_jual
+        
         produk.stok = payload.stok
-        produk.satuan = payload.satuan
-
-        kategori_obj, _ = KategoriProduk.objects.get_or_create(nama=payload.kategori)
-        produk.kategori = kategori_obj
-
-        if foto:
-            produk.foto = foto
 
         produk.save()
 
@@ -149,6 +144,3 @@ def get_low_stock_products(request):
         .order_by("id")
     )
     return [ProdukResponseSchema.from_orm(p) for p in products]
-
-
-#test
