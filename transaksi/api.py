@@ -105,7 +105,7 @@ def get_transaksi_list(request, page: int = 1, q: str = "", category: str = "", 
     }
 
 @router.get("/{id}", response={200: TransaksiResponse, 404: dict})
-def get_transaksi_detail(request, id: int):
+def get_transaksi_detail(request, id: str):
     user_id = request.auth
     try:
         transaksi = get_object_or_404(Transaksi, id=id, user_id=user_id)
