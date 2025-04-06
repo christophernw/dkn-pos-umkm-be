@@ -96,9 +96,11 @@ def get_transaksi_list(
     category: str = "",
     transaction_type: str = "",
     status: str = "",
+    show_deleted: bool = False,  # Add this parameter
 ):
     user_id = request.auth
-    queryset = Transaksi.objects.filter(user_id=user_id).order_by("-created_at")
+    queryset = Transaksi.objects.filter(user_id=user_id, is_deleted=show_deleted)
+    queryset = queryset.order_by("-created_at")
 
     if q:
         # Search by transaction ID or category
@@ -173,7 +175,10 @@ def delete_transaksi(request, id: str):
                 product.stok -= item.quantity
                 product.save()
 
-        transaksi.delete()
+        # Instead of transaksi.delete(), do a soft delete
+        transaksi.is_deleted = True
+        transaksi.save()
+
         return 200, {"message": "Transaksi berhasil dihapus"}
     except ValueError as e:
         return 422, {"message": str(e)}
@@ -199,14 +204,20 @@ def get_monthly_summary(request):
     prev_start_date = start_date - relativedelta(months=1)
     prev_end_date = start_date
 
-    # Filter transactions for current month
+    # Filter transactions for current month (exclude deleted transactions)
     current_month_transactions = Transaksi.objects.filter(
-        user_id=user_id, created_at__gte=start_date, created_at__lt=end_date
+        user_id=user_id,
+        created_at__gte=start_date,
+        created_at__lt=end_date,
+        is_deleted=False,
     )
 
-    # Filter transactions for previous month
+    # Filter transactions for previous month (exclude deleted transactions)
     prev_month_transactions = Transaksi.objects.filter(
-        user_id=user_id, created_at__gte=prev_start_date, created_at__lt=prev_end_date
+        user_id=user_id,
+        created_at__gte=prev_start_date,
+        created_at__lt=prev_end_date,
+        is_deleted=False,
     )
 
     # Calculate income (pemasukan) for current and previous months

@@ -12,6 +12,7 @@ class Transaksi(models.Model):
     total_modal = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     status = models.CharField(max_length=20, default='Selesai')
+    is_deleted = models.BooleanField(default=False)  # Add this field
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
