@@ -34,6 +34,7 @@ class TransaksiItemResponse(Schema):
     id: int
     product_id: int
     product_name: str
+    product_image_url: Optional[str]
     quantity: int
     harga_jual_saat_transaksi: float
     harga_modal_saat_transaksi: float
@@ -45,6 +46,7 @@ class TransaksiItemResponse(Schema):
             id=item.id,
             product_id=item.product.id,
             product_name=item.product.nama,
+            product_image_url=item.product.foto.url if item.product.foto else None,
             quantity=float(item.quantity),
             harga_jual_saat_transaksi=float(item.harga_jual_saat_transaksi),
             harga_modal_saat_transaksi=float(item.harga_modal_saat_transaksi),

@@ -150,7 +150,7 @@ def get_transaksi_detail(request, id: str):
 
 @router.delete("/{id}", response={200: dict, 404: dict, 422: dict})
 @transaction.atomic
-def delete_transaksi(request, id: int):
+def delete_transaksi(request, id: str):
     user_id = request.auth
     try:
         transaksi = get_object_or_404(Transaksi, id=id, user_id=user_id)
