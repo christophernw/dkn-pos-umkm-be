@@ -2,10 +2,11 @@ import random
 from django.db import models
 from django.contrib.auth.models import User
 from produk.models import Produk
+from django.conf import settings
 
 class Transaksi(models.Model):
     id = models.CharField(max_length=10, primary_key=True)
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="transaksi")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="transaksi")
     transaction_type = models.CharField(max_length=20)
     category = models.CharField(max_length=50)
     total_amount = models.DecimalField(max_digits=12, decimal_places=2)

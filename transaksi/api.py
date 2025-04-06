@@ -9,7 +9,7 @@ from transaksi.schemas import (
     TransaksiResponse,
     PaginatedTransaksiResponse,
 )
-from django.contrib.auth.models import User
+from authentication.models import User
 from produk.api import AuthBearer
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
