@@ -164,22 +164,22 @@ def get_monthly_summary(request):
         created_at__lt=prev_end_date
     )
     
-    # Calculate income (Pemasukan) for current and previous months
+    # Calculate income (pemasukan) for current and previous months
     current_income = current_month_transactions.filter(
-        transaction_type="Pemasukan"
+        transaction_type="pemasukan"
     ).aggregate(total=Sum('total_amount'))['total'] or 0
     
     prev_income = prev_month_transactions.filter(
-        transaction_type="Pemasukan"
+        transaction_type="pemasukan"
     ).aggregate(total=Sum('total_amount'))['total'] or 0
     
-    # Calculate expenses (Pengeluaran) for current and previous months
+    # Calculate expenses (pengeluaran) for current and previous months
     current_expenses = current_month_transactions.filter(
-        transaction_type="Pengeluaran"
+        transaction_type="pengeluaran"
     ).aggregate(total=Sum('total_amount'))['total'] or 0
     
     prev_expenses = prev_month_transactions.filter(
-        transaction_type="Pengeluaran"
+        transaction_type="pengeluaran"
     ).aggregate(total=Sum('total_amount'))['total'] or 0
     
     # Calculate percentage changes
