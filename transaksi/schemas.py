@@ -62,6 +62,7 @@ class TransaksiResponse(Schema):
     amount: float
     items: List[TransaksiItemResponse]
     status: str
+    is_deleted: bool
     created_at: datetime
     
     @classmethod
@@ -75,7 +76,8 @@ class TransaksiResponse(Schema):
             amount=float(transaksi.amount),
             items=[TransaksiItemResponse.from_orm(item) for item in transaksi.items.all()],
             status=transaksi.status,
-            created_at=transaksi.created_at
+            is_deleted=transaksi.is_deleted,
+            created_at=transaksi.created_at,
         )
 
 class PaginatedTransaksiResponse(Schema):
