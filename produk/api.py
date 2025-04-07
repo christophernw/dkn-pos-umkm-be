@@ -40,6 +40,9 @@ def get_produk_paginated(request, page: int, sort: str = None, q: str = ""):
     if sort not in [None, "stok", "-stok", "-id"]:
         return HttpResponseBadRequest("Invalid sort parameter. Use 'asc' or 'desc'.")
 
+    if sort is None:
+        sort = "-id"
+    
     user_id = request.auth
     user = User.objects.get(id=user_id)
     
