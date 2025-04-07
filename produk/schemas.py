@@ -54,12 +54,29 @@ class CreateProdukSchema(BaseModel):
             raise ValueError("Stok minus seharusnya invalid")
         return v
 
-class UpdateProdukStokSchema(Schema):
-    stok: float
-    
+class UpdateProdukSchema(Schema):
+    nama: Optional[str]
+    harga_modal: Optional[float]
+    harga_jual: Optional[float]
+    stok: Optional[float]
+    satuan: Optional[str]
+    kategori: Optional[str]
+
+    @field_validator("harga_modal")
+    def validate_harga_modal(cls, v):
+        if v is not None and v < 0:
+            raise ValueError("Harga modal minus tidak valid")
+        return v
+
+    @field_validator("harga_jual")
+    def validate_harga_jual(cls, v):
+        if v is not None and v < 0:
+            raise ValueError("Harga jual minus tidak valid")
+        return v
+
     @field_validator("stok")
     def validate_stok(cls, v):
-        if v < 0:
+        if v is not None and v < 0:
             raise ValueError("Stok minus tidak valid")
         return v
 
