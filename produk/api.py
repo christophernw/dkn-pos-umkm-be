@@ -113,22 +113,19 @@ def update_produk(request, id: int, payload: UpdateProdukSchema, foto: UploadedF
     try:
         produk = get_object_or_404(Produk, id=id, user_id=user_id)
 
-        # Update fields from the payload if provided
-        if payload.nama is not None:
-            produk.nama = payload.nama
-        if payload.kategori is not None:
-            # Get or create the category instance
-            kategori_obj, _ = KategoriProduk.objects.get_or_create(nama=payload.kategori)
+        # Convert payload to dict and filter out None values
+        update_data = {k: v for k, v in payload.dict().items() if v is not None}
+        
+        # Handle kategori separately as it needs special processing
+        if 'kategori' in update_data:
+            kategori_name = update_data.pop('kategori')
+            kategori_obj, _ = KategoriProduk.objects.get_or_create(nama=kategori_name)
             produk.kategori = kategori_obj
-        if payload.harga_jual is not None:
-            produk.harga_jual = payload.harga_jual
-        if payload.harga_modal is not None:
-            produk.harga_modal = payload.harga_modal
-        if payload.stok is not None:
-            produk.stok = payload.stok
-        if payload.satuan is not None:
-            produk.satuan = payload.satuan
-
+        
+        # Update all other fields
+        for field, value in update_data.items():
+            setattr(produk, field, value)
+        
         # Handle the uploaded file (if provided)
         if foto:
             produk.foto = foto
