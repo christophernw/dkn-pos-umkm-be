@@ -1,10 +1,11 @@
 from ninja import Router
 from django.shortcuts import get_object_or_404
-from typing import List
+from typing import List, Optional
 from .models import Pemasukan, Pengeluaran, Produk, Transaksi
 from .schemas import (
     PemasukanCreate, PemasukanRead, 
-    PengeluaranCreate, PengeluaranRead
+    PengeluaranCreate, PengeluaranRead,
+    StatusTransaksiEnum
 )
 
 router = Router()
@@ -65,14 +66,24 @@ def create_pengeluaran(request, payload: PengeluaranCreate):
 
 
 @router.get("/pemasukan/daftar", response=List[PemasukanRead])
-def read_pemasukan(request):
+def read_pemasukan(request, status: Optional[StatusTransaksiEnum] = None):
     pemasukan_list = Pemasukan.objects.all()
+    
+    if status:
+        pemasukan_list = pemasukan_list.filter(transaksi__status=status)
+        
     return [PemasukanRead.from_orm(p) for p in pemasukan_list]
 
+
 @router.get("/pengeluaran/daftar", response=List[PengeluaranRead])
-def read_pengeluaran(request):
+def read_pengeluaran(request, status: Optional[StatusTransaksiEnum] = None):
     pengeluaran_list = Pengeluaran.objects.all()
+    
+    if status:
+        pengeluaran_list = pengeluaran_list.filter(transaksi__status=status)
+        
     return [PengeluaranRead.from_orm(p) for p in pengeluaran_list]
+
 
 @router.get("/pemasukan/{pemasukan_id}", response=PemasukanRead)
 def read_pemasukan_by_id(request, pemasukan_id: int):
@@ -85,12 +96,12 @@ def read_pengeluaran_by_id(request, pengeluaran_id: int):
     pengeluaran = get_object_or_404(Pengeluaran, id=pengeluaran_id)
     return PengeluaranRead.from_orm(pengeluaran)
 
+
 @router.delete("/pengeluaran/{pengeluaran_id}/delete", response={200: dict, 404: dict})
 def delete_pengeluaran(request, pengeluaran_id: int):
     try:
         pengeluaran = get_object_or_404(Pengeluaran, id=pengeluaran_id)
         
-
         transaksi = pengeluaran.transaksi
         transaksi.isDeleted = True
         transaksi.save()
@@ -101,6 +112,7 @@ def delete_pengeluaran(request, pengeluaran_id: int):
     except:
         return 404, {"error": "Pengeluaran not found"}
     
+
 @router.delete("/pemasukan/{pemasukan_id}/delete", response={200: dict, 404: dict})
 def delete_pemasukan(request, pemasukan_id: int):
     try:
