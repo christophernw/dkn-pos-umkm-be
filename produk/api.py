@@ -12,7 +12,7 @@ from produk.schemas import (
     CreateProdukSchema,
     UpdateProdukStokSchema,
 )
-from django.contrib.auth.models import User
+from authentication.models import User
 
 
 class AuthBearer(HttpBearer):
@@ -41,9 +41,14 @@ def get_produk_paginated(request, page: int, sort: str = None, q: str = ""):
         return HttpResponseBadRequest("Invalid sort parameter. Use 'asc' or 'desc'.")
 
     user_id = request.auth
+    user = User.objects.get(id=user_id)
     order_by_field = "stok" if sort == "asc" else "-stok"
 
-    queryset = Produk.objects.filter(user_id=user_id)
+    if user.role == "Karyawan":
+        queryset = Produk.objects.filter(user=user.owner)
+    else:
+        queryset = Produk.objects.filter(user=user)
+
     if q:
         queryset = queryset.filter(nama__icontains=q)
 

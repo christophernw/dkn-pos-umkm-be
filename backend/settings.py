@@ -55,6 +55,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'produk',
     'authentication',
+    'transaksi',
     'corsheaders',
     'rest_framework',
     'transaksi',
@@ -168,3 +169,14 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
 
 ]
+
+# User Auth
+AUTH_USER_MODEL = "authentication.User"
+
+# Email Settings
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_HOST_USER = 'ppllancar@gmail.com'
+EMAIL_HOST_PASSWORD = ''
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_BACKEND ='django.core.mail.backends.smtp.EmailBackend'

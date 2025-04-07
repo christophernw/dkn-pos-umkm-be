@@ -1,139 +1,88 @@
+from ninja import Schema
 from typing import List, Optional
 from datetime import datetime
-from enum import Enum
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
-class StatusTransaksiEnum(str, Enum):
-    LUNAS = 'LUNAS'
-    BELUM_LUNAS = 'BELUM_LUNAS'
+class TransaksiItemRequest(Schema):
+    product_id: int
+    quantity: float
+    harga_jual_saat_transaksi: float
+    harga_modal_saat_transaksi: float
+    
+    @field_validator("quantity")
+    def validate_quantity(cls, v):
+        if v <= 0:
+            raise ValueError("Quantity harus lebih dari 0")
+        return v
 
+class CreateTransaksiRequest(Schema):
+    transaction_type: str
+    category: str
+    total_amount: float
+    total_modal: float = 0
+    amount: float
+    items: List[TransaksiItemRequest] = []
+    status: str = "Selesai"
+    
+    @field_validator("items")
+    def validate_items(cls, v, values):
+        if "category" in values.data and values.data["category"] == "Penjualan Barang" and not v:
+            raise ValueError("Minimal satu item harus ditambahkan untuk penjualan barang")
+        return v
 
-class KategoriPemasukanEnum(str, Enum):
-    PENJUALAN = 'PENJUALAN'
-    PENAMBAHAN_MODAL = 'PENAMBAHAN_MODAL'
-    PENDAPATAN_DI_LUAR_USAHA = 'PENDAPATAN_DI_LUAR_USAHA'
-    PENDAPATAN_JASA_ATAU_KOMISI = 'PENDAPATAN_JASA_ATAU_KOMISI'
-    TERIMA_PINJAMAN = 'TERIMA_PINJAMAN'
-    PENAGIHAN_UTANG_ATAU_CICILAN = 'PENAGIHAN_UTANG_ATAU_CICILAN'
-    PENDAPATAN_LAIN = 'PENDAPATAN_LAIN'
-
-
-class KategoriPengeluaranEnum(str, Enum):
-    PEMBELIAN_STOK = 'PEMBELIAN_STOK'
-    PENGELUARAN_DI_LUAR_USAHA = 'PENGELUARAN_DI_LUAR_USAHA'
-    PEMBELIAN_BAHAN_BAKU = 'PEMBELIAN_BAHAN_BAKU'
-    BIAYA_OPERASIONAL = 'BIAYA_OPERASIONAL'
-    GAJI_ATAU_BONUS_KARYAWAN = 'GAJI_ATAU_BONUS_KARYAWAN'
-    PEMBERIAN_UTANG = 'PEMBERIAN_UTANG'
-    PEMBAYARAN_UTANG_ATAU_CICILAN = 'PEMBAYARAN_UTANG_ATAU_CICILAN'
-    PENGELUARAN_LAIN = 'PENGELUARAN_LAIN'
-
-
-class ProdukBase(BaseModel):
+class TransaksiItemResponse(Schema):
     id: int
-    nama: str
-    foto: Optional[str]
-    harga_modal: float
-    harga_jual: float
-    stok: float
-    satuan: str
-    kategori: str
-
+    product_id: int
+    product_name: str
+    product_image_url: Optional[str]
+    quantity: int
+    harga_jual_saat_transaksi: float
+    harga_modal_saat_transaksi: float
+    subtotal: float
+    
     @classmethod
-    def from_orm(cls, produk):
-
+    def from_orm(cls, item):
         return cls(
-            id=produk.id,
-            nama=produk.nama,
-            foto=produk.foto.url if produk.foto else None,
-            harga_modal=float(produk.harga_modal),
-            harga_jual=float(produk.harga_jual),
-            stok=float(produk.stok),
-            satuan=produk.satuan,
-            kategori=produk.kategori.nama,
+            id=item.id,
+            product_id=item.product.id,
+            product_name=item.product.nama,
+            product_image_url=item.product.foto.url if item.product.foto else None,
+            quantity=float(item.quantity),
+            harga_jual_saat_transaksi=float(item.harga_jual_saat_transaksi),
+            harga_modal_saat_transaksi=float(item.harga_modal_saat_transaksi),
+            subtotal=float(item.quantity * item.harga_jual_saat_transaksi)
         )
 
-class TransaksiRead(BaseModel):
-    id: int
-    status: StatusTransaksiEnum
-    catatan: Optional[str] = None
-    namaPelanggan: Optional[str] = None
-    nomorTeleponPelanggan: Optional[str] = None
-    foto: Optional[str] = None  
-    daftarProduk: List[ProdukBase]
-    tanggalTransaksi: datetime
-    isDeleted: bool
-
+class TransaksiResponse(Schema):
+    id: str
+    transaction_type: str
+    category: str
+    total_amount: float
+    total_modal: float
+    amount: float
+    items: List[TransaksiItemResponse]
+    status: str
+    is_deleted: bool
+    created_at: datetime
+    
     @classmethod
     def from_orm(cls, transaksi):
-        
         return cls(
             id=transaksi.id,
+            transaction_type=transaksi.transaction_type,
+            category=transaksi.category,
+            total_amount=float(transaksi.total_amount),
+            total_modal=float(transaksi.total_modal),
+            amount=float(transaksi.amount),
+            items=[TransaksiItemResponse.from_orm(item) for item in transaksi.items.all()],
             status=transaksi.status,
-            catatan=transaksi.catatan,
-            namaPelanggan=transaksi.namaPelanggan,
-            nomorTeleponPelanggan=transaksi.nomorTeleponPelanggan,
-            daftarProduk=[ProdukBase.from_orm(p) for p in transaksi.daftarProduk.all()], 
-            tanggalTransaksi=transaksi.tanggalTransaksi,
-            isDeleted=transaksi.isDeleted,
-            foto=transaksi.foto.url if transaksi.foto else None,  
+            is_deleted=transaksi.is_deleted,
+            created_at=transaksi.created_at,
         )
 
-
-class PemasukanRead(BaseModel):
-    id: int
-    transaksi: TransaksiRead
-    kategori: KategoriPemasukanEnum
-    totalPemasukan: float
-    hargaModal: float
-    tanggalTransaksi: datetime
-
-    @classmethod
-    def from_orm(cls, pemasukan):
-        return cls(
-            id=pemasukan.id,
-            transaksi=TransaksiRead.from_orm(pemasukan.transaksi),
-            kategori=pemasukan.kategori,
-            totalPemasukan=pemasukan.totalPemasukan,
-            hargaModal=float(pemasukan.hargaModal),
-            tanggalTransaksi=pemasukan.transaksi.tanggalTransaksi
-        )
-
-class PengeluaranRead(BaseModel):
-    id: int
-    transaksi: TransaksiRead
-    kategori: KategoriPengeluaranEnum
-    totalPengeluaran: float
-    tanggalTransaksi: datetime
-
-    @classmethod
-    def from_orm(cls, pengeluaran):
-        
-        return cls(
-            id=pengeluaran.id,
-            transaksi=TransaksiRead.from_orm(pengeluaran.transaksi),
-            kategori = pengeluaran.kategori,
-            totalPengeluaran = pengeluaran.totalPengeluaran,
-            tanggalTransaksi=pengeluaran.transaksi.tanggalTransaksi,
-        )
-
-class PemasukanCreate(BaseModel):
-    status: StatusTransaksiEnum
-    catatan: Optional[str] = None
-    namaPelanggan: Optional[str] = None
-    nomorTeleponPelanggan: Optional[str] = None
-    foto: Optional[str] = None
-    daftarProduk: List[int]  
-    kategori: KategoriPemasukanEnum
-    totalPemasukan: float
-    hargaModal: float = Field(..., ge=0, description="Total pengeluaran harus >= 0")
-    
-class PengeluaranCreate(BaseModel):
-    status: StatusTransaksiEnum
-    catatan: Optional[str] = None
-    namaPelanggan: Optional[str] = None
-    nomorTeleponPelanggan: Optional[str] = None
-    foto: Optional[str] = None
-    daftarProduk: List[int]  
-    kategori: KategoriPengeluaranEnum
-    totalPengeluaran: float = Field(..., ge=0, description="Total pengeluaran harus >= 0")
+class PaginatedTransaksiResponse(Schema):
+    items: List[TransaksiResponse]
+    total: int
+    page: int
+    per_page: int
+    total_pages: int
