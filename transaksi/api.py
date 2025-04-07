@@ -1,4 +1,5 @@
 from ninja import Router
+from silk.profiling.profiler import silk_profile
 from django.shortcuts import get_object_or_404
 from typing import List, Optional
 from .models import Pemasukan, Pengeluaran, Produk, Transaksi
@@ -66,6 +67,7 @@ def create_pengeluaran(request, payload: PengeluaranCreate):
 
 
 @router.get("/pemasukan/daftar", response=List[PemasukanRead])
+@silk_profile(name="Profiling Daftar Pemasukan")
 def read_pemasukan(request, status: Optional[StatusTransaksiEnum] = None):
     pemasukan_list = Pemasukan.objects.all()
     
@@ -76,6 +78,7 @@ def read_pemasukan(request, status: Optional[StatusTransaksiEnum] = None):
 
 
 @router.get("/pengeluaran/daftar", response=List[PengeluaranRead])
+@silk_profile(name="Profiling Daftar Pemasukan")
 def read_pengeluaran(request, status: Optional[StatusTransaksiEnum] = None):
     pengeluaran_list = Pengeluaran.objects.all()
     
