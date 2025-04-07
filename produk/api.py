@@ -81,6 +81,8 @@ def get_produk_paginated(request, page: int, sort: str = None, q: str = ""):
 def create_produk(request, payload: CreateProdukSchema, foto: UploadedFile = None):
     user_id = request.auth
     user = get_object_or_404(User, id=user_id)
+    if user.role != "Pemilik":
+        user = user.owner
 
     kategori_obj, _ = KategoriProduk.objects.get_or_create(nama=payload.kategori)
 
@@ -100,6 +102,10 @@ def create_produk(request, payload: CreateProdukSchema, foto: UploadedFile = Non
 @router.get("/{id}", response={200: ProdukResponseSchema, 404: dict})
 def get_produk_by_id(request, id: int):
     user_id = request.auth
+    user = get_object_or_404(User, id=user_id)
+    if user.role != "Pemilik":
+        user = user.owner
+
     try:
         produk = get_object_or_404(Produk, id=id, user_id=user_id)
         return 200, ProdukResponseSchema.from_orm(produk)
@@ -113,6 +119,10 @@ def update_produk(
     request, id: int, payload: UpdateProdukStokSchema
 ):
     user_id = request.auth
+    user = get_object_or_404(User, id=user_id)
+    if user.role != "Pemilik":
+        user = user.owner
+
 
     try:
         produk = get_object_or_404(Produk, id=id, user_id=user_id)
@@ -130,6 +140,11 @@ def update_produk(
 @router.delete("/delete/{id}")
 def delete_produk(request, id: int):
     user_id = request.auth
+    user = get_object_or_404(User, id=user_id)
+    if user.role != "Pemilik":
+        user = user.owner
+
+
     produk = get_object_or_404(Produk, id=id, user_id=user_id)
     produk.delete()
     return {"message": "Produk berhasil dihapus"}
@@ -138,6 +153,10 @@ def delete_produk(request, id: int):
 @router.get("/low-stock", response=list[ProdukResponseSchema])
 def get_low_stock_products(request):
     user_id = request.auth
+    user = get_object_or_404(User, id=user_id)
+    if user.role != "Pemilik":
+        user = user.owner
+
     products = (
         Produk.objects.select_related("kategori")
         .filter(stok__lt=10, user_id=user_id)

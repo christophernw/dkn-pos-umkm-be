@@ -16,7 +16,6 @@ from .schemas import (
     SessionData,
     RefreshTokenRequest,
     TokenValidationRequest,
-    AddUserRequest,
     InvitationRequest,
 )
 
