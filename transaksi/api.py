@@ -1,6 +1,8 @@
 from ninja import Router
 from silk.profiling.profiler import silk_profile
 from django.shortcuts import get_object_or_404
+from django.core.cache import cache
+from django.conf import settings
 from typing import List, Optional
 from .models import Pemasukan, Pengeluaran, Produk, Transaksi
 from .schemas import (
@@ -80,13 +82,36 @@ def read_pemasukan(request, status: Optional[StatusTransaksiEnum] = None):
 @router.get("/pengeluaran/daftar", response=List[PengeluaranRead])
 @silk_profile(name="Profiling Daftar Pemasukan")
 def read_pengeluaran(request, status: Optional[StatusTransaksiEnum] = None):
-    pengeluaran_list = Pengeluaran.objects.all()
+    # Create a cache key based on the status parameter
+    cache_key = f"pengeluaran_list:{status or 'all'}"
+    
+    # Try to get data from cache first
+    cached_data = cache.get(cache_key)
+    if cached_data:
+        print("Cache hit! Returning cached data")
+        return cached_data
+    
+    print("Cache miss! Fetching from database")
+    
+    # If not in cache, query database
+    pengeluaran_list = Pengeluaran.objects.filter(transaksi__isDeleted=False)
     
     if status:
         pengeluaran_list = pengeluaran_list.filter(transaksi__status=status)
-        
-    return [PengeluaranRead.from_orm(p) for p in pengeluaran_list]
-
+    
+    # Use prefetch_related to reduce the number of queries
+    pengeluaran_list = pengeluaran_list.prefetch_related(
+        'transaksi', 
+        'transaksi__daftarProduk'
+    )
+    
+    # Convert to response format    
+    result = [PengeluaranRead.from_orm(p) for p in pengeluaran_list]
+    
+    # Store in cache for future requests
+    cache.set(cache_key, result, timeout=settings.CACHE_TTL)
+    
+    return result
 
 @router.get("/pemasukan/{pemasukan_id}", response=PemasukanRead)
 def read_pemasukan_by_id(request, pemasukan_id: int):
