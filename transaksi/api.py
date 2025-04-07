@@ -308,3 +308,32 @@ def get_monthly_summary(request):
         "status": status,
         "amount": abs(net_amount),
     }
+
+@router.patch("/{id}/toggle-payment-status", response={200: dict, 404: dict, 422: dict})
+def toggle_payment_status(request, id: str):
+    user_id = request.auth
+    user = get_object_or_404(User, id=user_id)
+    
+    # Check if user has a toko
+    if not user.toko:
+        return 404, {"message": "User doesn't have a toko"}
+    
+    try:
+        # Get transaction by ID, ensure it belongs to user's toko and is not deleted
+        transaksi = get_object_or_404(Transaksi, id=id, toko=user.toko, is_deleted=False)
+        
+        # Check if current status is "Belum Lunas"
+        if transaksi.status != "Belum Lunas":
+            return 422, {"message": "Only transactions with 'Belum Lunas' status can be toggled"}
+        
+        # Update status to "Lunas"
+        transaksi.status = "Lunas"
+        transaksi.save()
+        
+        return 200, {
+            "message": "Status transaksi berhasil diubah menjadi Lunas",
+            "transaction_id": str(transaksi.id),
+            "status": transaksi.status
+        }
+    except Exception as e:
+        return 404, {"message": f"Error: {str(e)}"}
