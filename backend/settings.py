@@ -55,6 +55,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'produk',
     'authentication',
+    'transaksi',
     'corsheaders',
     'rest_framework',
 ]

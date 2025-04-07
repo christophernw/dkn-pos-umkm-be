@@ -10,7 +10,7 @@ from produk.schemas import (
     PaginatedResponseSchema,
     ProdukResponseSchema,
     CreateProdukSchema,
-    UpdateProdukStokSchema,
+    UpdateProdukSchema,
 )
 from authentication.models import User
 
@@ -112,12 +112,8 @@ def get_produk_by_id(request, id: int):
     except Exception as e:
         return 404, {"message": "Produk tidak ditemukan"}
 
-@router.post(
-    "/update/{id}", response={200: ProdukResponseSchema, 404: dict, 422: dict}
-)
-def update_produk(
-    request, id: int, payload: UpdateProdukStokSchema
-):
+@router.post("/update/{id}", response={200: ProdukResponseSchema, 404: dict, 422: dict})
+def update_produk(request, id: int, payload: UpdateProdukSchema, foto: UploadedFile = None):
     user_id = request.auth
     user = get_object_or_404(User, id=user_id)
     if user.role != "Pemilik":
@@ -126,8 +122,26 @@ def update_produk(
 
     try:
         produk = get_object_or_404(Produk, id=id, user_id=user_id)
-        
-        produk.stok = payload.stok
+
+        # Update fields from the payload if provided
+        if payload.nama is not None:
+            produk.nama = payload.nama
+        if payload.kategori is not None:
+            # Get or create the category instance
+            kategori_obj, _ = KategoriProduk.objects.get_or_create(nama=payload.kategori)
+            produk.kategori = kategori_obj
+        if payload.harga_jual is not None:
+            produk.harga_jual = payload.harga_jual
+        if payload.harga_modal is not None:
+            produk.harga_modal = payload.harga_modal
+        if payload.stok is not None:
+            produk.stok = payload.stok
+        if payload.satuan is not None:
+            produk.satuan = payload.satuan
+
+        # Handle the uploaded file (if provided)
+        if foto:
+            produk.foto = foto
 
         produk.save()
 
@@ -163,4 +177,3 @@ def get_low_stock_products(request):
         .order_by("id")
     )
     return [ProdukResponseSchema.from_orm(p) for p in products]
-
