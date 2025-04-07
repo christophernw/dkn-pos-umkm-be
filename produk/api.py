@@ -42,12 +42,15 @@ def get_produk_paginated(request, page: int, sort: str = None, q: str = ""):
 
     user_id = request.auth
     user = User.objects.get(id=user_id)
+    
+    # Check if user has a toko
+    if not user.toko:
+        return 404, {"message": "User doesn't have a toko"}
+    
     order_by_field = "stok" if sort == "asc" else "-stok"
 
-    if user.role == "Karyawan":
-        queryset = Produk.objects.filter(user=user.owner)
-    else:
-        queryset = Produk.objects.filter(user=user)
+    # Filter products by toko instead of user
+    queryset = Produk.objects.filter(toko=user.toko)
 
     if q:
         queryset = queryset.filter(nama__icontains=q)
@@ -81,6 +84,10 @@ def get_produk_paginated(request, page: int, sort: str = None, q: str = ""):
 def create_produk(request, payload: CreateProdukSchema, foto: UploadedFile = None):
     user_id = request.auth
     user = get_object_or_404(User, id=user_id)
+    
+    # Check if user has a toko
+    if not user.toko:
+        return 422, {"message": "User doesn't have a toko"}
 
     kategori_obj, _ = KategoriProduk.objects.get_or_create(nama=payload.kategori)
 
@@ -92,26 +99,39 @@ def create_produk(request, payload: CreateProdukSchema, foto: UploadedFile = Non
         stok=payload.stok,
         satuan=payload.satuan,
         kategori=kategori_obj,
-        user=user,
+        toko=user.toko,  # Associate with toko instead of user
     )
 
     return 201, ProdukResponseSchema.from_orm(produk)
 
+
 @router.get("/{id}", response={200: ProdukResponseSchema, 404: dict})
 def get_produk_by_id(request, id: int):
     user_id = request.auth
+    user = User.objects.get(id=user_id)
+    
+    if not user.toko:
+        return 404, {"message": "User doesn't have a toko"}
+    
     try:
-        produk = get_object_or_404(Produk, id=id, user_id=user_id)
+        # Get product by id and check if it belongs to user's toko
+        produk = get_object_or_404(Produk, id=id, toko=user.toko)
         return 200, ProdukResponseSchema.from_orm(produk)
     except Exception as e:
         return 404, {"message": "Produk tidak ditemukan"}
 
+
 @router.post("/update/{id}", response={200: ProdukResponseSchema, 404: dict, 422: dict})
 def update_produk(request, id: int, payload: UpdateProdukSchema, foto: UploadedFile = None):
     user_id = request.auth
+    user = User.objects.get(id=user_id)
+    
+    if not user.toko:
+        return 422, {"message": "User doesn't have a toko"}
 
     try:
-        produk = get_object_or_404(Produk, id=id, user_id=user_id)
+        # Get product by id and check if it belongs to user's toko
+        produk = get_object_or_404(Produk, id=id, toko=user.toko)
 
         # Convert payload to dict and filter out None values
         update_data = {k: v for k, v in payload.dict().items() if v is not None}
@@ -141,7 +161,12 @@ def update_produk(request, id: int, payload: UpdateProdukSchema, foto: UploadedF
 @router.delete("/delete/{id}")
 def delete_produk(request, id: int):
     user_id = request.auth
-    produk = get_object_or_404(Produk, id=id, user_id=user_id)
+    user = User.objects.get(id=user_id)
+    
+    if not user.toko:
+        return {"message": "User doesn't have a toko"}
+    
+    produk = get_object_or_404(Produk, id=id, toko=user.toko)
     produk.delete()
     return {"message": "Produk berhasil dihapus"}
 
@@ -149,9 +174,14 @@ def delete_produk(request, id: int):
 @router.get("/low-stock", response=list[ProdukResponseSchema])
 def get_low_stock_products(request):
     user_id = request.auth
+    user = User.objects.get(id=user_id)
+    
+    if not user.toko:
+        return []
+    
     products = (
         Produk.objects.select_related("kategori")
-        .filter(stok__lt=10, user_id=user_id)
+        .filter(stok__lt=10, toko=user.toko)
         .order_by("id")
     )
     return [ProdukResponseSchema.from_orm(p) for p in products]

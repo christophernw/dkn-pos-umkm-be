@@ -3,7 +3,7 @@ import jwt
 from ninja import Router
 from ninja_jwt.tokens import RefreshToken
 from ninja_jwt.exceptions import TokenError
-from authentication.models import Invitation, User
+from authentication.models import Invitation, Toko, User
 from pydantic import BaseModel
 from rest_framework_simplejwt.tokens import RefreshToken, AccessToken
 from rest_framework_simplejwt.exceptions import TokenError
@@ -23,6 +23,7 @@ from .schemas import (
 USER_ALREADY_EXISTS_ERROR = "User sudah terdaftar."
 
 router = Router()
+
 @router.post("/process-session")
 def process_session(request, session_data: SessionData):
     user_data = session_data.user
@@ -34,6 +35,10 @@ def process_session(request, session_data: SessionData):
             username=user_data.get("name"),
             email=user_data.get("email"),
         )
+            
+        toko = Toko.objects.create()
+        user.toko = toko
+        user.save()
 
     refresh = RefreshToken.for_user(user)
 
@@ -45,7 +50,8 @@ def process_session(request, session_data: SessionData):
             "id": user.id,
             "email": user.email,
             "name": user.username,
-            "role": user.role
+            "role": user.role,
+            "toko_id": user.toko.id if user.toko else None
         },
     }
 
@@ -72,18 +78,21 @@ def validate_token(request, token_data: TokenValidationRequest):
 @router.get("/get-users", response={200: list[dict], 401: dict}, auth=AuthBearer())
 def get_users(request):
     user = User.objects.get(id=request.auth)
-    if user.role == "Pemilik" or user.role == "pemilik":
-        users = User.objects.filter(owner=user) | User.objects.filter(id=user.id)
+    
+    if user.toko:
+        # Get all users in the same toko
+        users = User.objects.filter(toko=user.toko)
     else:
-        users = User.objects.filter(owner=user.owner)| User.objects.filter(id=user.id)
-        if user.owner:
-            users = users | User.objects.filter(id=user.owner.id)
+        # If user has no toko, just return the user
+        users = User.objects.filter(id=user.id)
+    
     users_data = [
         {
             "id": u.id,
             "name": u.username,
             "email": u.email,
-            "role": u.role
+            "role": u.role,
+            "toko_id": u.toko.id if u.toko else None
         }
         for u in users
     ]
@@ -130,8 +139,27 @@ def validate_invitation(request, payload: TokenValidationRequest):
         if not invitation:
             return {"valid": False, "error": "Invalid invitation"}
 
-        User.objects.create_user(username=name, email=email, role=role, owner_id=owner_id)
+        # Get owner information once
+        owner = User.objects.get(id=owner_id)
+        
+        # Check if user already exists
+        user = User.objects.filter(email=email).first()
+        
+        if not user:
+            # Create new user only if doesn't exist
+            user = User.objects.create_user(username=name, email=email, role=role)
+        else:
+            # Update role for existing user
+            user.role = role
+        
+        # Set toko relationship (for both new and existing users)
+        if owner.toko:
+            user.toko = owner.toko
+            user.save()
+        
+        # Clean up the invitation
         invitation.delete()
+        
         return {
             "valid": True,
             "message": "User successfully registered",
@@ -140,7 +168,3 @@ def validate_invitation(request, payload: TokenValidationRequest):
         return {"valid": False, "error": "Token expired"}
     except jwt.DecodeError:
         return {"valid": False, "error": "Invalid token"}
-
-
-    
-
