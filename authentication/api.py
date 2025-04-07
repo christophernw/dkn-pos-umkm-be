@@ -4,7 +4,6 @@ from ninja import Router
 from ninja_jwt.tokens import RefreshToken
 from ninja_jwt.exceptions import TokenError
 from authentication.models import Invitation, User
-from pydantic import BaseModel
 from rest_framework_simplejwt.tokens import RefreshToken, AccessToken
 from rest_framework_simplejwt.exceptions import TokenError
 from produk.api import AuthBearer
