@@ -37,7 +37,7 @@ def get_produk_default(request, sort: str = None):
 
 @router.get("/page/{page}", response={200: PaginatedResponseSchema, 404: dict})
 def get_produk_paginated(request, page: int, sort: str = None, q: str = ""):
-    if sort not in [None, "asc", "desc"]:
+    if sort not in [None, "stok", "-stok", "-id"]:
         return HttpResponseBadRequest("Invalid sort parameter. Use 'asc' or 'desc'.")
 
     user_id = request.auth
@@ -46,8 +46,6 @@ def get_produk_paginated(request, page: int, sort: str = None, q: str = ""):
     # Check if user has a toko
     if not user.toko:
         return 404, {"message": "User doesn't have a toko"}
-    
-    order_by_field = "stok" if sort == "asc" else "-stok"
 
     # Filter products by toko instead of user
     queryset = Produk.objects.filter(toko=user.toko)
@@ -55,7 +53,7 @@ def get_produk_paginated(request, page: int, sort: str = None, q: str = ""):
     if q:
         queryset = queryset.filter(nama__icontains=q)
 
-    queryset = queryset.select_related("kategori").order_by(order_by_field, "id")
+    queryset = queryset.select_related("kategori").order_by(sort)
 
     try:
         per_page = int(request.GET.get("per_page", 7))

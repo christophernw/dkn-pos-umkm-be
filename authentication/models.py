@@ -13,7 +13,11 @@ class Toko(models.Model):
         return f"Toko {self.id} - {owner.username if owner else 'No owner'}"
 
 class User(AbstractUser):
-    ROLE_CHOICES = [("Pemilik", "Pemilik"), ("Karyawan", "Karyawan")]
+    ROLE_CHOICES = [
+        ("Pemilik", "Pemilik"), 
+        ("Administrator", "Administrator"), 
+        ("Karyawan", "Karyawan")
+    ]
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default="Pemilik")
     
     # Add foreign key to Toko
@@ -22,7 +26,10 @@ class User(AbstractUser):
 class Invitation(models.Model):
     email = models.EmailField(unique=True)
     name = models.CharField(max_length=255)
-    role = models.CharField(max_length=20, choices=[("Pemilik", "Pemilik"), ("Karyawan", "Karyawan")])
+    role = models.CharField(
+        max_length=20, 
+        choices=[("Pemilik", "Pemilik"), ("Administrator", "Administrator"), ("Karyawan", "Karyawan")]
+    )
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name="sent_invitations")
     token = models.CharField(max_length=512, unique=True)
     expires_at = models.DateTimeField()

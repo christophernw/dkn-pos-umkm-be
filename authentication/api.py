@@ -13,14 +13,13 @@ from django.utils.timezone import now
 from django.db.utils import IntegrityError
 
 from .schemas import (
+    RemoveUserRequest,
     SessionData,
     RefreshTokenRequest,
     TokenValidationRequest,
     AddUserRequest,
     InvitationRequest,
 )
-
-USER_ALREADY_EXISTS_ERROR = "User sudah terdaftar."
 
 router = Router()
 
@@ -97,7 +96,16 @@ def get_users(request):
         for u in users
     ]
 
-    users_data.sort(key=lambda u: u['role'] != "Pemilik")  
+    # Sort users based on role hierarchy: Pemilik, Administrator, Karyawan
+    def role_priority(role):
+        if role == "Pemilik":
+            return 0
+        elif role == "Administrator":
+            return 1
+        else:  # "Karyawan"
+            return 2
+
+    users_data.sort(key=lambda u: role_priority(u['role']))
 
     return users_data
 
@@ -108,10 +116,7 @@ def send_invitation(request, payload: InvitationRequest):
     role = payload.role.strip()
     owner = User.objects.get(id=request.auth)
 
-    if User.objects.filter(email=email).exists():
-        return 400, {"error": USER_ALREADY_EXISTS_ERROR}
-
-    if Invitation.objects.filter(email=email).exists():
+    if Invitation.objects.filter(email=email, owner=owner).exists():
         return 400, {"error": "Undangan sudah dikirim ke email ini."}
 
     expiration = now() + timedelta(days=1)
@@ -168,3 +173,47 @@ def validate_invitation(request, payload: TokenValidationRequest):
         return {"valid": False, "error": "Token expired"}
     except jwt.DecodeError:
         return {"valid": False, "error": "Invalid token"}
+
+@router.post("/remove-user-from-toko", response={200: dict, 400: dict, 403: dict}, auth=AuthBearer())
+def remove_user_from_toko(request, payload: RemoveUserRequest):
+    # Get the requesting user (must be a Pemilik)
+    requester = User.objects.get(id=request.auth)
+    
+    # Verify requester is a Pemilik
+    if requester.role != "Pemilik":
+        return 403, {"error": "Only Pemilik can remove users from toko"}
+    
+    # Get the user to be removed
+    try:
+        user_to_remove = User.objects.get(id=payload.user_id)
+    except User.DoesNotExist:
+        return 400, {"error": "User not found"}
+    
+    # Verify users belong to the same toko
+    if not requester.toko or requester.toko != user_to_remove.toko:
+        return 400, {"error": "User is not in your toko"}
+    
+    # Prevent removing oneself
+    if requester.id == user_to_remove.id:
+        return 400, {"error": "Cannot remove yourself from your own toko"}
+    
+    # Store the user's current toko and set to None temporarily
+    original_toko = user_to_remove.toko
+    user_to_remove.toko = None
+    
+    # Create a new toko for the removed user
+    user_to_remove.role = "Pemilik"
+    new_toko = Toko.objects.create()
+    user_to_remove.toko = new_toko
+    user_to_remove.save()
+    
+    return {
+        "message": f"User {user_to_remove.username} removed from toko and given a new toko",
+        "user": {
+            "id": user_to_remove.id,
+            "name": user_to_remove.username,
+            "email": user_to_remove.email,
+            "role": user_to_remove.role,
+            "new_toko_id": new_toko.id
+        }
+    }
