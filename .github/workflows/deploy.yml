@@ -3,10 +3,12 @@ name: Deploy Django App
 on:
   push:
     branches:
-      - "**"
+      - main
+      - staging
   pull_request:
     branches:
-      - "**"
+      - main
+      - staging
 
 jobs:
   deploy:
@@ -27,14 +29,18 @@ jobs:
 
     - name: Set environment variables
       run: |
-        if [ "${{ github.ref }}" == "refs/heads/main" ]; then
+        if [ "${{ github.ref }}" == "refs/heads/main" ] || [ "${{ github.base_ref }}" == "main" ]; then
           echo "BRANCH=main" >> $GITHUB_ENV
           echo "PORT=8000" >> $GITHUB_ENV
           echo "CONTAINER_NAME=myproject_django_main" >> $GITHUB_ENV
-        elif [ "${{ github.ref }}" == "refs/heads/staging" ]; then
+        elif [ "${{ github.ref }}" == "refs/heads/staging" ] || [ "${{ github.base_ref }}" == "staging" ]; then
           echo "BRANCH=staging" >> $GITHUB_ENV
           echo "PORT=8001" >> $GITHUB_ENV
           echo "CONTAINER_NAME=myproject_django_staging" >> $GITHUB_ENV
+        else
+          echo "BRANCH=dev" >> $GITHUB_ENV
+          echo "PORT=8002" >> $GITHUB_ENV
+          echo "CONTAINER_NAME=myproject_django_dev" >> $GITHUB_ENV
         fi
 
     - name: Build and Push Docker Image
@@ -50,5 +56,5 @@ jobs:
           docker pull christophernw/dkn-pos-umkm-be:${{ env.BRANCH }}
           docker stop ${{ env.CONTAINER_NAME }} || true
           docker rm ${{ env.CONTAINER_NAME }} || true
-          docker run -d --name ${{ env.CONTAINER_NAME }} -p ${{ env.PORT }}:8000 christophernw/dkn-pos-umkm-be:${{ env.BRANCH }}
+          docker run -d --name ${{ env.CONTAINER_NAME }} -p ${{ env.PORT }}:8000 christophernw/dkn-pos-umkm-be:${{ env.BRANCH }} bash -c "python manage.py migrate && gunicorn backend.wsgi:application --bind 0.0.0.0:8000"
         EOF
