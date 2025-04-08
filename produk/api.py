@@ -11,9 +11,10 @@ from produk.schemas import (
     PaginatedResponseSchema,
     ProdukResponseSchema,
     CreateProdukSchema,
-    UpdateProdukStokSchema,
+    UpdateProdukSchema,
 )
-from django.contrib.auth.models import User
+from authentication.models import User
+
 
 class AuthBearer(HttpBearer):
     def authenticate(self, request, token):
@@ -26,7 +27,9 @@ class AuthBearer(HttpBearer):
             return None
         return None
 
+
 router = Router(auth=AuthBearer())
+
 
 @router.get("", response={200: PaginatedResponseSchema, 404: dict})
 def get_produk_default(request, sort: str = None):
@@ -39,12 +42,17 @@ def get_produk_paginated(request, page: int, sort: str = None, q: str = ""):
         return HttpResponseBadRequest("Invalid sort parameter. Use 'asc' or 'desc'.")
 
     user_id = request.auth
+    user = User.objects.get(id=user_id)
     order_by_field = "stok" if sort == "asc" else "-stok"
-    
-    queryset = Produk.objects.filter(user_id=user_id)
+
+    if user.role == "Karyawan":
+        queryset = Produk.objects.filter(user=user.owner)
+    else:
+        queryset = Produk.objects.filter(user=user)
+
     if q:
         queryset = queryset.filter(nama__icontains=q)
-    
+
     queryset = queryset.select_related("kategori").order_by(order_by_field, "id")
 
     try:
@@ -76,7 +84,7 @@ MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 def create_produk(request, payload: CreateProdukSchema, foto: UploadedFile = None):
     user_id = request.auth
     user = get_object_or_404(User, id=user_id)
-    
+
     kategori_obj, _ = KategoriProduk.objects.get_or_create(nama=payload.kategori)
 
     if foto:
@@ -100,22 +108,49 @@ def create_produk(request, payload: CreateProdukSchema, foto: UploadedFile = Non
 
     return 201, ProdukResponseSchema.from_orm(produk)
 
-@router.patch("/update/{id}", response={200: ProdukResponseSchema, 404: dict, 422: dict})
-def update_produk_stock(request, id: int, payload: UpdateProdukStokSchema):
+@router.get("/{id}", response={200: ProdukResponseSchema, 404: dict})
+def get_produk_by_id(request, id: int):
     user_id = request.auth
-    
     try:
-        # Get the product and verify ownership
         produk = get_object_or_404(Produk, id=id, user_id=user_id)
-        
-        # Update only the stock field
-        produk.stok = payload.stok
-        produk.save(update_fields=['stok'])
-        
         return 200, ProdukResponseSchema.from_orm(produk)
-    
+    except Exception as e:
+        return 404, {"message": "Produk tidak ditemukan"}
+
+@router.post("/update/{id}", response={200: ProdukResponseSchema, 404: dict, 422: dict})
+def update_produk(request, id: int, payload: UpdateProdukSchema, foto: UploadedFile = None):
+    user_id = request.auth
+
+    try:
+        produk = get_object_or_404(Produk, id=id, user_id=user_id)
+
+        # Update fields from the payload if provided
+        if payload.nama is not None:
+            produk.nama = payload.nama
+        if payload.kategori is not None:
+            # Get or create the category instance
+            kategori_obj, _ = KategoriProduk.objects.get_or_create(nama=payload.kategori)
+            produk.kategori = kategori_obj
+        if payload.harga_jual is not None:
+            produk.harga_jual = payload.harga_jual
+        if payload.harga_modal is not None:
+            produk.harga_modal = payload.harga_modal
+        if payload.stok is not None:
+            produk.stok = payload.stok
+        if payload.satuan is not None:
+            produk.satuan = payload.satuan
+
+        # Handle the uploaded file (if provided)
+        if foto:
+            produk.foto = foto
+
+        produk.save()
+
+        return 200, ProdukResponseSchema.from_orm(produk)
+
     except Exception as e:
         return 422, {"message": str(e)}
+
 
 @router.delete("/delete/{id}")
 def delete_produk(request, id: int):

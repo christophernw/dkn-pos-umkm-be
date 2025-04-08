@@ -29,14 +29,18 @@ jobs:
 
     - name: Set environment variables
       run: |
-        if [ "${{ github.ref }}" == "refs/heads/main" ]; then
+        if [ "${{ github.ref }}" == "refs/heads/main" ] || [ "${{ github.base_ref }}" == "main" ]; then
           echo "BRANCH=main" >> $GITHUB_ENV
           echo "PORT=8000" >> $GITHUB_ENV
           echo "CONTAINER_NAME=myproject_django_main" >> $GITHUB_ENV
-        elif [ "${{ github.ref }}" == "refs/heads/staging" ]; then
+        elif [ "${{ github.ref }}" == "refs/heads/staging" ] || [ "${{ github.base_ref }}" == "staging" ]; then
           echo "BRANCH=staging" >> $GITHUB_ENV
           echo "PORT=8001" >> $GITHUB_ENV
           echo "CONTAINER_NAME=myproject_django_staging" >> $GITHUB_ENV
+        else
+          echo "BRANCH=dev" >> $GITHUB_ENV
+          echo "PORT=8002" >> $GITHUB_ENV
+          echo "CONTAINER_NAME=myproject_django_dev" >> $GITHUB_ENV
         fi
 
     - name: Build and Push Docker Image

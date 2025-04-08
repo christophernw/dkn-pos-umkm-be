@@ -1,6 +1,6 @@
 from django.test import TestCase, Client, RequestFactory
 from django.urls import reverse
-from django.contrib.auth.models import User
+from authentication.models import User
 from decimal import Decimal
 import json
 from unittest.mock import patch, MagicMock
@@ -10,7 +10,7 @@ import jwt
 from pydantic import ValidationError
 
 from backend import settings
-from .api import AuthBearer, get_produk_default, router, get_produk_paginated, create_produk, delete_produk, get_low_stock_products, update_produk_stock
+from .api import AuthBearer, get_produk_default, router, get_produk_paginated, create_produk, delete_produk, get_low_stock_products, update_produk
 from .models import Produk, KategoriProduk
 from .schemas import ProdukResponseSchema, CreateProdukSchema, UpdateProdukStokSchema
 
@@ -130,7 +130,7 @@ class TestProductAPI(TestCase):
         payload = UpdateProdukStokSchema(stok=50)
         
         request = MockAuthenticatedRequest(user_id=self.user1.id)
-        status, response = update_produk_stock(request, id=produk.id, payload=payload)
+        status, response = update_produk(request, id=produk.id, payload=payload)
         
         self.assertEqual(status, 200)
         self.assertEqual(response.stok, 50.0)
@@ -144,7 +144,7 @@ class TestProductAPI(TestCase):
         request = MockAuthenticatedRequest(user_id=self.user1.id)
         
         # Use a non-existent ID
-        status, response = update_produk_stock(request, id=9999, payload=payload)
+        status, response = update_produk(request, id=9999, payload=payload)
     
         # Should return 422 error response, not raise exception
         self.assertEqual(status, 422)
