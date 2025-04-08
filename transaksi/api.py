@@ -3,6 +3,7 @@ from silk.profiling.profiler import silk_profile
 from django.shortcuts import get_object_or_404
 from django.core.cache import cache
 from django.conf import settings
+from django.db.models import Prefetch 
 from typing import List, Optional
 from .models import Pemasukan, Pengeluaran, Produk, Transaksi
 from .schemas import (
@@ -68,56 +69,78 @@ def create_pengeluaran(request, payload: PengeluaranCreate):
     return PengeluaranRead.from_orm(pengeluaran)
 
 
-@router.get("/pemasukan/daftar", response=List[PemasukanRead])
-@silk_profile(name="Profiling Daftar Pemasukan")
-def read_pemasukan(request, status: Optional[StatusTransaksiEnum] = None):
-    pemasukan_list = Pemasukan.objects.all()
-    
-    if status:
-        pemasukan_list = pemasukan_list.filter(transaksi__status=status)
-        
-    return [PemasukanRead.from_orm(p) for p in pemasukan_list]
-
-
 @router.get("/pengeluaran/daftar", response=List[PengeluaranRead])
 @silk_profile(name="Profiling Daftar Pemasukan")
 def read_pengeluaran(request, status: Optional[StatusTransaksiEnum] = None):
-    # Create a cache key based on the status parameter
     cache_key = f"pengeluaran_list:{status or 'all'}"
     
-    # Try to get data from cache first
     cached_data = cache.get(cache_key)
     if cached_data:
         print("Cache hit! Returning cached data")
         return cached_data
     
     print("Cache miss! Fetching from database")
-    
-    # If not in cache, query database
+
     pengeluaran_list = Pengeluaran.objects.filter(transaksi__isDeleted=False)
     
     if status:
         pengeluaran_list = pengeluaran_list.filter(transaksi__status=status)
     
-    # Use prefetch_related to reduce the number of queries
     pengeluaran_list = pengeluaran_list.prefetch_related(
         'transaksi', 
         'transaksi__daftarProduk'
-    )
-    
-    # Convert to response format    
+    )   
     result = [PengeluaranRead.from_orm(p) for p in pengeluaran_list]
     
-    # Store in cache for future requests
     cache.set(cache_key, result, timeout=settings.CACHE_TTL)
     
     return result
 
-@router.get("/pemasukan/{pemasukan_id}", response=PemasukanRead)
-def read_pemasukan_by_id(request, pemasukan_id: int):
-    pemasukan = get_object_or_404(Pemasukan, id=pemasukan_id)
-    return PemasukanRead.from_orm(pemasukan)
+@router.get("/pemasukan/daftar", response=List[PemasukanRead])
+@silk_profile(name="Profiling Daftar Pemasukan") 
+def read_pemasukan(request, status: Optional[StatusTransaksiEnum] = None):
+    cache_key = f"pemasukan_list:{status or 'all'}"
+    
+    # Cek cache dulu
+    cached_data = cache.get(cache_key)
+    if cached_data:
+        print("Cache hit! Returning cached data")
+        return cached_data
+    
+    print("Cache miss! Fetching from database")
 
+    # Buat query dasar yang efisien
+    pemasukan_list = (
+        Pemasukan.objects
+        .filter(transaksi__isDeleted=False)
+        .filter(transaksi__status=status) if status else 
+        Pemasukan.objects.filter(transaksi__isDeleted=False)
+    )
+    
+    # Optimasi relasi
+    pemasukan_list = (
+        pemasukan_list
+        # Gunakan select_related untuk foreign key (transaksi)
+        .select_related('transaksi')
+        # Gunakan prefetch_related untuk many-to-many (daftarProduk)
+        .prefetch_related(
+            # Prefetch dengan queryset kustom untuk optimasi lebih lanjut
+            Prefetch(
+                'transaksi__daftarProduk',
+                queryset=Produk.objects.select_related('kategori')  # Prefetch kategori juga
+            )
+        )
+    )
+    
+    # Gunakan iterator untuk mengoptimalkan memori saat mengambil data banyak
+    result = [
+        PemasukanRead.from_orm(p) 
+        for p in pemasukan_list.iterator(chunk_size=200)
+    ]
+    
+    cache.set(cache_key, result, timeout=settings.CACHE_TTL)
+    
+    return result
 
 @router.get("/pengeluaran/{pengeluaran_id}", response=PengeluaranRead)
 def read_pengeluaran_by_id(request, pengeluaran_id: int):
