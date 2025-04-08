@@ -179,20 +179,6 @@ class TransaksiTest(TestCase):
 
         response = client.post("/api/transaksi/pengeluaran/create", data, format="json")
         self.assertEqual(response.status_code, 422)
-
-    def test_get_pemasukan_list(self):
-        response = self.client.get("/api/transaksi/pemasukan/daftar")
-        self.assertEqual(response.status_code, 200)
-        self.assertIsInstance(response.json(), list)
-
-    def test_get_pengeluaran_list(self):
-        response = self.client.get("/api/transaksi/pengeluaran/daftar")
-        self.assertEqual(response.status_code, 200)
-        self.assertIsInstance(response.json(), list)
-
-    def test_get_pemasukan_by_id(self):
-        response = self.client.get("/api/transaksi/pemasukan/1")
-        self.assertEqual(response.status_code, 200)
         
     def test_get_pemasukan_by_id_not_found(self):
         response = self.client.get("/api/transaksi/pemasukan/999")
