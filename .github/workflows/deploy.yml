@@ -32,12 +32,15 @@ jobs:
         if [ "${{ github.ref }}" == "refs/heads/main" ] || [ "${{ github.base_ref }}" == "main" ]; then
           echo "BRANCH=main" >> $GITHUB_ENV
           echo "PORT=8000" >> $GITHUB_ENV
+          echo "DB_PORT_HOST=5432" >> $GITHUB_ENV
         elif [ "${{ github.ref }}" == "refs/heads/staging" ] || [ "${{ github.base_ref }}" == "staging" ]; then
           echo "BRANCH=staging" >> $GITHUB_ENV
           echo "PORT=8001" >> $GITHUB_ENV
+          echo "DB_PORT_HOST=5433" >> $GITHUB_ENV
         else
           echo "BRANCH=dev" >> $GITHUB_ENV
           echo "PORT=8002" >> $GITHUB_ENV
+          echo "DB_PORT_HOST=5434" >> $GITHUB_ENV
         fi
 
     - name: Build and Push Docker Image
@@ -59,6 +62,7 @@ jobs:
           export DB_PASSWORD="${{ secrets.DB_PASSWORD }}"
           export BRANCH="${{ env.BRANCH }}"
           export PORT="${{ env.PORT }}"
+          export DB_PORT_HOST="${{ env.DB_PORT_HOST }}"
           docker-compose down
           docker-compose up -d
         EOF
