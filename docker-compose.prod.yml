@@ -2,7 +2,7 @@ services:
   db:
     image: postgres:13
     volumes:
-      - postgres_${BRANCH}_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
     environment:
       POSTGRES_DB: ${DB_NAME}
       POSTGRES_USER: ${DB_USER}
