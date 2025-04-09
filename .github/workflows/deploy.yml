@@ -73,6 +73,6 @@ jobs:
           docker-compose --env-file .env pull
 
           # Restart containers
-          docker-compose --env-file .env down
+          docker-compose --env-file .env down --remove-orphans
           docker-compose --env-file .env up -d
         EOF
