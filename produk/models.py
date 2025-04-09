@@ -1,6 +1,8 @@
 from django.db import models
 from django.conf import settings
 
+from authentication.models import Toko
+
 class KategoriProduk(models.Model):
     nama = models.CharField(max_length=255)
 
@@ -13,9 +15,10 @@ class Produk(models.Model):
     stok = models.IntegerField()
     satuan = models.CharField(max_length=10)
     kategori = models.ForeignKey(KategoriProduk, on_delete=models.CASCADE, related_name="produk")
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,  # Ganti dengan AUTH_USER_MODEL
+    
+    # Replace user with toko
+    toko = models.ForeignKey(
+        Toko,
         on_delete=models.CASCADE,
         related_name="produk",
-        limit_choices_to={"role": "Pemilik"},  
     )

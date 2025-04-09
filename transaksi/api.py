@@ -23,11 +23,16 @@ router = Router(auth=AuthBearer())
 def create_transaksi(request, payload: CreateTransaksiRequest):
     user_id = request.auth
     user = get_object_or_404(User, id=user_id)
+    
+    # Check if user has a toko
+    if not user.toko:
+        return 422, {"message": "User doesn't have a toko"}
 
     try:
         # Create main transaction
         transaksi = Transaksi.objects.create(
-            user=user,
+            toko=user.toko,  # Associate with toko instead of user
+            created_by=user,  # Keep track of which user created the transaction
             transaction_type=payload.transaction_type,
             category=payload.category,
             total_amount=payload.total_amount,
@@ -40,7 +45,7 @@ def create_transaksi(request, payload: CreateTransaksiRequest):
         if payload.category == "Penjualan Barang" and payload.items:
             for item_data in payload.items:
                 product = get_object_or_404(
-                    Produk, id=item_data.product_id, user_id=user_id
+                    Produk, id=item_data.product_id, toko=user.toko
                 )
 
                 # Create transaction item
@@ -62,7 +67,7 @@ def create_transaksi(request, payload: CreateTransaksiRequest):
         elif payload.category == "Pembelian Stok" and payload.items:
             for item_data in payload.items:
                 product = get_object_or_404(
-                    Produk, id=item_data.product_id, user_id=user_id
+                    Produk, id=item_data.product_id, toko=user.toko
                 )
 
                 # Create transaction item
@@ -96,10 +101,17 @@ def get_transaksi_list(
     category: str = "",
     transaction_type: str = "",
     status: str = "",
-    show_deleted: bool = False,  # Add this parameter
+    show_deleted: bool = False,
 ):
     user_id = request.auth
-    queryset = Transaksi.objects.filter(user_id=user_id, is_deleted=show_deleted)
+    user = get_object_or_404(User, id=user_id)
+    
+    # Check if user has a toko
+    if not user.toko:
+        return 404, {"message": "User doesn't have a toko"}
+    
+    # Filter transactions by toko instead of user
+    queryset = Transaksi.objects.filter(toko=user.toko, is_deleted=show_deleted)
     queryset = queryset.order_by("-created_at")
 
     if q:
@@ -143,8 +155,15 @@ def get_transaksi_list(
 @router.get("/{id}", response={200: TransaksiResponse, 404: dict})
 def get_transaksi_detail(request, id: str):
     user_id = request.auth
+    user = get_object_or_404(User, id=user_id)
+    
+    # Check if user has a toko
+    if not user.toko:
+        return 404, {"message": "User doesn't have a toko"}
+    
     try:
-        transaksi = get_object_or_404(Transaksi, id=id, user_id=user_id)
+        # Get transaction by ID and check if it belongs to the user's toko
+        transaksi = get_object_or_404(Transaksi, id=id, toko=user.toko)
         return 200, TransaksiResponse.from_orm(transaksi)
     except Exception:
         return 404, {"message": "Transaksi tidak ditemukan"}
@@ -154,8 +173,15 @@ def get_transaksi_detail(request, id: str):
 @transaction.atomic
 def delete_transaksi(request, id: str):
     user_id = request.auth
+    user = get_object_or_404(User, id=user_id)
+    
+    # Check if user has a toko
+    if not user.toko:
+        return 404, {"message": "User doesn't have a toko"}
+    
     try:
-        transaksi = get_object_or_404(Transaksi, id=id, user_id=user_id)
+        # Get transaction by ID and check if it belongs to the user's toko
+        transaksi = get_object_or_404(Transaksi, id=id, toko=user.toko)
 
         # Restore product stock if transaction is a product sale
         if transaksi.category == "Penjualan Barang":
@@ -189,6 +215,11 @@ def delete_transaksi(request, id: str):
 @router.get("/summary/monthly", response={200: dict, 404: dict})
 def get_monthly_summary(request):
     user_id = request.auth
+    user = get_object_or_404(User, id=user_id)
+    
+    # Check if user has a toko
+    if not user.toko:
+        return 404, {"message": "User doesn't have a toko"}
 
     # Get current month period
     current_date = datetime.now()
@@ -204,17 +235,17 @@ def get_monthly_summary(request):
     prev_start_date = start_date - relativedelta(months=1)
     prev_end_date = start_date
 
-    # Filter transactions for current month (exclude deleted transactions)
+    # Filter transactions for current month by toko instead of user
     current_month_transactions = Transaksi.objects.filter(
-        user_id=user_id,
+        toko=user.toko,
         created_at__gte=start_date,
         created_at__lt=end_date,
         is_deleted=False,
     )
 
-    # Filter transactions for previous month (exclude deleted transactions)
+    # Filter transactions for previous month by toko instead of user
     prev_month_transactions = Transaksi.objects.filter(
-        user_id=user_id,
+        toko=user.toko,
         created_at__gte=prev_start_date,
         created_at__lt=prev_end_date,
         is_deleted=False,
@@ -277,3 +308,32 @@ def get_monthly_summary(request):
         "status": status,
         "amount": abs(net_amount),
     }
+
+@router.patch("/{id}/toggle-payment-status", response={200: dict, 404: dict, 422: dict})
+def toggle_payment_status(request, id: str):
+    user_id = request.auth
+    user = get_object_or_404(User, id=user_id)
+    
+    # Check if user has a toko
+    if not user.toko:
+        return 404, {"message": "User doesn't have a toko"}
+    
+    try:
+        # Get transaction by ID, ensure it belongs to user's toko and is not deleted
+        transaksi = get_object_or_404(Transaksi, id=id, toko=user.toko, is_deleted=False)
+        
+        # Check if current status is "Belum Lunas"
+        if transaksi.status != "Belum Lunas":
+            return 422, {"message": "Only transactions with 'Belum Lunas' status can be toggled"}
+        
+        # Update status to "Lunas"
+        transaksi.status = "Lunas"
+        transaksi.save()
+        
+        return 200, {
+            "message": "Status transaksi berhasil diubah menjadi Lunas",
+            "transaction_id": str(transaksi.id),
+            "status": transaksi.status
+        }
+    except Exception as e:
+        return 404, {"message": f"Error: {str(e)}"}

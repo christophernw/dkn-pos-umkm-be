@@ -13,6 +13,11 @@ from produk.schemas import (
     UpdateProdukSchema,
 )
 from authentication.models import User
+from django.db.models import Sum, F
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
+from transaksi.models import TransaksiItem
+from typing import Optional
 
 
 class AuthBearer(HttpBearer):
@@ -37,22 +42,26 @@ def get_produk_default(request, sort: str = None):
 
 @router.get("/page/{page}", response={200: PaginatedResponseSchema, 404: dict})
 def get_produk_paginated(request, page: int, sort: str = None, q: str = ""):
-    if sort not in [None, "asc", "desc"]:
+    if sort not in [None, "stok", "-stok", "-id"]:
         return HttpResponseBadRequest("Invalid sort parameter. Use 'asc' or 'desc'.")
 
+    if sort is None:
+        sort = "-id"
+    
     user_id = request.auth
     user = User.objects.get(id=user_id)
-    order_by_field = "stok" if sort == "asc" else "-stok"
+    
+    # Check if user has a toko
+    if not user.toko:
+        return 404, {"message": "User doesn't have a toko"}
 
-    if user.role == "Karyawan":
-        queryset = Produk.objects.filter(user=user.owner)
-    else:
-        queryset = Produk.objects.filter(user=user)
+    # Filter products by toko instead of user
+    queryset = Produk.objects.filter(toko=user.toko)
 
     if q:
         queryset = queryset.filter(nama__icontains=q)
 
-    queryset = queryset.select_related("kategori").order_by(order_by_field, "id")
+    queryset = queryset.select_related("kategori").order_by(sort)
 
     try:
         per_page = int(request.GET.get("per_page", 7))
@@ -81,8 +90,10 @@ def get_produk_paginated(request, page: int, sort: str = None, q: str = ""):
 def create_produk(request, payload: CreateProdukSchema, foto: UploadedFile = None):
     user_id = request.auth
     user = get_object_or_404(User, id=user_id)
-    if user.role != "Pemilik":
-        user = user.owner
+    
+    # Check if user has a toko
+    if not user.toko:
+        return 422, {"message": "User doesn't have a toko"}
 
     kategori_obj, _ = KategoriProduk.objects.get_or_create(nama=payload.kategori)
 
@@ -94,51 +105,111 @@ def create_produk(request, payload: CreateProdukSchema, foto: UploadedFile = Non
         stok=payload.stok,
         satuan=payload.satuan,
         kategori=kategori_obj,
-        user=user,
+        toko=user.toko,  # Associate with toko instead of user
     )
 
     return 201, ProdukResponseSchema.from_orm(produk)
 
+
+@router.get("/most-popular", response={200: list, 404: dict})
+def get_most_popular_products(request):
+    user_id = request.auth
+    user = User.objects.get(id=user_id)
+    
+    if not user.toko:
+        return 404, {"message": "User doesn't have a toko"}
+    
+    # Get most popular products by all-time sales volume
+    popular_products = (
+        TransaksiItem.objects
+        .filter(
+            transaksi__toko=user.toko,
+            transaksi__is_deleted=False,
+            transaksi__category="Penjualan Barang"
+        )
+        .values('product__id', 'product__nama')
+        .annotate(total_sold=Sum('quantity'))
+        .order_by('-total_sold')[:3]  # Get top 3
+    )
+    
+    result = []
+    for item in popular_products:
+        product = Produk.objects.get(id=item['product__id'])
+        result.append({
+            "id": product.id,
+            "name": product.nama,
+            "sold": item['total_sold'],  # Show sold instead of stock
+            "imageUrl": product.foto.url if product.foto else None,
+        })
+    
+    return 200, result
+
+@router.get("/low-stock", response={200: list, 404: dict})
+def get_low_stock_products(request):
+    user_id = request.auth
+    user = User.objects.get(id=user_id)
+    
+    if not user.toko:
+        return 404, {"message": "User doesn't have a toko"}
+    
+    products = (
+        Produk.objects.select_related("kategori")
+        .filter(toko=user.toko)
+        .order_by('stok')[:5]  # Get top 5 with lowest stock
+    )
+    
+    result = []
+    for product in products:
+        result.append({
+            "id": product.id,
+            "name": product.nama,
+            "stock": product.stok,
+            "imageUrl": product.foto.url if product.foto else None,
+        })
+    
+    return 200, result
+
 @router.get("/{id}", response={200: ProdukResponseSchema, 404: dict})
 def get_produk_by_id(request, id: int):
     user_id = request.auth
-    user = get_object_or_404(User, id=user_id)
-    if user.role != "Pemilik":
-        user = user.owner
-
+    user = User.objects.get(id=user_id)
+    
+    if not user.toko:
+        return 404, {"message": "User doesn't have a toko"}
+    
     try:
-        produk = get_object_or_404(Produk, id=id, user_id=user_id)
+        # Get product by id and check if it belongs to user's toko
+        produk = get_object_or_404(Produk, id=id, toko=user.toko)
         return 200, ProdukResponseSchema.from_orm(produk)
     except Exception as e:
         return 404, {"message": "Produk tidak ditemukan"}
 
+
 @router.post("/update/{id}", response={200: ProdukResponseSchema, 404: dict, 422: dict})
 def update_produk(request, id: int, payload: UpdateProdukSchema, foto: UploadedFile = None):
     user_id = request.auth
-    user = get_object_or_404(User, id=user_id)
-    if user.role != "Pemilik":
-        user = user.owner
-
+    user = User.objects.get(id=user_id)
+    
+    if not user.toko:
+        return 422, {"message": "User doesn't have a toko"}
 
     try:
-        produk = get_object_or_404(Produk, id=id, user_id=user_id)
+        # Get product by id and check if it belongs to user's toko
+        produk = get_object_or_404(Produk, id=id, toko=user.toko)
 
-        # Update fields from the payload if provided
-        if payload.nama is not None:
-            produk.nama = payload.nama
-        if payload.kategori is not None:
-            # Get or create the category instance
-            kategori_obj, _ = KategoriProduk.objects.get_or_create(nama=payload.kategori)
+        # Convert payload to dict and filter out None values
+        update_data = {k: v for k, v in payload.dict().items() if v is not None}
+        
+        # Handle kategori separately as it needs special processing
+        if 'kategori' in update_data:
+            kategori_name = update_data.pop('kategori')
+            kategori_obj, _ = KategoriProduk.objects.get_or_create(nama=kategori_name)
             produk.kategori = kategori_obj
-        if payload.harga_jual is not None:
-            produk.harga_jual = payload.harga_jual
-        if payload.harga_modal is not None:
-            produk.harga_modal = payload.harga_modal
-        if payload.stok is not None:
-            produk.stok = payload.stok
-        if payload.satuan is not None:
-            produk.satuan = payload.satuan
-
+        
+        # Update all other fields
+        for field, value in update_data.items():
+            setattr(produk, field, value)
+        
         # Handle the uploaded file (if provided)
         if foto:
             produk.foto = foto
@@ -154,26 +225,53 @@ def update_produk(request, id: int, payload: UpdateProdukSchema, foto: UploadedF
 @router.delete("/delete/{id}")
 def delete_produk(request, id: int):
     user_id = request.auth
-    user = get_object_or_404(User, id=user_id)
-    if user.role != "Pemilik":
-        user = user.owner
-
-
-    produk = get_object_or_404(Produk, id=id, user_id=user_id)
+    user = User.objects.get(id=user_id)
+    
+    if not user.toko:
+        return {"message": "User doesn't have a toko"}
+    
+    produk = get_object_or_404(Produk, id=id, toko=user.toko)
     produk.delete()
     return {"message": "Produk berhasil dihapus"}
 
 
-@router.get("/low-stock", response=list[ProdukResponseSchema])
-def get_low_stock_products(request):
+@router.get("/top-selling/{year}/{month}", response={200: list, 404: dict})
+def get_top_selling_products(request, year: int, month: int):
     user_id = request.auth
-    user = get_object_or_404(User, id=user_id)
-    if user.role != "Pemilik":
-        user = user.owner
-
-    products = (
-        Produk.objects.select_related("kategori")
-        .filter(stok__lt=10, user_id=user_id)
-        .order_by("id")
+    user = User.objects.get(id=user_id)
+    
+    if not user.toko:
+        return 404, {"message": "User doesn't have a toko"}
+    
+    # Define the month period
+    start_date = datetime(year, month, 1)
+    if month == 12:
+        end_date = datetime(year + 1, 1, 1)
+    else:
+        end_date = datetime(year, month + 1, 1)
+    
+    # Get top-selling products for the specified month by querying TransaksiItem
+    top_products = (
+        TransaksiItem.objects
+        .filter(
+            transaksi__toko=user.toko,
+            transaksi__created_at__gte=start_date,
+            transaksi__created_at__lt=end_date,
+            transaksi__is_deleted=False,
+            transaksi__category="Penjualan Barang"  # Only include actual sales
+        )
+        .values('product__id', 'product__nama', 'product__foto')
+        .annotate(sold=Sum('quantity'))
+        .order_by('-sold')[:3]  # Get top 3
     )
-    return [ProdukResponseSchema.from_orm(p) for p in products]
+    
+    result = []
+    for product in top_products:
+        result.append({
+            "id": product['product__id'],
+            "name": product['product__nama'],
+            "imageUrl": product['product__foto'],
+            "sold": product['sold']
+        })
+    
+    return 200, result
