@@ -101,7 +101,7 @@ ENV = os.environ.get('ENV', 'local')
 print(ENV)
 
 # Database configuration
-if ENV == 'staging':
+if ENV == 'staging' or ENV == 'production':
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',

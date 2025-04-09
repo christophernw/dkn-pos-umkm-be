@@ -49,30 +49,47 @@ jobs:
         docker tag my-django-app christophernw/dkn-pos-umkm-be:${{ env.BRANCH }}
         docker push christophernw/dkn-pos-umkm-be:${{ env.BRANCH }}
 
-    - name: Copy docker-compose file
+    - name: Copy docker-compose files
       run: |
-        sshpass -p "${{ secrets.SERVER_PASSWORD }}" scp -o StrictHostKeyChecking=no docker-compose.prod.yml ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }}:~/django-be/docker-compose.yml
+        sshpass -p "${{ secrets.SERVER_PASSWORD }}" scp -o StrictHostKeyChecking=no docker-compose.prod.yml ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }}:~/django-be-${{ env.BRANCH }}/docker-compose.yml
+        sshpass -p "${{ secrets.SERVER_PASSWORD }}" scp -o StrictHostKeyChecking=no docker-compose.db.yml ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }}:~/postgres-db-${{ env.BRANCH }}/docker-compose.yml
 
-    - name: Deploy with docker-compose
+    - name: Deploy database and web application
       run: |
         sshpass -p "${{ secrets.SERVER_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << EOF
-          cd django-be
-
-          # Set environment values
+          # Create directories if they don't exist
+          mkdir -p ~/postgres-db-${{ env.BRANCH }}
+          mkdir -p ~/django-be-${{ env.BRANCH }}
+          
+          # Set up database environment
+          cd ~/postgres-db-${{ env.BRANCH }}
           echo "BRANCH=${{ env.BRANCH }}" > .env
-          echo "PORT=${{ env.PORT }}" >> .env
-          echo "DB_PORT_HOST=${{ env.DB_PORT_HOST }}" >> .env
           echo "DB_NAME=${{ secrets.DB_NAME }}" >> .env
           echo "DB_USER=${{ secrets.DB_USER }}" >> .env
           echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env
-
-          export $(cat .env | xargs)
-          docker volume inspect postgres_data > /dev/null 2>&1 || docker volume create postgres_data
-
-          # Pull latest image (optional but good practice)
+          echo "DB_PORT_HOST=${{ env.DB_PORT_HOST }}" >> .env
+          
+          # Create volumes if they don't exist
+          docker volume inspect postgres_data_${{ env.BRANCH }} >/dev/null 2>&1 || docker volume create postgres_data_${{ env.BRANCH }}
+          
+          # Ensure network exists
+          docker network inspect postgres_network >/dev/null 2>&1 || docker network create postgres_network
+          
+          # Deploy database
           docker-compose --env-file .env pull
-
-          # Restart containers
+          docker-compose --env-file .env down --remove-orphans
+          docker-compose --env-file .env up -d
+          
+          # Set up web application environment
+          cd ~/django-be-${{ env.BRANCH }}
+          echo "BRANCH=${{ env.BRANCH }}" > .env
+          echo "PORT=${{ env.PORT }}" >> .env
+          echo "DB_NAME=${{ secrets.DB_NAME }}" >> .env
+          echo "DB_USER=${{ secrets.DB_USER }}" >> .env
+          echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env
+          
+          # Deploy web application
+          docker-compose --env-file .env pull
           docker-compose --env-file .env down --remove-orphans
           docker-compose --env-file .env up -d
         EOF

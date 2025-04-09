@@ -1,16 +1,16 @@
 services:
   web:
-    image: christophernw/dkn-pos-umkm-be:${BRANCH}
+    image: christophernw/dkn-pos-umkm-be:staging
     command: bash -c "python manage.py migrate && gunicorn backend.wsgi:application --bind 0.0.0.0:8000"
     ports:
-      - "${PORT}:8000"
+      - "8001:8000"
     environment:
       ENV: staging
       DB_NAME: ${DB_NAME}
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
-      DB_HOST: postgres_db        # Use the network alias instead of container name
-      DB_PORT: 5432               # Use the internal container port, not the host port
+      DB_HOST: postgres_db_staging
+      DB_PORT: 5432
     networks:
       - postgres_network
     restart: always
