@@ -32,8 +32,8 @@ services:
 
 volumes:
   postgres_data:
-    name: postgres_${BRANCH}_data
-    driver: local
+    external:
+      name: postgres_${BRANCH}_data
 
 networks:
   app_network:
