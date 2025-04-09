@@ -53,27 +53,26 @@ jobs:
       run: |
         sshpass -p "${{ secrets.SERVER_PASSWORD }}" scp -o StrictHostKeyChecking=no docker-compose.prod.yml ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }}:~/django-be/docker-compose.yml
 
-        - name: Deploy with docker-compose
-        run: |
-          sshpass -p "${{ secrets.SERVER_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
-            cd django-be
-  
-            # Set environment values
-            echo "BRANCH=${BRANCH}" > .env
-            echo "PORT=${PORT}" >> .env
-            echo "DB_PORT_HOST=${DB_PORT_HOST}" >> .env
-            echo "DB_NAME=${DB_NAME}" >> .env
-            echo "DB_USER=${DB_USER}" >> .env
-            echo "DB_PASSWORD=${DB_PASSWORD}" >> .env
-  
-            # Create volume if it doesn't exist
-            docker volume inspect postgres_${BRANCH}_data > /dev/null 2>&1 || docker volume create postgres_${BRANCH}_data
-  
-            # Pull latest image (optional but good practice)
-            docker-compose --env-file .env pull
-  
-            # Restart containers
-            docker-compose --env-file .env down
-            docker-compose --env-file .env up -d
-          EOF
-  
+    - name: Deploy with docker-compose
+      run: |
+        sshpass -p "${{ secrets.SERVER_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+          cd django-be
+
+          # Set environment values
+          echo "BRANCH=${BRANCH}" > .env
+          echo "PORT=${PORT}" >> .env
+          echo "DB_PORT_HOST=${DB_PORT_HOST}" >> .env
+          echo "DB_NAME=${DB_NAME}" >> .env
+          echo "DB_USER=${DB_USER}" >> .env
+          echo "DB_PASSWORD=${DB_PASSWORD}" >> .env
+
+          export $(cat .env | xargs)
+          docker volume inspect postgres_${BRANCH}_data > /dev/null 2>&1 || docker volume create postgres_${BRANCH}_data
+
+          # Pull latest image (optional but good practice)
+          docker-compose --env-file .env pull
+
+          # Restart containers
+          docker-compose --env-file .env down
+          docker-compose --env-file .env up -d
+        EOF
