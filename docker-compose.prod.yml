@@ -1,19 +1,4 @@
 services:
-  db:
-    image: postgres:13
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    environment:
-      POSTGRES_DB: ${DB_NAME}
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      PGDATA: /var/lib/postgresql/data
-    ports:
-      - "${DB_PORT_HOST}:5432"
-    networks:
-      - app_network
-    restart: always
-    
   web:
     image: christophernw/dkn-pos-umkm-be:${BRANCH}
     command: bash -c "python manage.py migrate && gunicorn backend.wsgi:application --bind 0.0.0.0:8000"
@@ -23,18 +8,13 @@ services:
       DB_NAME: ${DB_NAME}
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
-      DB_HOST: db
-      DB_PORT: 5432
-    depends_on:
-      - db
+      DB_HOST: postgres_db        # Use the network alias instead of container name
+      DB_PORT: 5432               # Use the internal container port, not the host port
     networks:
-      - app_network
+      - postgres_network
     restart: always
 
-volumes:
-  postgres_data:
-    external: true
-
 networks:
-  app_network:
-    driver: bridge
+  postgres_network:
+    external: true
+    name: postgres_network
