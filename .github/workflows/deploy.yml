@@ -51,8 +51,8 @@ jobs:
 
     - name: Copy docker-compose files
       run: |
-        sshpass -p "${{ secrets.SERVER_PASSWORD }}" scp -o StrictHostKeyChecking=no docker-compose.prod.yml ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }}:~/django-be-${{ env.BRANCH }}/docker-compose.yml
-        sshpass -p "${{ secrets.SERVER_PASSWORD }}" scp -o StrictHostKeyChecking=no docker-compose.db.yml ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }}:~/postgres-db-${{ env.BRANCH }}/docker-compose.yml
+        sshpass -p "${{ secrets.SERVER_PASSWORD }}" scp -o StrictHostKeyChecking=no docker-compose.prod.${{ env.BRANCH }}.yml ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }}:~/django-be-${{ env.BRANCH }}/docker-compose.yml
+        sshpass -p "${{ secrets.SERVER_PASSWORD }}" scp -o StrictHostKeyChecking=no docker-compose.db.${{ env.BRANCH }}.yml ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }}:~/postgres-db-${{ env.BRANCH }}/docker-compose.yml
 
     - name: Deploy database and web application
       run: |
