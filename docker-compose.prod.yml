@@ -33,6 +33,7 @@ services:
 volumes:
   postgres_data:
     name: postgres_${BRANCH}_data
+    driver: local
     external: true
 
 networks:
