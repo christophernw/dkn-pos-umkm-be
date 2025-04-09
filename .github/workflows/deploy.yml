@@ -63,15 +63,15 @@ jobs:
           
           # Create .env file for Docker Compose
           cat > .env << EOL
-          DB_NAME=${{ secrets.DB_NAME }}
-          DB_USER=${{ secrets.DB_USER }}
-          DB_PASSWORD=${{ secrets.DB_PASSWORD }}
-          BRANCH=${{ env.BRANCH }}
-          PORT=${{ env.PORT }}
-          DB_PORT_HOST=${{ env.DB_PORT_HOST }}
-          DB_HOST=db
-          DB_PORT=5432
-          EOL
+        DB_NAME=${{ secrets.DB_NAME }}
+        DB_USER=${{ secrets.DB_USER }}
+        DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+        BRANCH=${{ env.BRANCH }}
+        PORT=${{ env.PORT }}
+        DB_PORT_HOST=${{ env.DB_PORT_HOST }}
+        DB_HOST=db
+        DB_PORT=5432
+        EOL
           
           # Down without removing volumes
           docker-compose down --remove-orphans
