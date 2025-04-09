@@ -31,7 +31,8 @@ services:
     restart: always
 
 volumes:
-  postgres_${BRANCH}_data:
+  postgres_data:
+    name: postgres_${BRANCH}_data
     external: true
 
 networks:
