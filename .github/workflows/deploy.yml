@@ -64,6 +64,22 @@ jobs:
     - name: Deploy database and web application
       run: |
         sshpass -p "${{ secrets.SERVER_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << EOF
+          # Database
+          cd ~/postgres-db-${{ env.BRANCH }}
+          echo "BRANCH=${{ env.BRANCH }}" > .env
+          echo "DB_NAME=${{ secrets.DB_NAME }}" >> .env
+          echo "DB_USER=${{ secrets.DB_USER }}" >> .env
+          echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env
+          echo "DB_PORT_HOST=${{ env.DB_PORT_HOST }}" >> .env
+          
+          docker volume inspect postgres_data_${{ env.BRANCH }} >/dev/null 2>&1 || docker volume create postgres_data_${{ env.BRANCH }}
+          
+          docker network inspect postgres_network >/dev/null 2>&1 || docker network create postgres_network
+          
+          docker-compose --env-file .env pull
+          docker-compose --env-file .env down --remove-orphans
+          docker-compose --env-file .env up -d
+          
           # Web Application
           cd ~/django-be-${{ env.BRANCH }}
           echo "BRANCH=${{ env.BRANCH }}" > .env
