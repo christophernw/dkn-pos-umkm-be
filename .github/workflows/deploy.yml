@@ -52,7 +52,7 @@ jobs:
     - name: Deploy to Cloud Server via SSH
       run: |
         sshpass -p "${{ secrets.SERVER_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << EOF
-          docker system prune -af
+          docker system prune -f
           cd django-be
           docker pull christophernw/dkn-pos-umkm-be:${{ env.BRANCH }}
           docker stop ${{ env.CONTAINER_NAME }} || true
