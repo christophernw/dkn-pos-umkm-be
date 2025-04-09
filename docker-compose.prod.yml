@@ -5,6 +5,7 @@ services:
     ports:
       - "${PORT}:8000"
     environment:
+      ENV: staging
       DB_NAME: ${DB_NAME}
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}

@@ -98,6 +98,7 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 
 # Load environment variables
 ENV = os.environ.get('ENV', 'local')
+print(ENV)
 
 # Database configuration
 if ENV == 'staging':
