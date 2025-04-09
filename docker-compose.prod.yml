@@ -33,7 +33,6 @@ services:
 volumes:
   postgres_data:
     external: true
-    name: postgres_${BRANCH}_data
 
 networks:
   app_network:

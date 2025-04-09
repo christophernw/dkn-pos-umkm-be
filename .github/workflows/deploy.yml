@@ -67,7 +67,7 @@ jobs:
           echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env
 
           export $(cat .env | xargs)
-          docker volume inspect postgres_${BRANCH}_data > /dev/null 2>&1 || docker volume create postgres_${BRANCH}_data
+          docker volume inspect postgres_data > /dev/null 2>&1 || docker volume create postgres_data
 
           # Pull latest image (optional but good practice)
           docker-compose --env-file .env pull
