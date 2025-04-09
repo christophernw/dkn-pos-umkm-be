@@ -74,6 +74,6 @@ jobs:
         EOL
           
           # Down without removing volumes
-          docker-compose down --remove-orphans
+          docker-compose down --remove-orphans --volumes=false
           docker-compose up -d
         EOF
