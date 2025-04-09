@@ -2,7 +2,7 @@ services:
   db:
     image: postgres:13
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_${BRANCH}_data:/var/lib/postgresql/data
     environment:
       POSTGRES_DB: ${DB_NAME}
       POSTGRES_USER: ${DB_USER}
@@ -31,9 +31,7 @@ services:
     restart: always
 
 volumes:
-  postgres_data:
-    external: true
-    name: postgres_${BRANCH}_data
+  postgres_${BRANCH}_data:
 
 networks:
   app_network:
