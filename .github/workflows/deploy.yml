@@ -57,15 +57,21 @@ jobs:
       run: |
         sshpass -p "${{ secrets.SERVER_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << EOF
           cd django-be
-          export DB_NAME="${{ secrets.DB_NAME }}"
-          export DB_USER="${{ secrets.DB_USER }}"
-          export DB_PASSWORD="${{ secrets.DB_PASSWORD }}"
-          export BRANCH="${{ env.BRANCH }}"
-          export PORT="${{ env.PORT }}"
-          export DB_PORT_HOST="${{ env.DB_PORT_HOST }}"
           
           # Create volume if it doesn't exist
           docker volume inspect postgres_${BRANCH}_data > /dev/null 2>&1 || docker volume create postgres_${BRANCH}_data
+          
+          # Create .env file for Docker Compose
+          cat > .env << EOL
+          DB_NAME=${{ secrets.DB_NAME }}
+          DB_USER=${{ secrets.DB_USER }}
+          DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+          BRANCH=${{ env.BRANCH }}
+          PORT=${{ env.PORT }}
+          DB_PORT_HOST=${{ env.DB_PORT_HOST }}
+          DB_HOST=db
+          DB_PORT=5432
+          EOL
           
           # Down without removing volumes
           docker-compose down --remove-orphans
