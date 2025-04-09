@@ -49,13 +49,19 @@ jobs:
         docker tag my-django-app christophernw/dkn-pos-umkm-be:${{ env.BRANCH }}
         docker push christophernw/dkn-pos-umkm-be:${{ env.BRANCH }}
 
-    - name: Deploy to Cloud Server via SSH
+    - name: Copy docker-compose file
+      run: |
+        sshpass -p "${{ secrets.SERVER_PASSWORD }}" scp -o StrictHostKeyChecking=no docker-compose.prod.yml ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }}:~/django-be/docker-compose.yml
+
+    - name: Deploy with docker-compose
       run: |
         sshpass -p "${{ secrets.SERVER_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << EOF
-          docker system prune -f
           cd django-be
-          docker pull christophernw/dkn-pos-umkm-be:${{ env.BRANCH }}
-          docker stop ${{ env.CONTAINER_NAME }} || true
-          docker rm ${{ env.CONTAINER_NAME }} || true
-          docker run -d --name ${{ env.CONTAINER_NAME }} -p ${{ env.PORT }}:8000 christophernw/dkn-pos-umkm-be:${{ env.BRANCH }} bash -c "python manage.py migrate && gunicorn backend.wsgi:application --bind 0.0.0.0:8000"
+          export DB_NAME="${{ secrets.DB_NAME }}"
+          export DB_USER="${{ secrets.DB_USER }}"
+          export DB_PASSWORD="${{ secrets.DB_PASSWORD }}"
+          export BRANCH="${{ env.BRANCH }}"
+          export PORT="${{ env.PORT }}"
+          docker-compose down
+          docker-compose up -d
         EOF
