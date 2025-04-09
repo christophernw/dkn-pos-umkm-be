@@ -3,17 +3,21 @@ from django.db import models
 from django.contrib.auth.models import User
 from produk.models import Produk
 from django.conf import settings
+from authentication.models import Toko
 
 class Transaksi(models.Model):
     id = models.CharField(max_length=10, primary_key=True)
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="transaksi")
+    # Replace user with toko
+    toko = models.ForeignKey(Toko, on_delete=models.CASCADE, related_name="transaksi")
+    # Keep track of which user performed the transaction
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="created_transaksi")
     transaction_type = models.CharField(max_length=20)
     category = models.CharField(max_length=50)
     total_amount = models.DecimalField(max_digits=12, decimal_places=2)
     total_modal = models.DecimalField(max_digits=12, decimal_places=2, default=0)
     amount = models.DecimalField(max_digits=12, decimal_places=2)
     status = models.CharField(max_length=20, default='Selesai')
-    is_deleted = models.BooleanField(default=False)  # Add this field
+    is_deleted = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     

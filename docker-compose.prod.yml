@@ -1,0 +1,38 @@
+services:
+  db:
+    image: postgres:13
+    volumes:
+      - postgres_${BRANCH}_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "${DB_PORT_HOST}:5432"
+    networks:
+      - app_network
+    restart: always
+    
+  web:
+    image: christophernw/dkn-pos-umkm-be:${BRANCH}
+    command: bash -c "python manage.py migrate && gunicorn backend.wsgi:application --bind 0.0.0.0:8000"
+    ports:
+      - "${PORT}:8000"
+    environment:
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_HOST: db
+      DB_PORT: 5432
+    depends_on:
+      - db
+    networks:
+      - app_network
+    restart: always
+
+volumes:
+  postgres_${BRANCH}_data:
+
+networks:
+  app_network:
+    driver: bridge
