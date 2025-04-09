@@ -30,7 +30,7 @@ jobs:
     - name: Set environment variables
       run: |
         if [ "${{ github.ref }}" == "refs/heads/main" ] || [ "${{ github.base_ref }}" == "main" ]; then
-          echo "BRANCH=main" >> $GITHUB_ENV
+          echo "BRANCH=prod" >> $GITHUB_ENV
           echo "PORT=8000" >> $GITHUB_ENV
           echo "DB_PORT_HOST=5432" >> $GITHUB_ENV
         elif [ "${{ github.ref }}" == "refs/heads/staging" ] || [ "${{ github.base_ref }}" == "staging" ]; then
