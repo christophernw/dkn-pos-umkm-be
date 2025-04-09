@@ -59,6 +59,7 @@ jobs:
           cd django-be
 
           # Set environment values
+          echo "ENV"="staging" > .env
           echo "BRANCH=${{ env.BRANCH }}" > .env
           echo "PORT=${{ env.PORT }}" >> .env
           echo "DB_PORT_HOST=${{ env.DB_PORT_HOST }}" >> .env
