@@ -63,6 +63,11 @@ jobs:
           export BRANCH="${{ env.BRANCH }}"
           export PORT="${{ env.PORT }}"
           export DB_PORT_HOST="${{ env.DB_PORT_HOST }}"
-          docker-compose down
+          
+          # Create volume if it doesn't exist
+          docker volume inspect postgres_${BRANCH}_data > /dev/null 2>&1 || docker volume create postgres_${BRANCH}_data
+          
+          # Down without removing volumes
+          docker-compose down --remove-orphans
           docker-compose up -d
         EOF
