@@ -35,9 +35,9 @@ def process_session(request, session_data: SessionData):
             email=user_data.get("email"),
         )
             
-        toko = Toko.objects.create()
-        user.toko = toko
-        user.save()
+    toko = Toko.objects.create()
+    user.toko = toko
+    user.save()
 
     refresh = RefreshToken.for_user(user)
 
