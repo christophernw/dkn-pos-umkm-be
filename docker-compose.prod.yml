@@ -13,6 +13,7 @@ services:
     
   web:
     image: christophernw/dkn-pos-umkm-be:${BRANCH}
+    command: bash -c "python manage.py migrate && gunicorn backend.wsgi:application --bind 0.0.0.0:8000"
     ports:
       - "${PORT}:8000"
     environment:
