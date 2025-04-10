@@ -1,4 +1,3 @@
-# produk/tests.py
 from django.test import TestCase
 from django.conf import settings
 from ninja.testing import TestClient
@@ -6,13 +5,12 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 import jwt
 
 from authentication.models import User
-from produk.api import router, MAX_FILE_SIZE_MB
+from produk.api import router
 from produk.models import Produk, KategoriProduk
 
 
 class ProdukAPITestCase(TestCase):
     def setUp(self):
-        # test client for our router
         self.client = TestClient(router)
 
         # create owner user
@@ -21,10 +19,10 @@ class ProdukAPITestCase(TestCase):
         )
         self.owner.role = "Pemilik"
         self.owner.save()
-        owner_token = jwt.encode(
+        token = jwt.encode(
             {"user_id": self.owner.id}, settings.SECRET_KEY, algorithm="HS256"
         )
-        self.owner_headers = {"Authorization": f"Bearer {owner_token}"}
+        self.owner_headers = {"Authorization": f"Bearer {token}"}
 
         # create employee user
         self.employee = User.objects.create_user(
@@ -75,17 +73,12 @@ class ProdukAPITestCase(TestCase):
         self.assertCountEqual(names, ["Prod1", "Prod2"])
 
     def test_pagination_and_sorting(self):
-        # descending stok: Prod2 first
         r = self.client.get("/page/1?sort=desc", headers=self.owner_headers)
         self.assertEqual(r.status_code, 200)
-        items = r.json()["items"]
-        self.assertEqual(items[0]["nama"], "Prod2")
-
-        # ascending stok: Prod1 first
+        self.assertEqual(r.json()["items"][0]["nama"], "Prod2")
         r = self.client.get("/page/1?sort=asc", headers=self.owner_headers)
         self.assertEqual(r.status_code, 200)
-        items = r.json()["items"]
-        self.assertEqual(items[0]["nama"], "Prod1")
+        self.assertEqual(r.json()["items"][0]["nama"], "Prod1")
 
     def test_invalid_sort_parameter(self):
         r = self.client.get("/page/1?sort=foo", headers=self.owner_headers)
@@ -100,14 +93,64 @@ class ProdukAPITestCase(TestCase):
         r = self.client.get(f"/{self.prod1.id}", headers=self.owner_headers)
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.json()["id"], self.prod1.id)
-
-        # unknown id
         r2 = self.client.get("/9999", headers=self.owner_headers)
         self.assertEqual(r2.status_code, 404)
 
     def test_delete_produk(self):
         r = self.client.delete(f"/delete/{self.prod1.id}", headers=self.owner_headers)
         self.assertEqual(r.status_code, 200)
-        # now fetching it fails
         r2 = self.client.get(f"/{self.prod1.id}", headers=self.owner_headers)
         self.assertEqual(r2.status_code, 404)
+
+    def test_search_query_filters_results(self):
+        r = self.client.get("/page/1?q=Prod1", headers=self.owner_headers)
+        self.assertEqual(r.status_code, 200)
+        data = r.json()
+        self.assertEqual(data["total"], 1)
+        self.assertEqual(data["items"][0]["nama"], "Prod1")
+
+    def test_custom_per_page_and_page_not_found(self):
+        r1 = self.client.get("/page/1?per_page=1", headers=self.owner_headers)
+        self.assertEqual(r1.status_code, 200)
+        json1 = r1.json()
+        self.assertEqual(json1["per_page"], 1)
+        self.assertEqual(len(json1["items"]), 1)
+        self.assertEqual(json1["total_pages"], 2)
+
+        r3 = self.client.get("/page/3?per_page=1", headers=self.owner_headers)
+        self.assertEqual(r3.status_code, 404)
+
+    def test_update_nonexistent_produk(self):
+        payload = {"nama": "Nope"}
+        r = self.client.post("/update/9999", json={"payload": payload}, headers=self.owner_headers)
+        self.assertEqual(r.status_code, 422)
+
+    def test_unauthorized_access(self):
+        # no header → 401
+        self.assertEqual(self.client.get("/").status_code, 401)
+        self.assertEqual(
+            self.client.post("/create", json={"payload": {}}, headers={}).status_code, 401
+        )
+
+    def test_default_sort_when_no_param(self):
+        # create third product to test -id order
+        p3 = Produk.objects.create(
+            nama="Prod3",
+            foto=SimpleUploadedFile("a.png", b"\x89PNG\r\n\x1a\n", content_type="image/png"),
+            harga_modal=1,
+            harga_jual=1,
+            stok=50,
+            satuan="pcs",
+            kategori=self.cat,
+            user=self.owner,
+        )
+        r = self.client.get("/", headers=self.owner_headers)
+        first = r.json()["items"][0]
+        self.assertEqual(first["id"], p3.id)  # newest id first
+
+    def test_delete_all_and_list_empty(self):
+        # delete both then list
+        self.client.delete(f"/delete/{self.prod1.id}", headers=self.owner_headers)
+        self.client.delete(f"/delete/{self.prod2.id}", headers=self.owner_headers)
+        r = self.client.get("/", headers=self.owner_headers)
+        self.assertEqual(r.json()["total"], 0)

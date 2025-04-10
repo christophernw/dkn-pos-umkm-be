@@ -1,5 +1,3 @@
-# transaksi/tests.py
-
 from django.test import TestCase
 from django.conf import settings
 from ninja.testing import TestClient
@@ -12,6 +10,8 @@ from authentication.models import User
 from produk.models import Produk, KategoriProduk
 from transaksi.api import router
 from transaksi.models import Transaksi, TransaksiItem
+from django.utils import timezone
+from dateutil.relativedelta import relativedelta
 
 
 class TransaksiAPITestCase(TestCase):
@@ -222,3 +222,174 @@ class TransaksiAPITestCase(TestCase):
         # stock restored
         self.prod.refresh_from_db()
         self.assertEqual(self.prod.stok, orig)
+
+    def test_list_filter_category_and_q(self):
+        # create two txns with different categories
+        p1 = {
+            "transaction_type": "T1",
+            "category": "Food",
+            "total_amount": 10.0,
+            "total_modal": 0.0,
+            "amount": 10.0,
+            "items": [],
+        }
+        p2 = {
+            "transaction_type": "T2",
+            "category": "Drink",
+            "total_amount": 20.0,
+            "total_modal": 0.0,
+            "amount": 20.0,
+            "items": [],
+        }
+        r1 = self.client.post("", json=p1, headers=self.headers)
+        r2 = self.client.post("", json=p2, headers=self.headers)
+        id1, id2 = r1.json()["id"], r2.json()["id"]
+
+        # filter by category=Food
+        rf = self.client.get("?category=Food", headers=self.headers)
+        self.assertEqual(rf.status_code, 200)
+        self.assertEqual(rf.json()["total"], 1)
+        self.assertEqual(rf.json()["items"][0]["id"], id1)
+
+        # filter by q using partial ID of second txn
+        qstr = id2[:3]
+        rq = self.client.get(f"?q={qstr}", headers=self.headers)
+        self.assertEqual(rq.status_code, 200)
+        self.assertEqual(rq.json()["total"], 1)
+        self.assertEqual(rq.json()["items"][0]["id"], id2)
+
+    def test_list_filter_transaction_type_and_status(self):
+        # create with custom type and status
+        p = {
+            "transaction_type": "ABC",
+            "category": "X",
+            "total_amount": 5.0,
+            "total_modal": 0.0,
+            "amount": 5.0,
+            "items": [],
+            "status": "Pending",
+        }
+        r = self.client.post("", json=p, headers=self.headers)
+        tid = r.json()["id"]
+
+        # filter by transaction_type
+        rt = self.client.get(f"?transaction_type=ABC", headers=self.headers)
+        self.assertEqual(rt.status_code, 200)
+        self.assertEqual(rt.json()["total"], 1)
+
+        # filter by status
+        rs = self.client.get(f"?status=Pending", headers=self.headers)
+        self.assertEqual(rs.status_code, 200)
+        self.assertEqual(rs.json()["total"], 1)
+
+    def test_list_show_deleted_flag(self):
+        # create and then delete one txn
+        p = {
+            "transaction_type": "D1",
+            "category": "Any",
+            "total_amount": 1.0,
+            "total_modal": 0.0,
+            "amount": 1.0,
+            "items": [],
+        }
+        r = self.client.post("", json=p, headers=self.headers)
+        tid = r.json()["id"]
+        # delete it
+        self.client.delete(f"/{tid}", headers=self.headers)
+
+        # default list (show_deleted=False) should hide it
+        r1 = self.client.get("", headers=self.headers)
+        self.assertEqual(r1.json()["total"], 0)
+
+        # show_deleted=True should include it
+        r2 = self.client.get("?show_deleted=True", headers=self.headers)
+        self.assertEqual(r2.status_code, 200)
+        self.assertEqual(r2.json()["total"], 1)
+        self.assertEqual(r2.json()["items"][0]["id"], tid)
+
+    def test_delete_purchase_and_insufficient_stock_on_rollback(self):
+        # purchase txn of 4 units
+        orig = self.prod.stok
+        p = {
+            "transaction_type": "BUY2",
+            "category": "Pembelian Stok",
+            "total_amount": 40.0,
+            "total_modal": 20.0,
+            "amount": 20.0,
+            "items": [
+                {
+                    "product_id": self.prod.id,
+                    "quantity": 4.0,
+                    "harga_jual_saat_transaksi": 10.0,
+                    "harga_modal_saat_transaksi": 5.0,
+                }
+            ],
+        }
+        r = self.client.post("", json=p, headers=self.headers)
+        tid = r.json()["id"]
+        # stock now increased
+        self.prod.refresh_from_db()
+        self.assertEqual(self.prod.stok, orig + 4)
+
+        # manually drop stock below 4 to trigger rollback failure
+        Produk.objects.filter(id=self.prod.id).update(stok=2)
+
+        # attempt delete => 422
+        rd = self.client.delete(f"/{tid}", headers=self.headers)
+        self.assertEqual(rd.status_code, 422)
+        self.assertIn("Stok produk TestProd tidak mencukupi", rd.json()["message"])
+
+    def test_empty_monthly_summary(self):
+        """With no transactions at all, summary should be all zeros and 'untung'."""
+        r = self.client.get("/summary/monthly", headers=self.headers)
+        s = r.json()
+        self.assertEqual(s["pemasukan"]["amount"], 0)
+        self.assertEqual(s["pemasukan"]["change"], 0)
+        self.assertEqual(s["pengeluaran"]["amount"], 0)
+        self.assertEqual(s["pengeluaran"]["change"], 0)
+        self.assertEqual(s["status"], "untung")
+        self.assertEqual(s["amount"], 0)
+
+    def test_unauthorized_access(self):
+        """Access without Authorization header returns 401."""
+        r = self.client.get("")  # no headers
+        self.assertEqual(r.status_code, 401)
+        r2 = self.client.post("", json={}, headers={})
+        self.assertEqual(r2.status_code, 401)
+
+    def test_invalid_payload_missing_field(self):
+        """Submitting a payload missing required fields yields 422."""
+        # drop 'category'
+        bad = {
+            "transaction_type": "X",
+            "total_amount": 10.0,
+            "total_modal": 0.0,
+            "amount": 10.0,
+            "items": [],
+        }
+        r = self.client.post("", json=bad, headers=self.headers)
+        self.assertEqual(r.status_code, 422)
+        detail = r.json()["detail"][0]
+        self.assertIn("Field required", detail["msg"])
+
+    def test_invalid_item_quantity_zero(self):
+        """Quantity <=0 in items triggers validation error."""
+        payload = {
+            "transaction_type": "TX",
+            "category": "Penjualan Barang",
+            "total_amount": 5.0,
+            "total_modal": 0.0,
+            "amount": 5.0,
+            "items": [
+                {
+                    "product_id": self.prod.id,
+                    "quantity": 0.0,
+                    "harga_jual_saat_transaksi": 10.0,
+                    "harga_modal_saat_transaksi": 5.0,
+                }
+            ],
+        }
+        r = self.client.post("", json=payload, headers=self.headers)
+        self.assertEqual(r.status_code, 422)
+        detail = r.json()["detail"][0]
+        self.assertIn("Quantity harus lebih dari 0", detail["msg"])
