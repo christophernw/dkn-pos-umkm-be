@@ -14,6 +14,7 @@ from .schemas import (
     PaginatedPemasukanResponseSchema,
 )
 
+
 router = Router()
 
 
@@ -312,4 +313,106 @@ def get_pemasukan_paginated(
     
     return 200, pagination_data
 
-#asdfsdfasdf
+# Add these imports at the top of the file
+from datetime import datetime, timedelta
+from django.db.models import Sum, Count, F, Q
+from django.db.models.functions import TruncDay, TruncWeek, TruncMonth, TruncYear
+from .schemas import (
+    LaporanRequest, LaporanPenjualanResponse, LaporanPengeluaranResponse,
+    LaporanLabaRugiResponse, LaporanProdukResponse, LaporanPeriodeItem,
+    LaporanLabaRugiItem, LaporanProdukItem
+)
+
+# Add these helper functions
+def get_date_range(periode, tanggal_mulai=None, tanggal_akhir=None):
+    """Get date range based on period"""
+    today = datetime.now().date()
+    
+    if periode == "HARIAN":
+        return today, today
+    elif periode == "MINGGUAN":
+        start_date = today - timedelta(days=today.weekday())
+        end_date = start_date + timedelta(days=6)
+        return start_date, end_date
+    elif periode == "BULANAN":
+        start_date = today.replace(day=1)
+        if today.month == 12:
+            end_date = today.replace(year=today.year + 1, month=1, day=1) - timedelta(days=1)
+        else:
+            end_date = today.replace(month=today.month + 1, day=1) - timedelta(days=1)
+        return start_date, end_date
+    elif periode == "TAHUNAN":
+        start_date = today.replace(month=1, day=1)
+        end_date = today.replace(month=12, day=31)
+        return start_date, end_date
+    elif periode == "KUSTOM":
+        if not tanggal_mulai or not tanggal_akhir:
+            raise ValueError("Custom period requires start and end dates")
+        return tanggal_mulai, tanggal_akhir
+    
+    return today, today
+
+def get_trunc_function(periode):
+    """Get the appropriate truncation function for the period"""
+    if periode == "HARIAN":
+        return TruncDay
+    elif periode == "MINGGUAN":
+        return TruncWeek
+    elif periode == "BULANAN":
+        return TruncMonth
+    # elif periode == "TAHUNAN":
+    #     return TruncYear
+    else:
+        return TruncDay  # Default to daily for custom periods
+
+# Add these new API endpoints
+@router.post("/laporan/penjualan", response={200: LaporanPenjualanResponse, 422: dict})
+def laporan_penjualan(request, payload: LaporanRequest):
+    """Generate sales report"""
+    try:
+        start_date, end_date = get_date_range(
+            payload.periode, payload.tanggal_mulai, payload.tanggal_akhir
+        )
+        
+        # Filter pemasukan within date range
+        pemasukan_queryset = Pemasukan.objects.filter(
+            transaksi__tanggalTransaksi__date__gte=start_date,
+            transaksi__tanggalTransaksi__date__lte=end_date,
+            transaksi__isDeleted=False
+        )
+        
+        # Calculate total sales and transaction count
+        total_penjualan = pemasukan_queryset.aggregate(
+            total=Sum('totalPemasukan')
+        )['total'] or 0
+        
+        jumlah_transaksi = pemasukan_queryset.count()
+        
+        # Group by period
+        trunc_function = get_trunc_function(payload.periode)
+        periode_data = pemasukan_queryset.annotate(
+            periode=trunc_function('transaksi__tanggalTransaksi')
+        ).values('periode').annotate(
+            total=Sum('totalPemasukan'),
+            count=Count('id')
+        ).order_by('periode')
+        
+        # Format period data
+        formatted_periode_data = []
+        for item in periode_data:
+            formatted_periode_data.append(
+                LaporanPeriodeItem(
+                    periode=item['periode'].strftime('%Y-%m-%d'),
+                    total=item['total'],
+                    count=item['count']
+                )
+            )
+        
+        return 200, LaporanPenjualanResponse(
+            total_penjualan=total_penjualan,
+            jumlah_transaksi=jumlah_transaksi,
+            periode_data=formatted_periode_data
+        )
+    
+    except Exception as e:
+        return 422, {"error": str(e)}

@@ -162,3 +162,58 @@ class PaginatedPemasukanResponseSchema(BaseModel):
     page: int
     per_page: int
     total_pages: int
+    
+    # Add these new schemas to transaksi/schemas.py
+from datetime import datetime, date
+from typing import List, Optional, Dict, Any, Union
+from enum import Enum
+
+class LaporanPeriodeEnum(str, Enum):
+    HARIAN = "HARIAN"
+    MINGGUAN = "MINGGUAN"
+    BULANAN = "BULANAN"
+    TAHUNAN = "TAHUNAN"
+    KUSTOM = "KUSTOM"
+
+class LaporanRequest(BaseModel):
+    periode: LaporanPeriodeEnum
+    tanggal_mulai: Optional[date] = None
+    tanggal_akhir: Optional[date] = None
+    
+class LaporanPeriodeItem(BaseModel):
+    periode: str
+    total: float
+    count: int
+    
+class LaporanProdukItem(BaseModel):
+    id: int
+    nama: str
+    total_terjual: int
+    total_pendapatan: float
+    
+class LaporanPenjualanResponse(BaseModel):
+    total_penjualan: float
+    jumlah_transaksi: int
+    periode_data: List[LaporanPeriodeItem]
+    
+class LaporanPengeluaranResponse(BaseModel):
+    total_pengeluaran: float
+    jumlah_transaksi: int
+    periode_data: List[LaporanPeriodeItem]
+    
+class LaporanLabaRugiItem(BaseModel):
+    periode: str
+    total_penjualan: float
+    total_pengeluaran: float
+    laba_rugi: float
+    
+class LaporanLabaRugiResponse(BaseModel):
+    total_penjualan: float
+    total_pengeluaran: float
+    laba_rugi: float
+    periode_data: List[LaporanLabaRugiItem]
+    
+class LaporanProdukResponse(BaseModel):
+    total_produk_terjual: int
+    total_pendapatan: float
+    produk_data: List[LaporanProdukItem]
