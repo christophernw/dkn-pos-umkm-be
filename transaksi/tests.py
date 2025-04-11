@@ -678,3 +678,152 @@ class TransaksiTest(TestCase):
         response = client.get("/api/transaksi/pemasukan/page/1?sort_by=invalid")
         self.assertEqual(response.status_code, 400)
         self.assertIn("Invalid sort_by parameter", response.json()["message"])
+    
+    # Add these test methods to the TransaksiTest class in tests.py
+
+    def test_laporan_penjualan(self):
+        """Test sales report generation"""
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+        
+        # Create test data - several sales transactions
+        for i in range(3):
+            data = {
+                "status": "LUNAS",
+                "catatan": f"Test payment {i}",
+                "daftarProduk": [self.produk_list[i].id],
+                "kategori": "PENJUALAN",
+                "totalPemasukan": 1000 * (i + 1),
+                "hargaModal": 500 * (i + 1),
+            }
+            response = client.post("/api/transaksi/pemasukan/create", data, format="json")
+            self.assertEqual(response.status_code, 200)
+        
+        # Test daily report
+        response = client.post(
+            "/api/transaksi/laporan/penjualan", 
+            {"periode": "HARIAN"}, 
+            format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        
+        # Verify structure and data
+        self.assertIn("total_penjualan", data)
+        self.assertIn("jumlah_transaksi", data)
+        self.assertIn("periode_data", data)
+        self.assertEqual(data["jumlah_transaksi"], 3)
+        self.assertEqual(data["total_penjualan"], 6000)  # Sum of all transactions
+        
+        # Test custom period
+        from datetime import date, timedelta
+        today = date.today()
+        yesterday = today - timedelta(days=1)
+        tomorrow = today + timedelta(days=1)
+        
+        response = client.post(
+            "/api/transaksi/laporan/penjualan", 
+            {
+                "periode": "KUSTOM",
+                "tanggal_mulai": yesterday.isoformat(),
+                "tanggal_akhir": tomorrow.isoformat()
+            }, 
+            format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+
+    
+    def test_laporan_error_handling(self):
+        """Test error handling in reports"""
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+        
+        # Test missing dates for custom period
+        response = client.post(
+            "/api/transaksi/laporan/penjualan", 
+            {"periode": "KUSTOM"}, 
+            format="json"
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("error", response.json())
+        
+        # Test invalid period
+        response = client.post(
+            "/api/transaksi/laporan/penjualan", 
+            {"periode": "INVALID_PERIOD"}, 
+            format="json"
+        )
+        self.assertEqual(response.status_code, 422)
+        
+        # Additional tests to add to transaksi/tests.py
+
+    def test_get_date_range_december_case(self):
+        """Test date range calculation specifically for December monthly period"""
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+        
+        # Mock datetime.now() to return December date
+        from datetime import datetime
+        from unittest.mock import patch
+        
+        # Create a December date
+        december_date = datetime(2025, 12, 15).date()
+        
+        # Test with mocked December date
+        with patch('transaksi.api.datetime') as mock_datetime:
+            # Configure the mock to return a specific date when now() is called
+            mock_datetime.now.return_value = datetime(2025, 12, 15)
+            
+            # Call the endpoint that uses get_date_range with monthly period
+            response = client.post(
+                "/api/transaksi/laporan/penjualan", 
+                {"periode": "BULANAN"}, 
+                format="json"
+            )
+            self.assertEqual(response.status_code, 200)
+            
+            # The December case should set end_date to January 1st of next year - 1 day
+            # We can't directly verify this, but we can check that the report was generated
+
+    def test_get_date_range_invalid_period(self):
+        """Test date range calculation with invalid period to hit default case"""
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+        
+        from transaksi.api import get_date_range
+        
+        # Call get_date_range directly with invalid period
+        start_date, end_date = get_date_range("INVALID")
+        
+        # Verify default case returns today for both dates
+        from datetime import datetime
+        today = datetime.now().date()
+        self.assertEqual(start_date, today)
+        self.assertEqual(end_date, today)
+        
+        # Also test through API call
+        data = {
+            "status": "LUNAS",
+            "daftarProduk": [self.produk_list[0].id],
+            "kategori": "PENJUALAN",
+            "totalPemasukan": 5000,
+            "hargaModal": 2000,
+        }
+        
+        response = client.post("/api/transaksi/pemasukan/create", data, format="json")
+        self.assertEqual(response.status_code, 200)
+        
+        # The API should return a 422 error for invalid period
+        response = client.post(
+            "/api/transaksi/laporan/penjualan", 
+            {"periode": "INVALID"}, 
+            format="json"
+        )
+        self.assertEqual(response.status_code, 422)
+        
+        # Check the structure of the validation error
+        error_response = response.json()
+        self.assertIn("detail", error_response)
+        self.assertTrue(any("periode" in loc for item in error_response["detail"] 
+                            for loc in item.get("loc", [])))
+    
