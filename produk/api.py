@@ -145,7 +145,8 @@ def update_produk(request, id: int, payload: UpdateProdukSchema, foto: UploadedF
 def delete_produk(request, id: int):
     user_id = request.auth
     produk = get_object_or_404(Produk, id=id, user_id=user_id)
-    produk.delete()
+    produk.is_deleted = True
+    produk.save()
     return {"message": "Produk berhasil dihapus"}
 
 

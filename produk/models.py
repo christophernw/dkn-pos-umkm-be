@@ -19,3 +19,4 @@ class Produk(models.Model):
         related_name="produk",
         limit_choices_to={"role": "Pemilik"},  
     )
+    is_deleted = models.BooleanField(default=False) 
