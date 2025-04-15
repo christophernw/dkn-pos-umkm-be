@@ -4,7 +4,7 @@ from django.conf import settings
 from django.db import IntegrityError
 from django.test import TestCase
 import jwt
-from authentication.models import Invitation, User
+from authentication.models import Invitation, Toko, User
 from rest_framework_simplejwt.tokens import RefreshToken
 from authentication.api import router 
 from ninja.testing import TestClient
@@ -50,25 +50,69 @@ class AuthenticationTests(TestCase):
 class GetUsersTests(TestCase):
     def setUp(self):
         self.client = TestClient(router)
-        self.owner = User.objects.create_user(username="owner", email="owner@example.com", password="password", role="Pemilik")
-        self.karyawan = User.objects.create_user(username="karyawan", email="karyawan@example.com", password="password", role="Karyawan", owner=self.owner)
-        self.refresh = RefreshToken.for_user(self.owner)
+        self.toko = Toko.objects.create()
+        self.owner = User.objects.create_user(
+            username="owner", email="owner@example.com", password="password", role="Pemilik", toko=self.toko
+        )
+        self.karyawan = User.objects.create_user(
+            username="karyawan", email="karyawan@example.com", password="password", role="Karyawan", toko=self.toko
+        )
 
     def test_get_users_as_owner(self):
-        response = self.client.get("/get-users", headers={"Authorization": f"Bearer {str(self.refresh.access_token)}"})  
+        refresh = RefreshToken.for_user(self.owner)
+        access_token = str(refresh.access_token)
+
+        response = self.client.get(
+            "/get-users", headers={"Authorization": f"Bearer {access_token}"}
+        )
         self.assertEqual(response.status_code, 200)
+
         users = response.json()
         self.assertEqual(len(users), 2)
-        self.assertTrue(any(user['role'] == "Pemilik" for user in users)) 
+        roles = [user["role"] for user in users]
+        self.assertIn("Pemilik", roles)
+        self.assertIn("Karyawan", roles)
 
     def test_get_users_as_karyawan(self):
-        self.refresh = RefreshToken.for_user(self.karyawan) 
-        response = self.client.get("/get-users", headers={"Authorization": f"Bearer {str(self.refresh.access_token)}"})
+        refresh = RefreshToken.for_user(self.karyawan)
+        access_token = str(refresh.access_token)
+
+        response = self.client.get(
+            "/get-users", headers={"Authorization": f"Bearer {access_token}"}
+        )
         self.assertEqual(response.status_code, 200)
+
         users = response.json()
         self.assertEqual(len(users), 2)
-        self.assertTrue(any(user['role'] == "Pemilik" for user in users)) 
-        self.assertTrue(any(user['role'] == "Karyawan" for user in users))  
+        roles = [user["role"] for user in users]
+        self.assertIn("Pemilik", roles)
+        self.assertIn("Karyawan", roles)
+
+        def test_get_users_as_administrator(self):
+            # Tambahkan Administrator ke toko yang sama
+            admin = User.objects.create_user(
+                username="admin",
+                email="admin@example.com",
+                password="password",
+                role="Administrator",
+                toko=self.toko
+            )
+            refresh = RefreshToken.for_user(admin)
+            access_token = str(refresh.access_token)
+
+            response = self.client.get(
+                "/get-users", headers={"Authorization": f"Bearer {access_token}"}
+            )
+            self.assertEqual(response.status_code, 200)
+
+            users = response.json()
+            self.assertEqual(len(users), 3)
+
+            roles = [user["role"] for user in users]
+            self.assertIn("Pemilik", roles)
+            self.assertIn("Administrator", roles)
+            self.assertIn("Karyawan", roles)
+
 
 class SendInvitationTests(TestCase):
     def setUp(self):
@@ -96,7 +140,7 @@ class SendInvitationTests(TestCase):
         }, headers={"Authorization": f"Bearer {str(self.refresh.access_token)}"})
 
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json()["error"], "User sudah terdaftar.")
+        self.assertEqual(response.json()["error"], "User sudah ada di toko ini.")
 
     def test_send_invitation_already_invited(self):
         Invitation.objects.create(

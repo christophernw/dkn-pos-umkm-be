@@ -5,7 +5,6 @@ from django.contrib.auth.models import AbstractUser
 from django.utils.timezone import now
 
 class Toko(models.Model):
-    # Initially just a simple model to link users
     created_at = models.DateTimeField(auto_now_add=True)
     
     def __str__(self):
@@ -19,8 +18,6 @@ class User(AbstractUser):
         ("Karyawan", "Karyawan")
     ]
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default="Pemilik")
-    
-    # Add foreign key to Toko
     toko = models.ForeignKey(Toko, on_delete=models.SET_NULL, null=True, blank=True, related_name='users')
 
 class Invitation(models.Model):

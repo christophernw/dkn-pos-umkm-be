@@ -116,7 +116,6 @@ def send_invitation(request, payload: InvitationRequest):
     role = payload.role.strip()
     owner = User.objects.get(id=request.auth)
     
-    # If user already exists in the toko, return an error
     existing_user = User.objects.filter(email=email, toko=owner.toko).first()
     if existing_user:
         return 400, {"error": "User sudah ada di toko ini."}

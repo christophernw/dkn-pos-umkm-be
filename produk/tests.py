@@ -11,7 +11,7 @@ from pydantic import ValidationError
 from backend import settings
 from .api import AuthBearer, get_produk_default, router, get_produk_paginated, create_produk, delete_produk, get_low_stock_products, update_produk
 from .models import Produk, KategoriProduk
-from .schemas import ProdukResponseSchema, CreateProdukSchema, UpdateProdukStokSchema
+from .schemas import ProdukResponseSchema, CreateProdukSchema, UpdateProdukSchema
 
 class MockAuthenticatedRequest:
     """Mock request with authentication for testing"""
@@ -126,7 +126,7 @@ class TestProductAPI(TestCase):
     
     def test_update_product_stock(self):
         produk = Produk.objects.filter(user=self.user1).first()
-        payload = UpdateProdukStokSchema(stok=50)
+        payload = UpdateProdukSchema(stok=50)
         
         request = MockAuthenticatedRequest(user_id=self.user1.id)
         status, response = update_produk(request, id=produk.id, payload=payload)
@@ -139,7 +139,7 @@ class TestProductAPI(TestCase):
         self.assertEqual(updated_produk.stok, 50)
     
     def test_update_product_not_found(self):
-        payload = UpdateProdukStokSchema(stok=50)
+        payload = UpdateProdukSchema(stok=50)
         request = MockAuthenticatedRequest(user_id=self.user1.id)
         
         # Use a non-existent ID
@@ -229,7 +229,7 @@ class TestProductAPI(TestCase):
     def test_update_produk_negative_stok(self):
         """Test that updating a product with negative stok is rejected"""
         with self.assertRaises(ValidationError) as context:
-            UpdateProdukStokSchema(
+            UpdateProdukSchema(
                 stok=-10  # Negative value should be rejected
             )
         
