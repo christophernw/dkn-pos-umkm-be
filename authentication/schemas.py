@@ -27,3 +27,6 @@ class InvitationRequest(BaseModel):
     email: str
     name: str
     role: str
+
+class RemoveUserRequest(BaseModel):
+    user_id: int

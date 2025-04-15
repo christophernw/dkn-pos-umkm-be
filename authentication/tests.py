@@ -1,12 +1,13 @@
 from datetime import timedelta
+import unittest
 from unittest.mock import patch
 from django.conf import settings
 from django.db import IntegrityError
 from django.test import TestCase
 import jwt
-from authentication.models import Invitation, User
+from authentication.models import Invitation, Toko, User
 from rest_framework_simplejwt.tokens import RefreshToken
-from authentication.api import router 
+from authentication.api import AuthBearer, router 
 from ninja.testing import TestClient
 from django.utils.timezone import now
 
@@ -50,25 +51,92 @@ class AuthenticationTests(TestCase):
 class GetUsersTests(TestCase):
     def setUp(self):
         self.client = TestClient(router)
-        self.owner = User.objects.create_user(username="owner", email="owner@example.com", password="password", role="Pemilik")
-        self.karyawan = User.objects.create_user(username="karyawan", email="karyawan@example.com", password="password", role="Karyawan", owner=self.owner)
-        self.refresh = RefreshToken.for_user(self.owner)
+        self.toko = Toko.objects.create()
+        self.owner = User.objects.create_user(
+            username="owner", email="owner@example.com", password="password", role="Pemilik", toko=self.toko
+        )
+        self.karyawan = User.objects.create_user(
+            username="karyawan", email="karyawan@example.com", password="password", role="Karyawan", toko=self.toko
+        )
 
     def test_get_users_as_owner(self):
-        response = self.client.get("/get-users", headers={"Authorization": f"Bearer {str(self.refresh.access_token)}"})  
+        refresh = RefreshToken.for_user(self.owner)
+        access_token = str(refresh.access_token)
+
+        response = self.client.get(
+            "/get-users", headers={"Authorization": f"Bearer {access_token}"}
+        )
         self.assertEqual(response.status_code, 200)
+
         users = response.json()
         self.assertEqual(len(users), 2)
-        self.assertTrue(any(user['role'] == "Pemilik" for user in users)) 
+        roles = [user["role"] for user in users]
+        self.assertIn("Pemilik", roles)
+        self.assertIn("Karyawan", roles)
 
     def test_get_users_as_karyawan(self):
-        self.refresh = RefreshToken.for_user(self.karyawan) 
-        response = self.client.get("/get-users", headers={"Authorization": f"Bearer {str(self.refresh.access_token)}"})
+        refresh = RefreshToken.for_user(self.karyawan)
+        access_token = str(refresh.access_token)
+
+        response = self.client.get(
+            "/get-users", headers={"Authorization": f"Bearer {access_token}"}
+        )
         self.assertEqual(response.status_code, 200)
+
         users = response.json()
         self.assertEqual(len(users), 2)
-        self.assertTrue(any(user['role'] == "Pemilik" for user in users)) 
-        self.assertTrue(any(user['role'] == "Karyawan" for user in users))  
+        roles = [user["role"] for user in users]
+        self.assertIn("Pemilik", roles)
+        self.assertIn("Karyawan", roles)
+
+    def test_get_users_as_administrator(self):
+        # Tambahkan Administrator ke toko yang sama
+        admin = User.objects.create_user(
+            username="admin",
+            email="admin@example.com",
+            password="password",
+            role="Administrator",
+            toko=self.toko
+        )
+        refresh = RefreshToken.for_user(admin)
+        access_token = str(refresh.access_token)
+
+        response = self.client.get(
+            "/get-users", headers={"Authorization": f"Bearer {access_token}"}
+        )
+        self.assertEqual(response.status_code, 200)
+
+        users = response.json()
+        self.assertEqual(len(users), 3)
+
+        roles = [user["role"] for user in users]
+        self.assertIn("Pemilik", roles)
+        self.assertIn("Administrator", roles)
+        self.assertIn("Karyawan", roles)
+
+    def test_get_users_without_toko(self):
+        # Create a user without a toko
+        user_without_toko = User.objects.create_user(
+            username="no_toko_user", email="no_toko@example.com", password="password", toko=None
+        )
+
+        # Authenticate the user
+        refresh = RefreshToken.for_user(user_without_toko)
+        access_token = str(refresh.access_token)
+
+        # Call the endpoint
+        response = self.client.get(
+            "/get-users", headers={"Authorization": f"Bearer {access_token}"}
+        )
+
+        # Assert the response
+        self.assertEqual(response.status_code, 200)
+        users = response.json()
+        self.assertEqual(len(users), 1)
+        self.assertEqual(users[0]["id"], user_without_toko.id)
+        self.assertIsNone(users[0]["toko_id"])
+
+
 
 class SendInvitationTests(TestCase):
     def setUp(self):
@@ -96,7 +164,7 @@ class SendInvitationTests(TestCase):
         }, headers={"Authorization": f"Bearer {str(self.refresh.access_token)}"})
 
         self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json()["error"], "User sudah terdaftar.")
+        self.assertEqual(response.json()["error"], "User sudah ada di toko ini.")
 
     def test_send_invitation_already_invited(self):
         Invitation.objects.create(
@@ -177,3 +245,106 @@ class ValidateInvitationTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.json()["valid"])
         self.assertEqual(response.json()["error"], "Invalid invitation")
+
+class RemoveUserFromTokoTests(TestCase):
+    def setUp(self):
+        self.client = TestClient(router)
+        self.toko = Toko.objects.create()
+        self.owner = User.objects.create_user(
+            username="owner", email="owner@example.com", password="password", role="Pemilik", toko=self.toko
+        )
+        self.karyawan = User.objects.create_user(
+            username="karyawan", email="karyawan@example.com", password="password", role="Karyawan", toko=self.toko
+        )
+        self.other_toko = Toko.objects.create()
+        self.external_user = User.objects.create_user(
+            username="external", email="external@example.com", password="password", role="Karyawan", toko=self.other_toko
+        )
+
+    def test_remove_user_successfully(self):
+        refresh = RefreshToken.for_user(self.owner)
+        access_token = str(refresh.access_token)
+
+        response = self.client.post(
+            "/remove-user-from-toko",
+            json={"user_id": self.karyawan.id},
+            headers={"Authorization": f"Bearer {access_token}"}
+        )
+        self.assertEqual(response.status_code, 200)
+        result = response.json()
+        self.assertEqual(result["user"]["role"], "Pemilik")
+        self.assertNotEqual(result["user"]["new_toko_id"], self.toko.id)
+
+    def test_remove_self_should_fail(self):
+        refresh = RefreshToken.for_user(self.owner)
+        access_token = str(refresh.access_token)
+
+        response = self.client.post(
+            "/remove-user-from-toko",
+            json={"user_id": self.owner.id},
+            headers={"Authorization": f"Bearer {access_token}"}
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"], "Cannot remove yourself from your own toko")
+
+    def test_remove_user_from_other_toko_should_fail(self):
+        refresh = RefreshToken.for_user(self.owner)
+        access_token = str(refresh.access_token)
+
+        response = self.client.post(
+            "/remove-user-from-toko",
+            json={"user_id": self.external_user.id},
+            headers={"Authorization": f"Bearer {access_token}"}
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"], "User is not in your toko")
+
+    def test_non_pemilik_cannot_remove_user(self):
+        refresh = RefreshToken.for_user(self.karyawan)
+        access_token = str(refresh.access_token)
+
+        response = self.client.post(
+            "/remove-user-from-toko",
+            json={"user_id": self.owner.id},
+            headers={"Authorization": f"Bearer {access_token}"}
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["error"], "Only Pemilik can remove users from toko")
+
+    def test_remove_nonexistent_user(self):
+        refresh = RefreshToken.for_user(self.owner)
+        access_token = str(refresh.access_token)
+
+        non_existent_user_id = 99999  # Pastikan ID ini tidak ada di DB
+
+        response = self.client.post(
+            "/remove-user-from-toko",
+            json={"user_id": non_existent_user_id},
+            headers={"Authorization": f"Bearer {access_token}"}
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"], "User not found")
+
+class TestAuthBearer(TestCase):
+    def setUp(self):
+        self.auth = AuthBearer()
+
+    def test_valid_token_with_user_id(self):
+        payload = {"user_id": 123}
+        token = jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
+
+        user_id = self.auth.authenticate(request=None, token=token)
+        self.assertEqual(user_id, 123)
+
+    def test_invalid_token(self):
+        invalid_token = "invalid.token.value"
+
+        result = self.auth.authenticate(request=None, token=invalid_token)
+        self.assertIsNone(result)
+
+    def test_token_without_user_id(self):
+        payload = {"something_else": "value"}
+        token = jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
+
+        result = self.auth.authenticate(request=None, token=token)
+        self.assertIsNone(result)
