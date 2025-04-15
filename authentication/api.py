@@ -213,7 +213,6 @@ def remove_user_from_toko(request, payload: RemoveUserRequest):
         return 400, {"error": "Cannot remove yourself from your own toko"}
     
     # Store the user's current toko and set to None temporarily
-    original_toko = user_to_remove.toko
     user_to_remove.toko = None
     
     # Create a new toko for the removed user
