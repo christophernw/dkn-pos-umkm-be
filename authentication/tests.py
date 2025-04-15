@@ -1,4 +1,5 @@
 from datetime import timedelta
+import unittest
 from unittest.mock import patch
 from django.conf import settings
 from django.db import IntegrityError
@@ -6,7 +7,7 @@ from django.test import TestCase
 import jwt
 from authentication.models import Invitation, Toko, User
 from rest_framework_simplejwt.tokens import RefreshToken
-from authentication.api import router 
+from authentication.api import AuthBearer, router 
 from ninja.testing import TestClient
 from django.utils.timezone import now
 
@@ -112,6 +113,29 @@ class GetUsersTests(TestCase):
         self.assertIn("Pemilik", roles)
         self.assertIn("Administrator", roles)
         self.assertIn("Karyawan", roles)
+
+    def test_get_users_without_toko(self):
+        # Create a user without a toko
+        user_without_toko = User.objects.create_user(
+            username="no_toko_user", email="no_toko@example.com", password="password", toko=None
+        )
+
+        # Authenticate the user
+        refresh = RefreshToken.for_user(user_without_toko)
+        access_token = str(refresh.access_token)
+
+        # Call the endpoint
+        response = self.client.get(
+            "/get-users", headers={"Authorization": f"Bearer {access_token}"}
+        )
+
+        # Assert the response
+        self.assertEqual(response.status_code, 200)
+        users = response.json()
+        self.assertEqual(len(users), 1)
+        self.assertEqual(users[0]["id"], user_without_toko.id)
+        self.assertIsNone(users[0]["toko_id"])
+
 
 
 class SendInvitationTests(TestCase):
@@ -286,3 +310,41 @@ class RemoveUserFromTokoTests(TestCase):
         )
         self.assertEqual(response.status_code, 403)
         self.assertEqual(response.json()["error"], "Only Pemilik can remove users from toko")
+
+    def test_remove_nonexistent_user(self):
+        refresh = RefreshToken.for_user(self.owner)
+        access_token = str(refresh.access_token)
+
+        non_existent_user_id = 99999  # Pastikan ID ini tidak ada di DB
+
+        response = self.client.post(
+            "/remove-user-from-toko",
+            json={"user_id": non_existent_user_id},
+            headers={"Authorization": f"Bearer {access_token}"}
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"], "User not found")
+
+class TestAuthBearer(TestCase):
+    def setUp(self):
+        self.auth = AuthBearer()
+
+    def test_valid_token_with_user_id(self):
+        payload = {"user_id": 123}
+        token = jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
+
+        user_id = self.auth.authenticate(request=None, token=token)
+        self.assertEqual(user_id, 123)
+
+    def test_invalid_token(self):
+        invalid_token = "invalid.token.value"
+
+        result = self.auth.authenticate(request=None, token=invalid_token)
+        self.assertIsNone(result)
+
+    def test_token_without_user_id(self):
+        payload = {"something_else": "value"}
+        token = jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
+
+        result = self.auth.authenticate(request=None, token=token)
+        self.assertIsNone(result)

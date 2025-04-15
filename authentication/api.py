@@ -90,10 +90,8 @@ def get_users(request):
     user = User.objects.get(id=request.auth)
     
     if user.toko:
-        # Get all users in the same toko
         users = User.objects.filter(toko=user.toko)
     else:
-        # If user has no toko, just return the user
         users = User.objects.filter(id=user.id)
     
     users_data = [
@@ -107,7 +105,6 @@ def get_users(request):
         for u in users
     ]
 
-    # Sort users based on role hierarchy: Pemilik, Administrator, Karyawan
     def role_priority(role):
         if role == "Pemilik":
             return 0

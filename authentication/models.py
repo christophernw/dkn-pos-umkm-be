@@ -6,10 +6,6 @@ from django.utils.timezone import now
 
 class Toko(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
-    
-    def __str__(self):
-        owner = self.users.filter(role="Pemilik").first()
-        return f"Toko {self.id} - {owner.username if owner else 'No owner'}"
 
 class User(AbstractUser):
     ROLE_CHOICES = [
