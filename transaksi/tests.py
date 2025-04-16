@@ -807,7 +807,7 @@ class TransaksiTest(TestCase):
         self.assertIn("periode_data", data)
         self.assertEqual(data["total_penjualan"], 5000)
         self.assertEqual(data["total_pengeluaran"], 3000)
-        self.assertEqual(data["laba_rugi"], 2000)  # Profit = 5000 - 3000
+        self.assertEqual(data["laba_rugi"], 2000)  
 
     def test_laporan_produk(self):
         """Test product sales report generation"""
@@ -877,7 +877,7 @@ class TransaksiTest(TestCase):
         from unittest.mock import patch
         
         # Create a December date
-        december_date = datetime(2025, 12, 15).date()
+        datetime(2025, 12, 15).date()
         
         # Test with mocked December date
         with patch('transaksi.api.datetime') as mock_datetime:
