@@ -416,3 +416,208 @@ def laporan_penjualan(request, payload: LaporanRequest):
     
     except Exception as e:
         return 422, {"error": str(e)}
+
+@router.post("/laporan/pengeluaran", response={200: LaporanPengeluaranResponse, 422: dict})
+def laporan_pengeluaran(request, payload: LaporanRequest):
+    """Generate expense report"""
+    # try:
+    start_date, end_date = get_date_range(
+        payload.periode, payload.tanggal_mulai, payload.tanggal_akhir
+    )
+    
+    # Filter pengeluaran within date range
+    pengeluaran_queryset = Pengeluaran.objects.filter(
+        transaksi__tanggalTransaksi__date__gte=start_date,
+        transaksi__tanggalTransaksi__date__lte=end_date,
+        transaksi__isDeleted=False
+    )
+    
+    # Calculate total expenses and transaction count
+    total_pengeluaran = pengeluaran_queryset.aggregate(
+        total=Sum('totalPengeluaran')
+    )['total'] or 0
+    
+    jumlah_transaksi = pengeluaran_queryset.count()
+    
+    # Group by period
+    trunc_function = get_trunc_function(payload.periode)
+    periode_data = pengeluaran_queryset.annotate(
+        periode=trunc_function('transaksi__tanggalTransaksi')
+    ).values('periode').annotate(
+        total=Sum('totalPengeluaran'),
+        count=Count('id')
+    ).order_by('periode')
+    
+    # Format period data
+    formatted_periode_data = []
+    for item in periode_data:
+        formatted_periode_data.append(
+            LaporanPeriodeItem(
+                periode=item['periode'].strftime('%Y-%m-%d'),
+                total=item['total'],
+                count=item['count']
+            )
+        )
+    
+    return 200, LaporanPengeluaranResponse(
+        total_pengeluaran=total_pengeluaran,
+        jumlah_transaksi=jumlah_transaksi,
+        periode_data=formatted_periode_data
+    )
+
+    # except Exception as e:
+    #     return 422, {"error": str(e)}
+
+@router.post("/laporan/laba-rugi", response={200: LaporanLabaRugiResponse, 422: dict})
+def laporan_laba_rugi(request, payload: LaporanRequest):
+    """Generate profit/loss report"""
+    # try:
+    start_date, end_date = get_date_range(
+        payload.periode, payload.tanggal_mulai, payload.tanggal_akhir
+    )
+    
+    # Filter transactions within date range
+    pemasukan_queryset = Pemasukan.objects.filter(
+        transaksi__tanggalTransaksi__date__gte=start_date,
+        transaksi__tanggalTransaksi__date__lte=end_date,
+        transaksi__isDeleted=False
+    )
+    
+    pengeluaran_queryset = Pengeluaran.objects.filter(
+        transaksi__tanggalTransaksi__date__gte=start_date,
+        transaksi__tanggalTransaksi__date__lte=end_date,
+        transaksi__isDeleted=False
+    )
+    
+    # Calculate totals
+    total_penjualan = pemasukan_queryset.aggregate(
+        total=Sum('totalPemasukan')
+    )['total'] or 0
+    
+    total_pengeluaran = pengeluaran_queryset.aggregate(
+        total=Sum('totalPengeluaran')
+    )['total'] or 0
+    
+    laba_rugi = total_penjualan - total_pengeluaran
+    
+    # Group by period
+    trunc_function = get_trunc_function(payload.periode)
+    
+    # Get pemasukan by period
+    pemasukan_by_periode = dict(
+        pemasukan_queryset.annotate(
+            periode=trunc_function('transaksi__tanggalTransaksi')
+        ).values('periode').annotate(
+            total=Sum('totalPemasukan')
+        ).values_list('periode', 'total')
+    )
+    
+    # Get pengeluaran by period
+    pengeluaran_by_periode = dict(
+        pengeluaran_queryset.annotate(
+            periode=trunc_function('transaksi__tanggalTransaksi')
+        ).values('periode').annotate(
+            total=Sum('totalPengeluaran')
+        ).values_list('periode', 'total')
+    )
+    
+    # Combine periods
+    all_periods = set(pemasukan_by_periode.keys()) | set(pengeluaran_by_periode.keys())
+    
+    # Format period data
+    periode_data = []
+    for periode in sorted(all_periods):
+        penjualan = pemasukan_by_periode.get(periode, 0)
+        pengeluaran = pengeluaran_by_periode.get(periode, 0)
+        
+        periode_data.append(
+            LaporanLabaRugiItem(
+                periode=periode.strftime('%Y-%m-%d'),
+                total_penjualan=penjualan,
+                total_pengeluaran=pengeluaran,
+                laba_rugi=penjualan - pengeluaran
+            )
+        )
+    
+    return 200, LaporanLabaRugiResponse(
+        total_penjualan=total_penjualan,
+        total_pengeluaran=total_pengeluaran,
+        laba_rugi=laba_rugi,
+        periode_data=periode_data
+    )
+
+    # except Exception as e:
+    #     return 422, {"error": str(e)}
+
+@router.post("/laporan/produk", response={200: LaporanProdukResponse, 422: dict})
+def laporan_produk(request, payload: LaporanRequest):
+    """Generate product sales report"""
+    # try:
+    start_date, end_date = get_date_range(
+        payload.periode, payload.tanggal_mulai, payload.tanggal_akhir
+    )
+    
+    # Get all income transactions in the date range
+    pemasukan_list = Pemasukan.objects.filter(
+        transaksi__tanggalTransaksi__date__gte=start_date,
+        transaksi__tanggalTransaksi__date__lte=end_date,
+        transaksi__isDeleted=False
+    )
+    
+    # Get all products from these transactions
+    product_data = {}
+    total_sold = 0
+    total_revenue = 0
+    
+    # Collect data about each product
+    for pemasukan in pemasukan_list:
+        transaksi = pemasukan.transaksi
+        products = transaksi.daftarProduk.all()
+        
+        # Distribute income evenly across products for simplicity
+        # In a real system, you'd want to track quantities and prices per product
+        if products.count() > 0:
+            revenue_per_product = pemasukan.totalPemasukan / products.count()
+            
+            for product in products:
+                if product.id not in product_data:
+                    product_data[product.id] = {
+                        'id': product.id,
+                        'nama': product.nama,
+                        'total_terjual': 0,
+                        'total_pendapatan': 0
+                    }
+                
+                product_data[product.id]['total_terjual'] += 1
+                product_data[product.id]['total_pendapatan'] += revenue_per_product
+                
+                total_sold += 1
+                total_revenue += revenue_per_product
+    
+    # Sort products by total revenue (highest first)
+    sorted_products = sorted(
+        product_data.values(),
+        key=lambda x: x['total_pendapatan'],
+        reverse=True
+    )
+    
+    # Format product data
+    formatted_produk_data = []
+    for item in sorted_products:
+        formatted_produk_data.append(
+            LaporanProdukItem(
+                id=item['id'],
+                nama=item['nama'],
+                total_terjual=item['total_terjual'],
+                total_pendapatan=item['total_pendapatan']
+            )
+        )
+    
+    return 200, LaporanProdukResponse(
+        total_produk_terjual=total_sold,
+        total_pendapatan=total_revenue,
+        produk_data=formatted_produk_data
+    )
+    
+    # except Exception as e:
+    #     return 422, {"error": str(e)}
