@@ -732,7 +732,117 @@ class TransaksiTest(TestCase):
         )
         self.assertEqual(response.status_code, 200)
 
-    
+    def test_laporan_pengeluaran(self):
+        """Test expense report generation"""
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+        
+        # Create test data - several expense transactions
+        for i in range(3):
+            data = {
+                "status": "LUNAS",
+                "catatan": f"Test expense {i}",
+                "daftarProduk": [self.produk_list[i].id],
+                "kategori": "PEMBELIAN_STOK",
+                "totalPengeluaran": 500 * (i + 1),
+            }
+            response = client.post("/api/transaksi/pengeluaran/create", data, format="json")
+            self.assertEqual(response.status_code, 200)
+        
+        # Test weekly report
+        response = client.post(
+            "/api/transaksi/laporan/pengeluaran", 
+            {"periode": "MINGGUAN"}, 
+            format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        
+        # Verify structure and data
+        self.assertIn("total_pengeluaran", data)
+        self.assertIn("jumlah_transaksi", data)
+        self.assertIn("periode_data", data)
+        self.assertEqual(data["jumlah_transaksi"], 3)
+        self.assertEqual(data["total_pengeluaran"], 3000)  # Sum of all transactions
+
+    def test_laporan_laba_rugi(self):
+        """Test profit/loss report generation"""
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+        
+        # Create test income data
+        data_pemasukan = {
+            "status": "LUNAS",
+            "daftarProduk": [self.produk_list[0].id],
+            "kategori": "PENJUALAN",
+            "totalPemasukan": 5000,
+            "hargaModal": 2000,
+        }
+        response = client.post("/api/transaksi/pemasukan/create", data_pemasukan, format="json")
+        self.assertEqual(response.status_code, 200)
+        
+        # Create test expense data
+        data_pengeluaran = {
+            "status": "LUNAS",
+            "daftarProduk": [self.produk_list[0].id],
+            "kategori": "PEMBELIAN_STOK",
+            "totalPengeluaran": 3000,
+        }
+        response = client.post("/api/transaksi/pengeluaran/create", data_pengeluaran, format="json")
+        self.assertEqual(response.status_code, 200)
+        
+        # Test monthly report
+        response = client.post(
+            "/api/transaksi/laporan/laba-rugi", 
+            {"periode": "BULANAN"}, 
+            format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        
+        # Verify structure and data
+        self.assertIn("total_penjualan", data)
+        self.assertIn("total_pengeluaran", data)
+        self.assertIn("laba_rugi", data)
+        self.assertIn("periode_data", data)
+        self.assertEqual(data["total_penjualan"], 5000)
+        self.assertEqual(data["total_pengeluaran"], 3000)
+        self.assertEqual(data["laba_rugi"], 2000)  # Profit = 5000 - 3000
+
+    def test_laporan_produk(self):
+        """Test product sales report generation"""
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+        
+        # Create test income data with different products
+        for i in range(3):
+            data = {
+                "status": "LUNAS",
+                "daftarProduk": [self.produk_list[i].id],
+                "kategori": "PENJUALAN",
+                "totalPemasukan": 1000 * (i + 1),
+                "hargaModal": 500 * (i + 1),
+            }
+            response = client.post("/api/transaksi/pemasukan/create", data, format="json")
+            self.assertEqual(response.status_code, 200)
+        
+        # Test yearly report
+        response = client.post(
+            "/api/transaksi/laporan/produk", 
+            {"periode": "TAHUNAN"}, 
+            format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        
+        # Verify structure and data
+        self.assertIn("total_produk_terjual", data)
+        self.assertIn("total_pendapatan", data)
+        self.assertIn("produk_data", data)
+        self.assertEqual(data["total_produk_terjual"], 3)
+        self.assertEqual(data["total_pendapatan"], 6000)  # Sum of all transactions
+        self.assertEqual(len(data["produk_data"]), 3)  # 3 different products
+
     def test_laporan_error_handling(self):
         """Test error handling in reports"""
         client = APIClient()
@@ -826,4 +936,112 @@ class TransaksiTest(TestCase):
         self.assertIn("detail", error_response)
         self.assertTrue(any("periode" in loc for item in error_response["detail"] 
                             for loc in item.get("loc", [])))
-    
+    def test_laporan_laba_rugi_empty_results(self):
+        """Test profit/loss report when there are no transactions in period"""
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+        
+        # Use a custom period far in the past to ensure no transactions
+        from datetime import date
+        past_date = date(2000, 1, 1)
+        
+        response = client.post(
+            "/api/transaksi/laporan/laba-rugi", 
+            {
+                "periode": "KUSTOM",
+                "tanggal_mulai": past_date.isoformat(),
+                "tanggal_akhir": past_date.isoformat()
+            }, 
+            format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        
+        # Verify empty results are handled properly
+        self.assertEqual(data["total_penjualan"], 0)
+        self.assertEqual(data["total_pengeluaran"], 0)
+        self.assertEqual(data["laba_rugi"], 0)
+        self.assertEqual(len(data["periode_data"]), 0)
+
+    def test_pemasukan_and_pengeluaran_same_day(self):
+        """Test laba-rugi report with income and expenses on the same day"""
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+        
+        # Create income transaction
+        data_pemasukan = {
+            "status": "LUNAS",
+            "daftarProduk": [self.produk_list[0].id],
+            "kategori": "PENJUALAN",
+            "totalPemasukan": 5000,
+            "hargaModal": 2000,
+        }
+        response = client.post("/api/transaksi/pemasukan/create", data_pemasukan, format="json")
+        self.assertEqual(response.status_code, 200)
+        
+        # Create expense transaction
+        data_pengeluaran = {
+            "status": "LUNAS",
+            "daftarProduk": [self.produk_list[0].id],
+            "kategori": "PEMBELIAN_STOK",
+            "totalPengeluaran": 3000,
+        }
+        response = client.post("/api/transaksi/pengeluaran/create", data_pengeluaran, format="json")
+        self.assertEqual(response.status_code, 200)
+        
+        # Generate daily profit/loss report to ensure same-day transactions are combined
+        response = client.post(
+            "/api/transaksi/laporan/laba-rugi", 
+            {"periode": "HARIAN"}, 
+            format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        
+        # Verify the data
+        self.assertEqual(data["total_penjualan"], 5000)
+        self.assertEqual(data["total_pengeluaran"], 3000)
+        self.assertEqual(data["laba_rugi"], 2000)
+        self.assertEqual(len(data["periode_data"]), 1)  # One day with both income and expense
+        
+        # Ensure the periode_data entry has both income and expense
+        periode_item = data["periode_data"][0]
+        self.assertEqual(periode_item["total_penjualan"], 5000)
+        self.assertEqual(periode_item["total_pengeluaran"], 3000)
+        self.assertEqual(periode_item["laba_rugi"], 2000)
+
+    def test_laporan_produk_multiple_per_transaction(self):
+        """Test product report with multiple products per transaction"""
+        client = APIClient()
+        client.force_authenticate(user=self.user1)
+        
+        # Create transaction with multiple products
+        data = {
+            "status": "LUNAS",
+            "daftarProduk": [p.id for p in self.produk_list],  # All products
+            "kategori": "PENJUALAN",
+            "totalPemasukan": 9000,
+            "hargaModal": 4500,
+        }
+        response = client.post("/api/transaksi/pemasukan/create", data, format="json")
+        self.assertEqual(response.status_code, 200)
+        
+        # Test product report
+        response = client.post(
+            "/api/transaksi/laporan/produk", 
+            {"periode": "HARIAN"}, 
+            format="json"
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        
+        # Verify the data
+        self.assertEqual(data["total_produk_terjual"], len(self.produk_list))
+        self.assertEqual(data["total_pendapatan"], 9000)
+        self.assertEqual(len(data["produk_data"]), len(self.produk_list))
+        
+        # Revenue should be distributed evenly
+        expected_revenue_per_product = 9000 / len(self.produk_list)
+        for product in data["produk_data"]:
+            self.assertEqual(product["total_terjual"], 1)
+            self.assertAlmostEqual(product["total_pendapatan"], expected_revenue_per_product)
