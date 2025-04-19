@@ -55,12 +55,12 @@ def apply_filters(
 ) -> QuerySet:
     """Apply common filters to a queryset."""
     # Apply search filter
-    if q:
-        queryset = queryset.filter(
-            Q(transaksi__catatan__icontains=q)
-            | Q(kategori__icontains=q)
-            | Q(transaksi__namaPelanggan__icontains=q)
-        )
+    # if q:
+    #     queryset = queryset.filter(
+    #         Q(transaksi__catatan__icontains=q)
+    #         | Q(kategori__icontains=q)
+    #         | Q(transaksi__namaPelanggan__icontains=q)
+    #     )
         
     return queryset
 
