@@ -51,7 +51,6 @@ def create_transaction_base(
 
 def apply_filters(
     queryset: QuerySet,
-    q: str = "",
 ) -> QuerySet:
     """Apply common filters to a queryset."""
     # Apply search filter
