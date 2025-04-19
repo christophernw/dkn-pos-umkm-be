@@ -298,7 +298,7 @@ def get_pemasukan_paginated(
     queryset = Pemasukan.objects.filter(transaksi__isDeleted=False)
     
     # Apply filters
-    queryset = apply_filters(queryset, q)
+    queryset = apply_filters(queryset)
 
     # Apply ordering
     queryset = queryset.order_by(order_by_field, "id")
