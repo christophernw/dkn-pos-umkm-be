@@ -17,7 +17,6 @@ from .schemas import (
     SessionData,
     RefreshTokenRequest,
     TokenValidationRequest,
-    AddUserRequest,
     InvitationRequest,
 )
 
@@ -246,3 +245,27 @@ def remove_user_from_toko(request, payload: RemoveUserRequest):
             "new_toko_id": new_toko.id
         }
     }
+
+@router.post("/cancel-invitation", response={200: dict, 400: dict}, auth=AuthBearer())
+def cancel_invitation(request, payload: RemoveUserRequest):
+    # Get the requesting user (must be a Pemilik)
+    requester = User.objects.get(id=request.auth)
+    
+    # Verify requester is a Pemilik
+    if requester.role != "Pemilik":
+        return 400, {"error": "Only Pemilik can cancel invitations"}
+    
+    # Get the invitation to be canceled
+    try:
+        invitation = Invitation.objects.get(id=payload.user_id, owner=requester)
+    except Invitation.DoesNotExist:
+        return 400, {"error": "Invitation not found"}
+    
+    # Delete the invitation
+    invitation.delete()
+    
+    return {
+        "message": f"Invitation to {invitation.email} canceled successfully",
+        "invitation_id": payload.user_id
+    }
+
