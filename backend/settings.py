@@ -58,6 +58,7 @@ INSTALLED_APPS = [
     'transaksi',
     'corsheaders',
     'rest_framework',
+    'laporan',
 ]
 
 MIDDLEWARE = [
