@@ -115,21 +115,17 @@ class GetUsersTests(TestCase):
         self.assertIn("Karyawan", roles)
 
     def test_get_users_without_toko(self):
-        # Create a user without a toko
         user_without_toko = User.objects.create_user(
             username="no_toko_user", email="no_toko@example.com", password="password", toko=None
         )
 
-        # Authenticate the user
         refresh = RefreshToken.for_user(user_without_toko)
         access_token = str(refresh.access_token)
 
-        # Call the endpoint
         response = self.client.get(
             "/get-users", headers={"Authorization": f"Bearer {access_token}"}
         )
 
-        # Assert the response
         self.assertEqual(response.status_code, 200)
         users = response.json()
         self.assertEqual(len(users), 1)

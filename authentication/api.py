@@ -100,20 +100,38 @@ def get_users(request):
             "name": u.username,
             "email": u.email,
             "role": u.role,
-            "toko_id": u.toko.id if u.toko else None
+            "toko_id": u.toko.id if u.toko else None,
+            "status": "active"
         }
         for u in users
     ]
 
-    def role_priority(role):
-        if role == "Pemilik":
+    invitations = Invitation.objects.filter(owner=user)
+
+    invitations_data = [
+        {
+            "id": i.id,
+            "name": i.name,
+            "email": i.email,
+            "role": i.role,
+            "status": "pending"
+        }
+        for i in invitations
+    ]
+
+    users_data.extend(invitations_data)
+
+    def role_priority(u):
+        if u["status"] == "pending":
+            return 3
+        if u["role"] == "Pemilik":
             return 0
-        elif role == "Administrator":
+        elif u["role"] == "Administrator":
             return 1
-        else:  # "Karyawan"
+        else:
             return 2
 
-    users_data.sort(key=lambda u: role_priority(u['role']))
+    users_data.sort(key=lambda u: role_priority(u))
 
     return users_data
 
