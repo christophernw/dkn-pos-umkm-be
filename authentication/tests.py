@@ -132,8 +132,6 @@ class GetUsersTests(TestCase):
         self.assertEqual(users[0]["id"], user_without_toko.id)
         self.assertIsNone(users[0]["toko_id"])
 
-
-
 class SendInvitationTests(TestCase):
     def setUp(self):
         self.client = TestClient(router)
@@ -344,3 +342,65 @@ class TestAuthBearer(TestCase):
 
         result = self.auth.authenticate(request=None, token=token)
         self.assertIsNone(result)
+
+class CancelInvitationTests(TestCase):
+    def setUp(self):
+        self.client = TestClient(router)
+        self.owner = User.objects.create_user(
+            username="owner", email="owner@example.com", password="password", role="Pemilik"
+        )
+        self.refresh = RefreshToken.for_user(self.owner)
+
+        self.invitation = Invitation.objects.create(
+            email="invited@example.com",
+            name="Invited User",
+            role="Karyawan",
+            owner=self.owner,
+            token="dummy_token",
+            expires_at=now() + timedelta(days=1),
+        )
+
+    def test_cancel_invitation_success(self):
+        """Test that a Pemilik can successfully cancel an invitation."""
+        response = self.client.post(
+            "/cancel-invitation",
+            json={"user_id": self.invitation.id},
+            headers={"Authorization": f"Bearer {str(self.refresh.access_token)}"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json()["message"],
+            f"Invitation to {self.invitation.email} canceled successfully",
+        )
+        self.assertEqual(response.json()["invitation_id"], self.invitation.id)
+        self.assertFalse(Invitation.objects.filter(id=self.invitation.id).exists())
+
+    def test_cancel_invitation_not_found(self):
+        """Test that canceling a non-existent invitation returns an error."""
+        non_existent_invitation_id = 99999  # Ensure this ID does not exist
+
+        response = self.client.post(
+            "/cancel-invitation",
+            json={"user_id": non_existent_invitation_id},
+            headers={"Authorization": f"Bearer {str(self.refresh.access_token)}"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"], "Invitation not found")
+
+    def test_cancel_invitation_not_owner(self):
+        """Test that a non-Pemilik user cannot cancel an invitation."""
+        non_owner = User.objects.create_user(
+            username="non_owner", email="nonowner@example.com", password="password", role="Karyawan"
+        )
+        refresh = RefreshToken.for_user(non_owner)
+
+        response = self.client.post(
+            "/cancel-invitation",
+            json={"user_id": self.invitation.id},
+            headers={"Authorization": f"Bearer {str(refresh.access_token)}"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"], "Only Pemilik can cancel invitations")
