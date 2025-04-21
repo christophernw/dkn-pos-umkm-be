@@ -4,7 +4,6 @@ from ninja import Router
 from ninja_jwt.tokens import RefreshToken
 from ninja_jwt.exceptions import TokenError
 from authentication.models import Invitation, Toko, User
-from pydantic import BaseModel
 from rest_framework_simplejwt.tokens import RefreshToken, AccessToken
 from rest_framework_simplejwt.exceptions import TokenError
 from django.conf import settings
@@ -182,12 +181,10 @@ def validate_invitation(request, payload: TokenValidationRequest):
         else:
             user.role = role
         
-        # Set toko relationship (for both new and existing users)
         if owner.toko:
             user.toko = owner.toko
         user.save()
         
-        # Clean up the invitation
         invitation.delete()
         
         return {
