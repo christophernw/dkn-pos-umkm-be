@@ -1,5 +1,4 @@
 from datetime import timedelta
-import unittest
 from unittest.mock import patch
 from django.conf import settings
 from django.db import IntegrityError
@@ -90,7 +89,6 @@ class GetUsersTests(TestCase):
         self.assertIn("Karyawan", roles)
 
     def test_get_users_as_administrator(self):
-        # Tambahkan Administrator ke toko yang sama
         admin = User.objects.create_user(
             username="admin",
             email="admin@example.com",
@@ -133,8 +131,15 @@ class GetUsersTests(TestCase):
         self.assertIsNone(users[0]["toko_id"])
 
     def test_get_users_with_pending_invitation(self):
-        """Test that pending invitations are included in the response."""
-        # Create a pending invitation
+        Invitation.objects.create(
+            email="pending@example.com",
+            name="Pending User",
+            role="Karyawan",
+            owner=self.owner,
+            token="dummy_token",
+            expires_at=now() + timedelta(days=1),
+        )
+
         refresh = RefreshToken.for_user(self.owner)
         access_token = str(refresh.access_token)
 
@@ -144,17 +149,14 @@ class GetUsersTests(TestCase):
         self.assertEqual(response.status_code, 200)
 
         users = response.json()
-        self.assertEqual(len(users), 3)  # 2 users + 1 pending invitation
+        self.assertEqual(len(users), 3)  
 
-        # Check that the pending invitation is included
         pending_user = next((u for u in users if u["status"] == "pending"), None)
         self.assertIsNotNone(pending_user)
         self.assertEqual(pending_user["email"], "pending@example.com")
         self.assertEqual(pending_user["role"], "Karyawan")
 
-        # Verify sorting: pending should have the highest priority (last in the list)
         self.assertEqual(users[-1]["status"], "pending")
-
 class SendInvitationTests(TestCase):
     def setUp(self):
         self.client = TestClient(router)
@@ -264,7 +266,6 @@ class ValidateInvitationTests(TestCase):
         self.assertEqual(response.json()["error"], "Invalid invitation")
 
     def test_validate_invitation_set_toko_relationship(self):
-        """Test that the toko relationship is set for the user during invitation validation."""
         self.owner.toko = Toko.objects.create()
         self.owner.save()
 
@@ -293,12 +294,10 @@ class ValidateInvitationTests(TestCase):
         self.assertTrue(response.json()["valid"])
         self.assertEqual(response.json()["message"], "User successfully registered")
 
-        # Verify that the user's toko is set to the owner's toko
         new_user = User.objects.get(email="newuser@example.com")
         self.assertEqual(new_user.toko, self.owner.toko)
 
     def test_validate_invitation_existing_user_no_toko(self):
-        """Test that an existing user's toko is set if they don't already have one."""
         self.owner.toko = Toko.objects.create()
         self.owner.save()
 
@@ -327,9 +326,9 @@ class ValidateInvitationTests(TestCase):
         self.assertTrue(response.json()["valid"])
         self.assertEqual(response.json()["message"], "User successfully registered")
 
-        # Verify that the user's toko is set to the owner's toko
         updated_user = User.objects.get(email="existing@example.com")
         self.assertEqual(updated_user.toko, self.owner.toko)
+
 class RemoveUserFromTokoTests(TestCase):
     def setUp(self):
         self.client = TestClient(router)
@@ -399,8 +398,7 @@ class RemoveUserFromTokoTests(TestCase):
         refresh = RefreshToken.for_user(self.owner)
         access_token = str(refresh.access_token)
 
-        non_existent_user_id = 99999  # Pastikan ID ini tidak ada di DB
-
+        non_existent_user_id = 99999 
         response = self.client.post(
             "/remove-user-from-toko",
             json={"user_id": non_existent_user_id},
@@ -451,7 +449,6 @@ class CancelInvitationTests(TestCase):
         )
 
     def test_cancel_invitation_success(self):
-        """Test that a Pemilik can successfully cancel an invitation."""
         response = self.client.post(
             "/cancel-invitation",
             json={"user_id": self.invitation.id},
@@ -467,8 +464,7 @@ class CancelInvitationTests(TestCase):
         self.assertFalse(Invitation.objects.filter(id=self.invitation.id).exists())
 
     def test_cancel_invitation_not_found(self):
-        """Test that canceling a non-existent invitation returns an error."""
-        non_existent_invitation_id = 99999  # Ensure this ID does not exist
+        non_existent_invitation_id = 99999  
 
         response = self.client.post(
             "/cancel-invitation",
@@ -480,7 +476,6 @@ class CancelInvitationTests(TestCase):
         self.assertEqual(response.json()["error"], "Invitation not found")
 
     def test_cancel_invitation_not_owner(self):
-        """Test that a non-Pemilik user cannot cancel an invitation."""
         non_owner = User.objects.create_user(
             username="non_owner", email="nonowner@example.com", password="password", role="Karyawan"
         )
