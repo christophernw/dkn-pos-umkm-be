@@ -132,6 +132,38 @@ class GetUsersTests(TestCase):
         self.assertEqual(users[0]["id"], user_without_toko.id)
         self.assertIsNone(users[0]["toko_id"])
 
+    def test_get_users_with_pending_invitation(self):
+        """Test that pending invitations are included in the response."""
+        # Create a pending invitation
+        invitation = Invitation.objects.create(
+            email="pending@example.com",
+            name="Pending User",
+            role="Karyawan",
+            owner=self.owner,
+            token="dummy_token",
+            expires_at=now() + timedelta(days=1),
+        )
+
+        refresh = RefreshToken.for_user(self.owner)
+        access_token = str(refresh.access_token)
+
+        response = self.client.get(
+            "/get-users", headers={"Authorization": f"Bearer {access_token}"}
+        )
+        self.assertEqual(response.status_code, 200)
+
+        users = response.json()
+        self.assertEqual(len(users), 3)  # 2 users + 1 pending invitation
+
+        # Check that the pending invitation is included
+        pending_user = next((u for u in users if u["status"] == "pending"), None)
+        self.assertIsNotNone(pending_user)
+        self.assertEqual(pending_user["email"], "pending@example.com")
+        self.assertEqual(pending_user["role"], "Karyawan")
+
+        # Verify sorting: pending should have the highest priority (last in the list)
+        self.assertEqual(users[-1]["status"], "pending")
+
 class SendInvitationTests(TestCase):
     def setUp(self):
         self.client = TestClient(router)
@@ -240,6 +272,76 @@ class ValidateInvitationTests(TestCase):
         self.assertFalse(response.json()["valid"])
         self.assertEqual(response.json()["error"], "Invalid invitation")
 
+    def test_validate_invitation_set_toko_relationship(self):
+        """Test that the toko relationship is set for the user during invitation validation."""
+        self.owner.toko = Toko.objects.create()
+        self.owner.save()
+
+        expiration = now() + timedelta(days=1)
+        token_payload = {
+            "email": "newuser@example.com",
+            "name": "New User",
+            "role": "Karyawan",
+            "owner_id": self.owner.id,
+            "exp": expiration,
+        }
+        token = jwt.encode(token_payload, settings.SECRET_KEY, algorithm="HS256")
+
+        Invitation.objects.create(
+            email="newuser@example.com",
+            name="New User",
+            role="Karyawan",
+            owner=self.owner,
+            token=token,
+            expires_at=expiration,
+        )
+
+        response = self.client.post("/validate-invitation", json={"token": token})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["valid"])
+        self.assertEqual(response.json()["message"], "User successfully registered")
+
+        # Verify that the user's toko is set to the owner's toko
+        new_user = User.objects.get(email="newuser@example.com")
+        self.assertEqual(new_user.toko, self.owner.toko)
+
+    def test_validate_invitation_existing_user_no_toko(self):
+        """Test that an existing user's toko is set if they don't already have one."""
+        existing_user = User.objects.create_user(
+            username="existing_user", email="existing@example.com", password="password", role="Karyawan", toko=None
+        )
+        self.owner.toko = Toko.objects.create()
+        self.owner.save()
+
+        expiration = now() + timedelta(days=1)
+        token_payload = {
+            "email": "existing@example.com",
+            "name": "Existing User",
+            "role": "Karyawan",
+            "owner_id": self.owner.id,
+            "exp": expiration,
+        }
+        token = jwt.encode(token_payload, settings.SECRET_KEY, algorithm="HS256")
+
+        Invitation.objects.create(
+            email="existing@example.com",
+            name="Existing User",
+            role="Karyawan",
+            owner=self.owner,
+            token=token,
+            expires_at=expiration,
+        )
+
+        response = self.client.post("/validate-invitation", json={"token": token})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["valid"])
+        self.assertEqual(response.json()["message"], "User successfully registered")
+
+        # Verify that the user's toko is set to the owner's toko
+        updated_user = User.objects.get(email="existing@example.com")
+        self.assertEqual(updated_user.toko, self.owner.toko)
 class RemoveUserFromTokoTests(TestCase):
     def setUp(self):
         self.client = TestClient(router)
