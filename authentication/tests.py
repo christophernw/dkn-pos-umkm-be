@@ -329,6 +329,44 @@ class ValidateInvitationTests(TestCase):
         updated_user = User.objects.get(email="existing@example.com")
         self.assertEqual(updated_user.toko, self.owner.toko)
 
+    def test_validate_invitation_update_existing_user_role(self):
+        User.objects.create_user(
+            username="existing_user",
+            email="existing@example.com",
+            password="password",
+            role="Karyawan",
+        )
+
+        expiration = now() + timedelta(days=1)
+        token_payload = {
+            "email": "existing@example.com",
+            "name": "Existing User",
+            "role": "Administrator",
+            "owner_id": self.owner.id,
+            "exp": expiration,
+        }
+        token = jwt.encode(token_payload, settings.SECRET_KEY, algorithm="HS256")
+
+        Invitation.objects.create(
+            email="existing@example.com",
+            name="Existing User",
+            role="Administrator",
+            owner=self.owner,
+            token=token,
+            expires_at=expiration,
+        )
+
+        response = self.client.post("/validate-invitation", json={"token": token})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["valid"])
+        self.assertEqual(response.json()["message"], "User successfully registered")
+
+        updated_user = User.objects.get(email="existing@example.com")
+        self.assertEqual(updated_user.role, "Administrator")
+        self.assertEqual(updated_user.toko, self.owner.toko) 
+
+
 class RemoveUserFromTokoTests(TestCase):
     def setUp(self):
         self.client = TestClient(router)

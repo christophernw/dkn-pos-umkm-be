@@ -173,23 +173,19 @@ def validate_invitation(request, payload: TokenValidationRequest):
         if not invitation:
             return {"valid": False, "error": "Invalid invitation"}
 
-        # Get owner information once
         owner = User.objects.get(id=owner_id)
         
-        # Check if user already exists
         user = User.objects.filter(email=email).first()
         
         if not user:
-            # Create new user only if doesn't exist
             user = User.objects.create_user(username=name, email=email, role=role)
         else:
-            # Update role for existing user
             user.role = role
         
         # Set toko relationship (for both new and existing users)
         if owner.toko:
             user.toko = owner.toko
-            user.save()
+        user.save()
         
         # Clean up the invitation
         invitation.delete()
