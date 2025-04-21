@@ -135,15 +135,6 @@ class GetUsersTests(TestCase):
     def test_get_users_with_pending_invitation(self):
         """Test that pending invitations are included in the response."""
         # Create a pending invitation
-        invitation = Invitation.objects.create(
-            email="pending@example.com",
-            name="Pending User",
-            role="Karyawan",
-            owner=self.owner,
-            token="dummy_token",
-            expires_at=now() + timedelta(days=1),
-        )
-
         refresh = RefreshToken.for_user(self.owner)
         access_token = str(refresh.access_token)
 
@@ -308,9 +299,6 @@ class ValidateInvitationTests(TestCase):
 
     def test_validate_invitation_existing_user_no_toko(self):
         """Test that an existing user's toko is set if they don't already have one."""
-        existing_user = User.objects.create_user(
-            username="existing_user", email="existing@example.com", password="password", role="Karyawan", toko=None
-        )
         self.owner.toko = Toko.objects.create()
         self.owner.save()
 
