@@ -192,6 +192,7 @@ def validate_invitation(request, payload: TokenValidationRequest):
             "message": "User successfully registered",
         }
     except jwt.ExpiredSignatureError:
+        Invitation.objects.filter(token=payload.token).delete()
         return {"valid": False, "error": "Token expired"}
     except jwt.DecodeError:
         return {"valid": False, "error": "Invalid token"}
