@@ -13,6 +13,10 @@ jobs:
     name: SonarQube Analysis
     runs-on: ubuntu-latest
 
+    defaults:
+      run:
+        working-directory: laporan
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -30,11 +34,11 @@ jobs:
 
       - name: Run Tests with Coverage
         env:
-            DB_NAME: ${{ secrets.DB_NAME }}
-            DB_USER: ${{ secrets.DB_USER }}
-            DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-            DB_HOST: ${{ secrets.DB_HOST }}
-            DB_PORT: ${{ secrets.DB_PORT }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_PORT: ${{ secrets.DB_PORT }}
         run: |
           coverage run manage.py test
           coverage xml
@@ -46,8 +50,9 @@ jobs:
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         with:
           args: >
-            -Dsonar.projectKey=dkn-pos-umkm-be
+            -Dsonar.projectKey=app-laporan
+            -Dsonar.projectBaseDir=laporan
             -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }}
             -Dsonar.login=${{ secrets.SONAR_TOKEN }}
             -Dsonar.python.coverage.reportPaths=coverage.xml
-            -Dsonar.exclusions=manage.py,backend/settings.py,backend/wsgi.py,backend/asgi.py,backend/urls.py,backend/migrations/**
+            -Dsonar.exclusions=manage.py,app/settings.py,app/wsgi.py,app/asgi.py,app/urls.py,app/migrations/**
