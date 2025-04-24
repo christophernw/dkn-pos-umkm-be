@@ -29,7 +29,6 @@ jobs:
           pip install coverage
 
       - name: Run Tests with Coverage
-        working-directory: laporan
         env:
           DB_NAME: ${{ secrets.DB_NAME }}
           DB_USER: ${{ secrets.DB_USER }}
@@ -37,7 +36,7 @@ jobs:
           DB_HOST: ${{ secrets.DB_HOST }}
           DB_PORT: ${{ secrets.DB_PORT }}
         run: |
-          coverage run manage.py test
+          coverage run manage.py test laporan
           coverage xml
 
       - name: Run SonarQube Scanner
@@ -48,8 +47,8 @@ jobs:
         with:
           args: >
             -Dsonar.projectKey=app-laporan
-            -Dsonar.projectBaseDir=laporan
+            -Dsonar.sources=laporan
             -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }}
             -Dsonar.login=${{ secrets.SONAR_TOKEN }}
             -Dsonar.python.coverage.reportPaths=coverage.xml
-            -Dsonar.exclusions=manage.py,app/settings.py,app/wsgi.py,app/asgi.py,app/urls.py,app/migrations/**
+            -Dsonar.exclusions=manage.py,*/settings.py,*/wsgi.py,*/asgi.py,*/urls.py,*/migrations/**
