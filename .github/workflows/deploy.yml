@@ -29,14 +29,18 @@ jobs:
 
     - name: Set environment variables
       run: |
-        if [ "${{ github.ref }}" == "refs/heads/main" ]; then
+        if [ "${{ github.ref }}" == "refs/heads/main" ] || [ "${{ github.base_ref }}" == "main" ]; then
           echo "BRANCH=main" >> $GITHUB_ENV
           echo "PORT=8000" >> $GITHUB_ENV
-          echo "CONTAINER_NAME=myproject_django_main" >> $GITHUB_ENV
-        elif [ "${{ github.ref }}" == "refs/heads/staging" ]; then
+          echo "DB_PORT_HOST=5432" >> $GITHUB_ENV
+        elif [ "${{ github.ref }}" == "refs/heads/staging" ] || [ "${{ github.base_ref }}" == "staging" ]; then
           echo "BRANCH=staging" >> $GITHUB_ENV
           echo "PORT=8001" >> $GITHUB_ENV
-          echo "CONTAINER_NAME=myproject_django_staging" >> $GITHUB_ENV
+          echo "DB_PORT_HOST=5433" >> $GITHUB_ENV
+        else
+          echo "BRANCH=dev" >> $GITHUB_ENV
+          echo "PORT=8002" >> $GITHUB_ENV
+          echo "DB_PORT_HOST=5434" >> $GITHUB_ENV
         fi
 
     - name: Build and Push Docker Image
@@ -45,12 +49,30 @@ jobs:
         docker tag my-django-app christophernw/dkn-pos-umkm-be:${{ env.BRANCH }}
         docker push christophernw/dkn-pos-umkm-be:${{ env.BRANCH }}
 
-    - name: Deploy to Cloud Server via SSH
+    - name: Copy docker-compose files
       run: |
         sshpass -p "${{ secrets.SERVER_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << EOF
-          cd django-be
-          docker pull christophernw/dkn-pos-umkm-be:${{ env.BRANCH }}
-          docker stop ${{ env.CONTAINER_NAME }} || true
-          docker rm ${{ env.CONTAINER_NAME }} || true
-          docker run -d --name ${{ env.CONTAINER_NAME }} -p ${{ env.PORT }}:8000 christophernw/dkn-pos-umkm-be:${{ env.BRANCH }} bash -c "python manage.py migrate && gunicorn backend.wsgi:application --bind 0.0.0.0:8000"
+          # Create directories if they don't exist
+          mkdir -p ~/postgres-db-${{ env.BRANCH }}
+          mkdir -p ~/django-be-${{ env.BRANCH }}
+        EOF
+        
+        # Then copy the docker-compose files
+        sshpass -p "${{ secrets.SERVER_PASSWORD }}" scp -o StrictHostKeyChecking=no docker-compose.prod.${{ env.BRANCH }}.yml ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }}:~/django-be-${{ env.BRANCH }}/docker-compose.yml
+        sshpass -p "${{ secrets.SERVER_PASSWORD }}" scp -o StrictHostKeyChecking=no docker-compose.db.${{ env.BRANCH }}.yml ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }}:~/postgres-db-${{ env.BRANCH }}/docker-compose.yml
+
+    - name: Deploy database and web application
+      run: |
+        sshpass -p "${{ secrets.SERVER_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << EOF
+          # Web Application
+          cd ~/django-be-${{ env.BRANCH }}
+          echo "BRANCH=${{ env.BRANCH }}" > .env
+          echo "PORT=${{ env.PORT }}" >> .env
+          echo "DB_NAME=${{ secrets.DB_NAME }}" >> .env
+          echo "DB_USER=${{ secrets.DB_USER }}" >> .env
+          echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env
+          
+          docker-compose --env-file .env pull
+          docker-compose --env-file .env down --remove-orphans
+          docker-compose --env-file .env up -d
         EOF

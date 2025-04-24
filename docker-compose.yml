@@ -30,6 +30,7 @@ services:
 
 volumes:
   postgres_data:
+    external: true
 
 networks:
   app_network:
