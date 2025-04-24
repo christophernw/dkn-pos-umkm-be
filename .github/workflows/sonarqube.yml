@@ -13,10 +13,6 @@ jobs:
     name: SonarQube Analysis
     runs-on: ubuntu-latest
 
-    defaults:
-      run:
-        working-directory: laporan
-
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -33,6 +29,7 @@ jobs:
           pip install coverage
 
       - name: Run Tests with Coverage
+        working-directory: laporan
         env:
           DB_NAME: ${{ secrets.DB_NAME }}
           DB_USER: ${{ secrets.DB_USER }}
