@@ -145,3 +145,62 @@ def list_invitations(request):
         
     return result
 
+@router.post("/accept-invitation", response={200: dict, 400: dict, 404: dict})
+def accept_invitation(request, accept_data: InvitationAcceptRequest):
+    """Accept a store invitation"""
+    user_id = request.auth
+    
+    try:
+        user = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        return 400, {"error": "User not found"}
+    
+    try:
+        invitation = StoreInvitation.objects.get(token=accept_data.token)
+    except StoreInvitation.DoesNotExist:
+        return 404, {"error": "Invitation not found"}
+    
+    # Check if invitation is still valid
+    if invitation.status != StoreInvitation.PENDING:
+        return 400, {"error": f"Invitation is {invitation.status}"}
+    
+    if invitation.expires_at < timezone.now():
+        invitation.status = StoreInvitation.EXPIRED
+        invitation.save()
+        return 400, {"error": "Invitation has expired"}
+    
+    # Check if the user's email matches the invitation email
+    if user.email != invitation.invitee_email:
+        return 400, {"error": "This invitation is not for your email address"}
+    
+    # Accept the invitation
+    invitation.invitee = user
+    invitation.status = StoreInvitation.ACCEPTED
+    invitation.save()
+    
+    return 200, {"message": "Invitation accepted successfully"}
+
+@router.post("/decline-invitation", response={200: dict, 400: dict, 404: dict})
+def decline_invitation(request, decline_data: InvitationDeclineRequest):
+    """Decline a store invitation"""
+    user_id = request.auth
+    
+    try:
+        user = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        return 400, {"error": "User not found"}
+    
+    try:
+        invitation = StoreInvitation.objects.get(token=decline_data.token)
+    except StoreInvitation.DoesNotExist:
+        return 404, {"error": "Invitation not found"}
+    
+    if user.email != invitation.invitee_email:
+        return 400, {"error": "This invitation is not for your email address"}
+    
+    # Decline the invitation
+    invitation.invitee = user
+    invitation.status = StoreInvitation.DECLINED
+    invitation.save()
+    
+    return 200, {"message": "Invitation declined successfully"}
