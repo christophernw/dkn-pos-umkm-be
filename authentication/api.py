@@ -12,6 +12,8 @@ import uuid
 
 router = Router()
 
+USER_NOT_FOUND_ERROR = "User not found"
+
 class SessionData(BaseModel):
     user: dict
     
@@ -91,7 +93,7 @@ def send_invitation(request, invitation_data: StoreInvitationRequest):
     user_id = request.auth
     
     try:
-        inviter = User.objects.get(id=user_id)
+        return 400, {"error": USER_NOT_FOUND_ERROR}
     except User.DoesNotExist:
         return 400, {"error": "User not found"}
         
