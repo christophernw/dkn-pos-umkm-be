@@ -10,9 +10,8 @@ from django.utils import timezone
 from django.core.exceptions import ValidationError
 import uuid
 
+USER_NOT_FOUND = "User not found"
 router = Router()
-
-USER_NOT_FOUND_ERROR = "User not found"
 
 class SessionData(BaseModel):
     user: dict
@@ -93,9 +92,9 @@ def send_invitation(request, invitation_data: StoreInvitationRequest):
     user_id = request.auth
     
     try:
-        return 400, {"error": USER_NOT_FOUND_ERROR}
+        inviter = User.objects.get(id=user_id)
     except User.DoesNotExist:
-        return 400, {"error": "User not found"}
+        return 400, {"error": USER_NOT_FOUND}
         
     # Check if email already has an active invitation
     existing_invitation = StoreInvitation.objects.filter(
@@ -155,7 +154,7 @@ def accept_invitation(request, accept_data: InvitationAcceptRequest):
     try:
         user = User.objects.get(id=user_id)
     except User.DoesNotExist:
-        return 400, {"error": "User not found"}
+        return 400, {"error": USER_NOT_FOUND}
     
     try:
         invitation = StoreInvitation.objects.get(token=accept_data.token)
@@ -190,13 +189,14 @@ def decline_invitation(request, decline_data: InvitationDeclineRequest):
     try:
         user = User.objects.get(id=user_id)
     except User.DoesNotExist:
-        return 400, {"error": "User not found"}
+        return 400, {"error": USER_NOT_FOUND}
     
     try:
         invitation = StoreInvitation.objects.get(token=decline_data.token)
     except StoreInvitation.DoesNotExist:
         return 404, {"error": "Invitation not found"}
-    
+
+    # Check if the user's email matches the invitation email
     if user.email != invitation.invitee_email:
         return 400, {"error": "This invitation is not for your email address"}
     
