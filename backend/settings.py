@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     'produk',
     'authentication',
     'transaksi',
+    'laporan',
     'corsheaders',
     'rest_framework',
 ]
