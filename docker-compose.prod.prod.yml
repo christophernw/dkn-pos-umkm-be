@@ -11,6 +11,7 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       DB_HOST: postgres_db_prod
       DB_PORT: 5432
+      SENTRY_DSN_PROD: ${SENTRY_DSN_PROD}
     networks:
       - postgres_network
     restart: always

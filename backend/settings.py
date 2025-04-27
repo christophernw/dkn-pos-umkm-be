@@ -47,26 +47,39 @@ ALLOWED_HOSTS = ["*"]
 
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 
-# Sentry configuration for development
-if DEBUG:  # Only initialize when in development mode
+import sentry_sdk
+from sentry_sdk.integrations.django import DjangoIntegration
+
+# Determine which Sentry DSN to use based on environment
+ENV = os.environ.get('ENV', 'local')
+
+# Get environment-specific DSN
+if ENV == 'production':
+    SENTRY_DSN = os.environ.get('SENTRY_DSN_PROD', '')
+elif ENV == 'staging':
+    SENTRY_DSN = os.environ.get('SENTRY_DSN_STAGING', '')
+else:  # development/local
+    SENTRY_DSN = os.environ.get('SENTRY_DSN_DEV', '')
+
+# Initialize Sentry if DSN is available
+if SENTRY_DSN:
     sentry_sdk.init(
-        dsn="https://c095a45ecaa66431f40ff79815af1ec0@o4509224675115008.ingest.us.sentry.io/4509224682323968",  # Replace with the DSN from your Sentry project
+        dsn=SENTRY_DSN,
         integrations=[
             DjangoIntegration(),
         ],
-        # Set this to True to capture all transactions for testing
-        traces_sample_rate=1.0,
+        # Adjust sampling rate based on environment
+        traces_sample_rate=1.0 if ENV == 'local' else 0.2,
         
-        # Since we're in development, set environment to 'development'
-        environment="development",
+        # Explicitly set environment name within each project
+        environment=ENV,
         
-        # This will associate your Django users with errors
+        # User identification
         send_default_pii=True,
         
-        # Enable debug mode for local development
-        debug=True,
+        # Debug mode for local only
+        debug=ENV == 'local',
     )
-
 # Application definition
 
 INSTALLED_APPS = [

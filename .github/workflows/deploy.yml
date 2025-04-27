@@ -33,14 +33,17 @@ jobs:
           echo "BRANCH=main" >> $GITHUB_ENV
           echo "PORT=8000" >> $GITHUB_ENV
           echo "DB_PORT_HOST=5432" >> $GITHUB_ENV
+          echo "SENTRY_DSN_VAR=SENTRY_DSN_PROD" >> $GITHUB_ENV
         elif [ "${{ github.ref }}" == "refs/heads/staging" ] || [ "${{ github.base_ref }}" == "staging" ]; then
           echo "BRANCH=staging" >> $GITHUB_ENV
           echo "PORT=8001" >> $GITHUB_ENV
           echo "DB_PORT_HOST=5433" >> $GITHUB_ENV
+          echo "SENTRY_DSN_VAR=SENTRY_DSN_STAGING" >> $GITHUB_ENV
         else
           echo "BRANCH=dev" >> $GITHUB_ENV
           echo "PORT=8002" >> $GITHUB_ENV
           echo "DB_PORT_HOST=5434" >> $GITHUB_ENV
+          echo "SENTRY_DSN_VAR=SENTRY_DSN_DEV" >> $GITHUB_ENV
         fi
 
     - name: Build and Push Docker Image
@@ -71,6 +74,15 @@ jobs:
           echo "DB_NAME=${{ secrets.DB_NAME }}" >> .env
           echo "DB_USER=${{ secrets.DB_USER }}" >> .env
           echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env
+          
+          # Dynamically choose correct Sentry DSN based on environment
+          if [ "${{ env.BRANCH }}" == "main" ]; then
+            echo "SENTRY_DSN_PROD=${{ secrets.SENTRY_DSN_PROD }}" >> .env
+          elif [ "${{ env.BRANCH }}" == "staging" ]; then
+            echo "SENTRY_DSN_STAGING=${{ secrets.SENTRY_DSN_STAGING }}" >> .env
+          else
+            echo "SENTRY_DSN_DEV=${{ secrets.SENTRY_DSN_DEV }}" >> .env
+          fi
           
           docker-compose --env-file .env pull
           docker-compose --env-file .env down --remove-orphans
