@@ -38,3 +38,4 @@ sqlparse==0.5.3
 storage==0.0.4.3
 typing_extensions==4.12.2
 tzdata==2025.1
+sentry-sdk==1.46.0
