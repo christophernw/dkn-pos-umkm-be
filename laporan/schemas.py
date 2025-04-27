@@ -2,6 +2,7 @@ from ninja import Schema
 from typing import List, Optional
 from datetime import datetime, date
 from pydantic import Field
+from decimal import Decimal
 
 class TransaksiHutangPiutangDetail(Schema):
     id: str
@@ -59,3 +60,15 @@ class PaginatedHutangPiutangReportResponse(Schema):
 class DateRangeRequest(Schema):
     start_date: date = Field(None, description="Start date for filtering (YYYY-MM-DD)")
     end_date: date = Field(None, description="End date for filtering (YYYY-MM-DD)")
+
+class IncomeStatementLine(Schema):
+    name: str
+    total: Decimal 
+
+class IncomeStatementResponse(Schema):
+    toko_id: int
+    period: str 
+    currency: str = "IDR"
+    income: List[IncomeStatementLine]
+    expenses: List[IncomeStatementLine]
+    net_profit: Decimal 
