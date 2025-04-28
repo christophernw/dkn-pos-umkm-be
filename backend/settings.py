@@ -91,9 +91,10 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'produk',
     'authentication',
-    'transaksi',
+    'laporan',
     'corsheaders',
     'rest_framework',
+    'transaksi',
 ]
 
 MIDDLEWARE = [
