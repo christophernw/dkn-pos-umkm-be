@@ -230,7 +230,6 @@ def remove_user_from_toko(request, payload: RemoveUserRequest):
     # Store user information before removal for the email
     removed_user_email = user_to_remove.email
     removed_user_name = user_to_remove.username
-    toko_owner_name = requester.username
     
     # Simply set the user's toko to None (don't create a new toko)
     user_to_remove.toko = None
@@ -238,21 +237,6 @@ def remove_user_from_toko(request, payload: RemoveUserRequest):
     # Reset role to regular user 
     user_to_remove.role = "Pemilik"  # Default to lowest role when removed
     user_to_remove.save()
-
-    # Construct email notification data
-    email_data = {
-        "to_email": removed_user_email,
-        "subject": "You have been removed from a store",
-        "removed_user_name": removed_user_name,
-        "toko_owner_name": toko_owner_name,
-    }
-    
-    # Send removal notification email (non-blocking)
-    try:
-        send_removal_notification_email(email_data)
-    except Exception as e:
-        # Log the error but don't fail the operation if email sending fails
-        print(f"Failed to send removal notification email: {str(e)}")
 
     return {
         "message": f"User {removed_user_name} removed from toko",
@@ -263,42 +247,6 @@ def remove_user_from_toko(request, payload: RemoveUserRequest):
             "role": user_to_remove.role,
         },
     }
-
-# Define a function to send removal notification emails
-def send_removal_notification_email(email_data):
-    """
-    Send notification email to users who have been removed from a toko.
-    
-    This is a placeholder function. In a production environment, you would replace
-    this with actual email sending logic using Django's email functionality or a 
-    third-party service like SendGrid, Mailgun, etc.
-    
-    Args:
-        email_data (dict): Dictionary containing email data
-    """
-    # Example implementation using Django's built-in email functionality
-    from django.core.mail import send_mail
-    from django.conf import settings
-    
-    subject = email_data.get("subject", "Notification from LANCAR")
-    message = f"""
-    Dear {email_data.get('removed_user_name')},
-    
-    You have been removed from the store by {email_data.get('toko_owner_name')}.
-    
-    If you believe this was done in error, please contact the store owner directly.
-    
-    Thank you,
-    LANCAR Team
-    """
-    
-    send_mail(
-        subject=subject,
-        message=message,
-        from_email=settings.EMAIL_HOST_USER,
-        recipient_list=[email_data.get('to_email')],
-        fail_silently=False,
-    )
 
 @router.get("/pending-invitations", response={200: list[dict], 404: dict}, auth=AuthBearer())
 def get_pending_invitations(request):
