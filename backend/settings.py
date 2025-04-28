@@ -15,6 +15,9 @@ import environ
 import os
 import environ
 
+import sentry_sdk
+from sentry_sdk.integrations.django import DjangoIntegration
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 env = environ.Env()
@@ -44,6 +47,39 @@ ALLOWED_HOSTS = ["*"]
 
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 
+import sentry_sdk
+from sentry_sdk.integrations.django import DjangoIntegration
+
+# Determine which Sentry DSN to use based on environment
+ENV = os.environ.get('ENV', 'local')
+
+# Get environment-specific DSN
+if ENV == 'production':
+    SENTRY_DSN = os.environ.get('SENTRY_DSN_PROD', '')
+elif ENV == 'staging':
+    SENTRY_DSN = os.environ.get('SENTRY_DSN_STAGING', '')
+else:  # development/local
+    SENTRY_DSN = os.environ.get('SENTRY_DSN_DEV', '')
+
+# Initialize Sentry if DSN is available
+if SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        integrations=[
+            DjangoIntegration(),
+        ],
+        # Adjust sampling rate based on environment
+        traces_sample_rate=1.0 if ENV == 'local' else 0.2,
+        
+        # Explicitly set environment name within each project
+        environment=ENV,
+        
+        # User identification
+        send_default_pii=True,
+        
+        # Debug mode for local only
+        debug=ENV == 'local',
+    )
 # Application definition
 
 INSTALLED_APPS = [
@@ -101,24 +137,24 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 ENV = os.environ.get('ENV', 'local')
 
 # Database configuration
-# if ENV == 'staging' or ENV == 'production':
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.environ.get('DB_NAME'),
-        'USER': os.environ.get('DB_USER'),
-        'PASSWORD': os.environ.get('DB_PASSWORD'),
-        'HOST': os.environ.get('DB_HOST'),
-        'PORT': os.environ.get('DB_PORT'),
+if ENV == 'staging' or ENV == 'production':
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.environ.get('DB_NAME'),
+            'USER': os.environ.get('DB_USER'),
+            'PASSWORD': os.environ.get('DB_PASSWORD'),
+            'HOST': os.environ.get('DB_HOST'),
+            'PORT': os.environ.get('DB_PORT'),
+        }
     }
-}
-# else:
-#     DATABASES = {
-#         'default': {
-#             'ENGINE': 'django.db.backends.sqlite3',
-#             'NAME': BASE_DIR / 'db.sqlite3',
-#         }
-#     }
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
