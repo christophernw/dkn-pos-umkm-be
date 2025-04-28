@@ -337,6 +337,75 @@ def get_debt_report(request):
         "end_date": end_date.strftime("%Y-%m-%d"),
     }
 
+@router.get("/debt-report-by-date", response={200: dict, 404: dict, 400: dict})
+def get_debt_report_by_date(request):
+    user_id = request.auth
+    user = get_object_or_404(User, id=user_id)
+    
+    if not user.toko:
+        return 404, {"message": "User doesn't have a toko"}
+    
+    # Get date range parameters
+    start_date_str = request.GET.get("start_date")
+    end_date_str = request.GET.get("end_date")
+    
+    # Validate date parameters
+    if not start_date_str or not end_date_str:
+        return 400, {"message": "Both start_date and end_date parameters are required"}
+    
+    try:
+        # Parse date strings to datetime objects
+        start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
+        # Add time to end_date to include the entire day
+        end_date = datetime.strptime(end_date_str, "%Y-%m-%d") + timedelta(days=1, seconds=-1)
+        
+        # Ensure start_date is before end_date
+        if start_date > end_date:
+            return 400, {"message": "start_date must be before end_date"}
+            
+    except ValueError:
+        return 400, {"message": "Invalid date format. Use YYYY-MM-DD"}
+    
+    # Get unpaid transactions within the specified date range
+    transactions = Transaksi.objects.filter(
+        toko=user.toko,
+        status="Belum Lunas",
+        is_deleted=False,
+        created_at__gte=start_date,
+        created_at__lte=end_date,
+    ).order_by("-created_at")
+    
+    return 200, {
+        "transactions": [TransaksiResponse.from_orm(t) for t in transactions],
+        "start_date": start_date.strftime("%Y-%m-%d"),
+        "end_date": end_date.strftime("%Y-%m-%d"),
+    }
+
+@router.get("/first-debt-date", response={200: dict, 404: dict})
+def get_first_debt_date(request):
+    user_id = request.auth
+    user = get_object_or_404(User, id=user_id)
+    
+    if not user.toko:
+        return 404, {"message": "User doesn't have a toko"}
+    
+    # Find the earliest unpaid transaction date
+    earliest_transaction = Transaksi.objects.filter(
+        toko=user.toko,
+        status="Belum Lunas",
+        is_deleted=False
+    ).order_by('created_at').first()
+    
+    if earliest_transaction:
+        first_date = earliest_transaction.created_at.strftime('%Y-%m-%d')
+    else:
+        # If no unpaid transactions, return today's date as fallback
+        first_date = datetime.now().strftime('%Y-%m-%d')
+    
+    return 200, {
+        "first_date": first_date
+    }
+
 @router.get("/{id}", response={200: TransaksiResponse, 404: dict})
 def get_transaksi_detail(request, id: str):
     user_id = request.auth
