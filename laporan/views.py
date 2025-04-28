@@ -1,17 +1,21 @@
-from django.shortcuts import render
 from datetime import date
 from calendar import monthrange
 from decimal import Decimal
 from typing import List
+
+from django.shortcuts import render
 from django.db.models import Sum, Q
+
 from ninja import Router
-from ninja.security import django_auth
+from ninja.security import django_auth, HttpBearer
+import jwt
+
+from backend import settings
 from transaksi.models import Transaksi
-from authentication.models import Toko
-from .schemas import IncomeStatementResponse, IncomeStatementLine
-from .utils import (
-    INCOME_CATEGORIES, EXPENSE_CATEGORIES, build_csv
-)
+from authentication.models import User, Toko
+from .models import ArusKasReport, DetailArusKas
+from .schemas import IncomeStatementResponse, IncomeStatementLine, ArusKasReportWithDetailsSchema
+from .utils import (INCOME_CATEGORIES, EXPENSE_CATEGORIES, build_csv)
 
 
 router = Router(tags=["Income Statement"])
@@ -78,3 +82,66 @@ def download_income_statement(request, month: str):
 
     income_lines, expense_lines, net = _aggregate(toko, first, last)
     return build_csv(month, toko.id, income_lines, expense_lines, net)
+
+class AuthBearer(HttpBearer):
+    def authenticate(self, request, token):
+        try:
+            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+            user_id = payload.get("user_id")
+            if user_id:
+                return user_id
+        except jwt.PyJWTError:
+            return None
+        return None
+
+
+router = Router(auth=AuthBearer())
+
+def _month_bounds(year: int, month: int):
+    first = date(year, month, 1)
+    last = date(year, month, monthrange(year, month)[1])
+    return first, last
+
+@router.get("/aruskas-report", response=ArusKasReportWithDetailsSchema)
+def aruskas_report(request, month: str):
+    year, mm = map(int, month.split("-"))
+
+    user_id = request.auth
+    user = User.objects.get(id=user_id)
+    toko = user.toko
+
+    report = ArusKasReport.objects.filter(
+        toko=toko,
+        bulan=mm,
+        tahun=year
+    ).first()
+
+    if not report:
+        return ArusKasReportWithDetailsSchema(
+            id=0,
+            month=mm,
+            year=year,
+            total_inflow=Decimal("0"),
+            total_outflow=Decimal("0"),
+            balance=Decimal("0"),
+            transactions=[]
+        )
+
+    transactions = DetailArusKas.objects.filter(report=report)
+    return ArusKasReportWithDetailsSchema.from_report(report, transactions)
+
+@router.get("/aruskas-available-months", response=List[str])
+def available_months(request):
+    user_id = request.auth
+    user = User.objects.get(id=user_id)
+    toko = user.toko
+
+    reports = ArusKasReport.objects.filter(toko=toko).order_by('-tahun', '-bulan')
+
+    months = [
+        f"{report.tahun}-{report.bulan:02d}"
+        for report in reports
+    ]
+
+    return months
+
