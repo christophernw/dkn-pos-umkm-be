@@ -116,14 +116,19 @@ def send_invitation(request, payload: InvitationRequest):
     name = payload.name.strip()
     email = payload.email.strip().lower()
     role = payload.role.strip()
-    owner = User.objects.get(id=request.auth)
+    user = User.objects.get(id=request.auth)
+
+    # Check if user has a toko
+    if not user.toko:
+        return 400, {"error": "User doesn't have a toko."}
 
     # If user already exists in the toko, return an error
-    existing_user = User.objects.filter(email=email, toko=owner.toko).first()
+    existing_user = User.objects.filter(email=email, toko=user.toko).first()
     if existing_user:
         return 400, {"error": "User sudah ada di toko ini."}
 
-    if Invitation.objects.filter(email=email, owner=owner).exists():
+    # Check if invitation already exists for this email and toko
+    if Invitation.objects.filter(email=email, toko=user.toko).exists():
         return 400, {"error": "Undangan sudah dikirim ke email ini."}
 
     expiration = now() + timedelta(days=1)
@@ -131,7 +136,7 @@ def send_invitation(request, payload: InvitationRequest):
         "email": email,
         "name": name,
         "role": role,
-        "owner_id": owner.id,
+        "toko_id": user.toko.id,
         "exp": expiration,
     }
     token = jwt.encode(token_payload, settings.SECRET_KEY, algorithm="HS256")
@@ -141,7 +146,8 @@ def send_invitation(request, payload: InvitationRequest):
             email=email,
             name=name,
             role=role,
-            owner=owner,
+            toko=user.toko,
+            created_by=user,
             token=token,
             expires_at=expiration,
         )
@@ -157,14 +163,14 @@ def validate_invitation(request, payload: TokenValidationRequest):
         email = decoded.get("email")
         name = decoded.get("name")
         role = decoded.get("role")
-        owner_id = decoded.get("owner_id")
+        toko_id = decoded.get("toko_id")
 
         invitation = Invitation.objects.filter(email=email, token=payload.token).first()
         if not invitation:
             return {"valid": False, "error": "Invalid invitation"}
 
-        # Get owner information once
-        owner = User.objects.get(id=owner_id)
+        # Get toko information
+        toko = Toko.objects.get(id=toko_id)
 
         # Check if user already exists
         user = User.objects.filter(email=email).first()
@@ -178,9 +184,8 @@ def validate_invitation(request, payload: TokenValidationRequest):
             user.username = name
 
         # Set toko relationship (for both new and existing users)
-        if owner.toko:
-            user.toko = owner.toko
-            user.save()
+        user.toko = toko
+        user.save()
 
         # Clean up the invitation
         invitation.delete()
@@ -297,15 +302,15 @@ def send_removal_notification_email(email_data):
 
 @router.get("/pending-invitations", response={200: list[dict], 404: dict}, auth=AuthBearer())
 def get_pending_invitations(request):
-    """Get all pending invitations created by the current user."""
+    """Get all pending invitations created for the user's toko."""
     user_id = request.auth
     user = get_object_or_404(User, id=user_id)
 
     if not user.toko:
         return 404, {"message": "User doesn't have a toko"}
 
-    # Get invitations where the owner is the current user
-    invitations = Invitation.objects.filter(owner=user)
+    # Get invitations where the toko is the user's toko
+    invitations = Invitation.objects.filter(toko=user.toko)
     
     invitations_data = [
         {
@@ -313,6 +318,7 @@ def get_pending_invitations(request):
             "email": invitation.email,
             "name": invitation.name,
             "role": invitation.role,
+            "created_by": invitation.created_by.username,
             "created_at": invitation.expires_at - timedelta(days=1),  # Assuming invitations always expire in 1 day
             "expires_at": invitation.expires_at,
         }
@@ -321,18 +327,20 @@ def get_pending_invitations(request):
     
     return 200, invitations_data
 
-
 @router.delete("/delete-invitation/{invitation_id}", response={200: dict, 404: dict, 403: dict}, auth=AuthBearer())
 def delete_invitation(request, invitation_id: int):
-    """Delete an invitation by ID. Only the owner can delete their invitations."""
+    """Delete an invitation by ID. Only users in the same toko can delete invitations."""
     user_id = request.auth
     user = get_object_or_404(User, id=user_id)
+    
+    if not user.toko:
+        return 404, {"message": "User doesn't have a toko"}
     
     try:
         invitation = get_object_or_404(Invitation, id=invitation_id)
         
-        # Check if the current user is the owner of the invitation
-        if invitation.owner.id != user.id:
+        # Check if the invitation belongs to the user's toko
+        if invitation.toko.id != user.toko.id:
             return 403, {"message": "You don't have permission to delete this invitation"}
         
         # Delete the invitation
@@ -341,8 +349,6 @@ def delete_invitation(request, invitation_id: int):
         return 200, {"message": "Invitation deleted successfully"}
     except Exception as e:
         return 404, {"message": f"Error deleting invitation: {str(e)}"}
-    
-# Add this to authentication/api.py
 
 @router.post("/create-new-store", response={200: dict, 400: dict}, auth=AuthBearer())
 def create_new_store(request):
