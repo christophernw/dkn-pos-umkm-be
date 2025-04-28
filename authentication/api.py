@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from django.shortcuts import get_object_or_404
 import jwt
 from ninja import Router
 from ninja_jwt.tokens import RefreshToken
@@ -180,7 +181,9 @@ def validate_invitation(request, payload: TokenValidationRequest):
             user = User.objects.create_user(username=name, email=email, role=role)
         else:
             user.role = role
-        
+            user.username = name
+
+        # Set toko relationship (for both new and existing users)
         if owner.toko:
             user.toko = owner.toko
         user.save()
@@ -219,46 +222,160 @@ def remove_user_from_toko(request, payload: RemoveUserRequest):
     # Prevent removing oneself
     if requester.id == user_to_remove.id:
         return 400, {"error": "Cannot remove yourself from your own toko"}
+
+    # Store user information before removal for the email
+    removed_user_email = user_to_remove.email
+    removed_user_name = user_to_remove.username
+    toko_owner_name = requester.username
     
-    # Store the user's current toko and set to None temporarily
+    # Simply set the user's toko to None (don't create a new toko)
     user_to_remove.toko = None
     
-    # Create a new toko for the removed user
-    user_to_remove.role = "Pemilik"
-    new_toko = Toko.objects.create()
-    user_to_remove.toko = new_toko
+    # Reset role to regular user 
+    user_to_remove.role = "Pemilik"  # Default to lowest role when removed
     user_to_remove.save()
+
+    # Construct email notification data
+    email_data = {
+        "to_email": removed_user_email,
+        "subject": "You have been removed from a store",
+        "removed_user_name": removed_user_name,
+        "toko_owner_name": toko_owner_name,
+    }
     
+    # Send removal notification email (non-blocking)
+    try:
+        send_removal_notification_email(email_data)
+    except Exception as e:
+        # Log the error but don't fail the operation if email sending fails
+        print(f"Failed to send removal notification email: {str(e)}")
+
     return {
-        "message": f"User {user_to_remove.username} removed from toko and given a new toko",
+        "message": f"User {removed_user_name} removed from toko",
         "user": {
             "id": user_to_remove.id,
-            "name": user_to_remove.username,
-            "email": user_to_remove.email,
+            "name": removed_user_name,
+            "email": removed_user_email,
             "role": user_to_remove.role,
-            "new_toko_id": new_toko.id
-        }
+        },
     }
 
-@router.post("/cancel-invitation", response={200: dict, 400: dict}, auth=AuthBearer())
-def cancel_invitation(request, payload: RemoveUserRequest):
-    # Get the requesting user (must be a Pemilik)
-    requester = User.objects.get(id=request.auth)
+# Define a function to send removal notification emails
+def send_removal_notification_email(email_data):
+    """
+    Send notification email to users who have been removed from a toko.
     
-    # Verify requester is a Pemilik
-    if requester.role != "Pemilik":
-        return 400, {"error": "Only Pemilik can cancel invitations"}
+    This is a placeholder function. In a production environment, you would replace
+    this with actual email sending logic using Django's email functionality or a 
+    third-party service like SendGrid, Mailgun, etc.
     
-    # Get the invitation to be canceled
+    Args:
+        email_data (dict): Dictionary containing email data
+    """
+    # Example implementation using Django's built-in email functionality
+    from django.core.mail import send_mail
+    from django.conf import settings
+    
+    subject = email_data.get("subject", "Notification from LANCAR")
+    message = f"""
+    Dear {email_data.get('removed_user_name')},
+    
+    You have been removed from the store by {email_data.get('toko_owner_name')}.
+    
+    If you believe this was done in error, please contact the store owner directly.
+    
+    Thank you,
+    LANCAR Team
+    """
+    
+    send_mail(
+        subject=subject,
+        message=message,
+        from_email=settings.EMAIL_HOST_USER,
+        recipient_list=[email_data.get('to_email')],
+        fail_silently=False,
+    )
+
+@router.get("/pending-invitations", response={200: list[dict], 404: dict}, auth=AuthBearer())
+def get_pending_invitations(request):
+    """Get all pending invitations created by the current user."""
+    user_id = request.auth
+    user = get_object_or_404(User, id=user_id)
+
+    if not user.toko:
+        return 404, {"message": "User doesn't have a toko"}
+
+    # Get invitations where the owner is the current user
+    invitations = Invitation.objects.filter(owner=user)
+    
+    invitations_data = [
+        {
+            "id": invitation.id,
+            "email": invitation.email,
+            "name": invitation.name,
+            "role": invitation.role,
+            "created_at": invitation.expires_at - timedelta(days=1),  # Assuming invitations always expire in 1 day
+            "expires_at": invitation.expires_at,
+        }
+        for invitation in invitations
+    ]
+    
+    return 200, invitations_data
+
+
+@router.delete("/delete-invitation/{invitation_id}", response={200: dict, 404: dict, 403: dict}, auth=AuthBearer())
+def delete_invitation(request, invitation_id: int):
+    """Delete an invitation by ID. Only the owner can delete their invitations."""
+    user_id = request.auth
+    user = get_object_or_404(User, id=user_id)
+    
     try:
-        invitation = Invitation.objects.get(id=payload.user_id, owner=requester)
-    except Invitation.DoesNotExist:
-        return 400, {"error": "Invitation not found"}
+        invitation = get_object_or_404(Invitation, id=invitation_id)
+        
+        # Check if the current user is the owner of the invitation
+        if invitation.owner.id != user.id:
+            return 403, {"message": "You don't have permission to delete this invitation"}
+        
+        # Delete the invitation
+        invitation.delete()
+        
+        return 200, {"message": "Invitation deleted successfully"}
+    except Exception as e:
+        return 404, {"message": f"Error deleting invitation: {str(e)}"}
     
-    # Delete the invitation
-    invitation.delete()
+# Add this to authentication/api.py
+
+@router.post("/create-new-store", response={200: dict, 400: dict}, auth=AuthBearer())
+def create_new_store(request):
+    """Create a new store for the current user and make them the owner."""
+    user_id = request.auth
     
-    return {
-        "message": f"Invitation to {invitation.email} canceled successfully",
-        "invitation_id": payload.user_id
-    }
+    try:
+        user = User.objects.get(id=user_id)
+        
+        # Check if user already has a toko
+        if user.toko:
+            return 400, {"message": "User already has a store"}
+        
+        # Create a new toko
+        toko = Toko.objects.create()
+        
+        # Assign to user and make them a Pemilik
+        user.toko = toko
+        user.role = "Pemilik"
+        user.save()
+        
+        return 200, {
+            "message": "Store created successfully",
+            "toko_id": toko.id,
+            "user": {
+                "id": user.id,
+                "name": user.username,
+                "email": user.email,
+                "role": user.role,
+            }
+        }
+    except User.DoesNotExist:
+        return 400, {"message": "User not found"}
+    except Exception as e:
+        return 400, {"message": f"Error creating store: {str(e)}"}
