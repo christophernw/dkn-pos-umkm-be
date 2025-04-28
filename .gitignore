@@ -164,3 +164,6 @@ pplbackend/config/local.py
 
 # Images
 media/*
+
+# Version file
+version.txt

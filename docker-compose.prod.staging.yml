@@ -12,6 +12,7 @@ services:
       DB_HOST: postgres_db_staging
       DB_PORT: 5432
       SENTRY_DSN_STAGING: ${SENTRY_DSN_STAGING}
+      APP_VERSION: ${VERSION:-unknown}
     networks:
       - postgres_network
     restart: always

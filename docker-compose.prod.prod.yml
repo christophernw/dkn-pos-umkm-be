@@ -12,6 +12,7 @@ services:
       DB_HOST: postgres_db_prod
       DB_PORT: 5432
       SENTRY_DSN_PROD: ${SENTRY_DSN_PROD}
+      APP_VERSION: ${VERSION:-unknown}  # Add this line
     networks:
       - postgres_network
     restart: always
