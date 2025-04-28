@@ -67,7 +67,8 @@ class IncomeStatementLine(Schema):
 
 class IncomeStatementResponse(Schema):
     toko_id: int
-    period: str 
+    start_date: date
+    end_date: date
     currency: str = "IDR"
     income: List[IncomeStatementLine]
     expenses: List[IncomeStatementLine]

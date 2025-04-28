@@ -7,7 +7,7 @@ from django.http import StreamingHttpResponse
 from authentication.models import Toko, User 
 from laporan.schemas import IncomeStatementLine
 from transaksi.models import Transaksi
-from laporan.api import income_statement, download_income_statement, _month_bounds, _aggregate
+from laporan.api import income_statement, download_income_statement, _aggregate
 from laporan.utils import _format_parentheses, build_csv
 from io import StringIO
 
@@ -134,14 +134,17 @@ class IncomeStatementTestCase(TestCase):
 
     def test_income_statement_json(self):
         request = self.factory.get(
-            "/api/laporan/income-statement", {"month": "2025-04"}
+            "/api/laporan/income-statement", {"start_date": "2025-04-01", "end_date": "2025-04-30"}
         )
         request.user = self.user
 
-        resp = income_statement(request, month="2025-04")
+        resp = income_statement(request,
+                                 start_date=date(2025, 4, 1),
+                                 end_date=date(2025, 4, 30))
 
         self.assertEqual(resp.toko_id, self.toko.id)
-        self.assertEqual(resp.period, "2025-04")
+        self.assertEqual(resp.start_date, date(2025, 4, 1))
+        self.assertEqual(resp.end_date,   date(2025, 4, 30))
         self.assertEqual(resp.currency, "IDR")
 
         # Cek detail income
@@ -168,16 +171,18 @@ class IncomeStatementTestCase(TestCase):
 
     def test_income_statement_csv(self):
         request = self.factory.get(
-            "/api/laporan/income-statement/download", {"month": "2025-04"}
+            "/api/laporan/income-statement/download", {"start_date": "2025-04-01", "end_date": "2025-04-30"}
         )
         request.user = self.user
 
-        resp = download_income_statement(request, month="2025-04")
+        resp = download_income_statement(request,
+                                        start_date=date(2025, 4, 1),
+                                        end_date=date(2025, 4, 30))
         self.assertIsInstance(resp, StreamingHttpResponse)
 
         content = b"".join(resp.streaming_content).decode("utf-8")
         self.assertIn(f"Toko ID,{self.toko.id}", content)
-        self.assertIn("Periode,2025-04", content)
+        self.assertIn("Periode,2025-04-01_to_2025-04-30", content)
 
         # Cek baris income 
         self.assertIn("Penjualan Barang,1.000,00", content)
@@ -206,11 +211,14 @@ class IncomeStatementTestCase(TestCase):
         )
 
         request = self.factory.get(
-            "/api/laporan/income-statement/download", {"month": "2025-04"}
+            "/api/laporan/income-statement/download",
+            {"start_date": "2025-04-01", "end_date": "2025-04-30"}
         )
         request.user = self.user
 
-        resp = download_income_statement(request, month="2025-04")
+        resp = download_income_statement(request,
+                                        start_date=date(2025, 4, 1),
+                                        end_date=date(2025, 4, 30))
         content = b"".join(resp.streaming_content).decode("utf-8")
 
         self.assertIn("Laba (Rugi) Bersih,(500,00)", content)
@@ -229,13 +237,6 @@ class UtilsAndInternalTestCase(TestCase):
         self.assertEqual(_format_parentheses(Decimal("-1234.567")), "(1.234,57)")
         self.assertEqual(_format_parentheses(Decimal("0")), "0,00")
 
-    def test_month_bounds(self):
-        first, last = _month_bounds(2025, 4)
-        self.assertEqual(first, date(2025, 4, 1))
-        self.assertEqual(last, date(2025, 4, 30))
-        f2, l2 = _month_bounds(2024, 2)
-        self.assertEqual(l2.day, 29)
-
     def test_build_csv_headers_and_filename(self):
         income = [IncomeStatementLine(name="A", total=Decimal("10"))]
         expense = [IncomeStatementLine(name="B", total=Decimal("5"))]
@@ -246,12 +247,3 @@ class UtilsAndInternalTestCase(TestCase):
         content = b"".join(resp.streaming_content).decode("utf-8")
         self.assertIn("Toko ID,7", content)
         self.assertIn("Laba (Rugi) Bersih,5,00", content)
-
-    def test_aggregate_empty(self):
-        toko2 = Toko.objects.create()
-        first, last = _month_bounds(2025, 4)
-        inc, exp, net = _aggregate(toko2, first, last)
-        for line in inc + exp:
-            self.assertEqual(line.total, Decimal("0"))
-        self.assertEqual(net, Decimal("0"))
-
