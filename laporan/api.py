@@ -103,13 +103,7 @@ def get_hutang_piutang_detail(request, start_date: date = None, end_date: date =
         query_hutang &= Q(created_at__lte=end_datetime)
         query_piutang &= Q(created_at__lte=end_datetime)
     
-    # Tambahkan debug untuk melihat query dan hasilnya
     hutang_transaksi = Transaksi.objects.filter(query_hutang).order_by('-created_at')
-    print(f"Query SQL for hutang: {hutang_transaksi.query}")
-    print(f"Hutang count: {hutang_transaksi.count()}")
-    for t in hutang_transaksi:
-        print(f"Hutang ID: {t.id}, created_at: {t.created_at}")
-
     piutang_transaksi = Transaksi.objects.filter(query_piutang).order_by('-created_at')
     
     hutang_list = [TransaksiHutangPiutangDetail.from_transaksi(t) for t in hutang_transaksi]
