@@ -80,8 +80,8 @@ class Invitation(models.Model):
             ("Karyawan", "Karyawan"),
         ],
     )
-    owner = models.ForeignKey(
-        User, on_delete=models.CASCADE, related_name="sent_invitations"
+    toko = models.ForeignKey(
+        Toko, on_delete=models.CASCADE, related_name="sent_invitations"
     )
     token = models.CharField(max_length=512, unique=True)
     expires_at = models.DateTimeField()

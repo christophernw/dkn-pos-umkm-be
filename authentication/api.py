@@ -115,14 +115,16 @@ def send_invitation(request, payload: InvitationRequest):
     name = payload.name.strip()
     email = payload.email.strip().lower()
     role = payload.role.strip()
-    owner = User.objects.get(id=request.auth)
+    user = User.objects.get(id=request.auth)
 
-    # If user already exists in the toko, return an error
-    existing_user = User.objects.filter(email=email, toko=owner.toko).first()
+    if not user.toko:
+        return 400, {"error": "User doesn't have a toko."}
+
+    existing_user = User.objects.filter(email=email, toko=user.toko).first()
     if existing_user:
         return 400, {"error": "User sudah ada di toko ini."}
 
-    if Invitation.objects.filter(email=email, owner=owner).exists():
+    if Invitation.objects.filter(email=email, toko=user.toko).exists():
         return 400, {"error": "Undangan sudah dikirim ke email ini."}
 
     expiration = now() + timedelta(days=1)
@@ -130,7 +132,7 @@ def send_invitation(request, payload: InvitationRequest):
         "email": email,
         "name": name,
         "role": role,
-        "owner_id": owner.id,
+        "toko_id": user.toko.id,
         "exp": expiration,
     }
     token = jwt.encode(token_payload, settings.SECRET_KEY, algorithm="HS256")
@@ -140,7 +142,7 @@ def send_invitation(request, payload: InvitationRequest):
             email=email,
             name=name,
             role=role,
-            owner=owner,
+            toko=user.toko,
             token=token,
             expires_at=expiration,
         )
@@ -156,31 +158,27 @@ def validate_invitation(request, payload: TokenValidationRequest):
         email = decoded.get("email")
         name = decoded.get("name")
         role = decoded.get("role")
-        owner_id = decoded.get("owner_id")
+        toko_id = decoded.get("toko_id")
 
         invitation = Invitation.objects.filter(email=email, token=payload.token).first()
         if not invitation:
             return {"valid": False, "error": "Invalid invitation"}
 
-        # Get owner information once
-        owner = User.objects.get(id=owner_id)
+        try:
+            toko = Toko.objects.get(id=toko_id)
+        except Toko.DoesNotExist:
+            return {"valid": False, "error": "Toko no longer exists"}
 
-        # Check if user already exists
         user = User.objects.filter(email=email).first()
 
         if not user:
-            # Create new user only if doesn't exist
             user = User.objects.create_user(username=name, email=email, role=role)
         else:
-            # Update role for existing user
             user.role = role
 
-        # Set toko relationship (for both new and existing users)
-        if owner.toko:
-            user.toko = owner.toko
-            user.save()
+        user.toko = toko
+        user.save()
 
-        # Clean up the invitation
         invitation.delete()
 
         return {
@@ -221,7 +219,6 @@ def remove_user_from_toko(request, payload: RemoveUserRequest):
         return 400, {"error": "Cannot remove yourself from your own toko"}
 
     # Store the user's current toko and set to None temporarily
-    original_toko = user_to_remove.toko
     user_to_remove.toko = None
 
     # Create a new toko for the removed user
