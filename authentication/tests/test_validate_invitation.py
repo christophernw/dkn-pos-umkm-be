@@ -1,6 +1,3 @@
-<<<<<<< HEAD
-from authentication.tests.test import * 
-=======
 import jwt
 
 from django.conf import settings
@@ -13,7 +10,6 @@ from datetime import timedelta
 
 from authentication.models import Invitation, Toko, User
 from authentication.api import router 
->>>>>>> dddc204e6a50c65ce56a16a5b5772c5c4be7e64a
 
 class ValidateInvitationTests(TestCase):
     def setUp(self):
