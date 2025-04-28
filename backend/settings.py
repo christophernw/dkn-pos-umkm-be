@@ -50,10 +50,11 @@ STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 import sentry_sdk
 from sentry_sdk.integrations.django import DjangoIntegration
 
-# Determine which Sentry DSN to use based on environment
+# Get environment and version information
 ENV = os.environ.get('ENV', 'local')
+VERSION = os.environ.get('VERSION', 'unknown')
 
-# Get environment-specific DSN
+# Determine which Sentry DSN to use based on environment
 if ENV == 'production':
     SENTRY_DSN = os.environ.get('SENTRY_DSN_PROD', '')
 elif ENV == 'staging':
@@ -71,17 +72,17 @@ if SENTRY_DSN:
         # Adjust sampling rate based on environment
         traces_sample_rate=1.0 if ENV == 'local' else 0.2,
         
-        # Explicitly set environment name within each project
+        # Set environment name
         environment=ENV,
+        
+        # Track release version
+        release=VERSION,
         
         # User identification
         send_default_pii=True,
-        
-        # Debug mode for local only
-        debug=ENV == 'local',
     )
-# Application definition
 
+# Application definition
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',

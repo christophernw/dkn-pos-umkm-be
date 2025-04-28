@@ -1,22 +1,46 @@
-# Use an official Python image as the base
-FROM python:3.10
+# Stage 1: Build dependencies
+FROM python:3.10 AS builder
 
-# Set the working directory in the container
+# Set working directory
 WORKDIR /app
 
-# Copy the dependencies file into the container
+# Copy and install requirements
 COPY requirements.txt .
+RUN pip wheel --no-cache-dir --wheel-dir /app/wheels -r requirements.txt
 
-# Install the dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Stage 2: Final runtime image
+FROM python:3.10-slim
 
-# Copy the entire project into the container
-COPY . .
+# Create non-root user
+RUN useradd -m appuser
 
-# Run migrations and collect static files
+# Set working directory
+WORKDIR /app
+
+# Copy wheels from builder stage
+COPY --from=builder /app/wheels /wheels
+RUN pip install --no-cache-dir /wheels/*
+
+# Copy project files
+# Copy files that change less frequently first
+COPY manage.py .
+COPY backend/ backend/
+COPY authentication/ authentication/
+COPY produk/ produk/
+COPY transaksi/ transaksi/
+COPY media/ media/
+
+# Set correct permissions
+RUN chown -R appuser:appuser /app
+RUN mkdir -p /app/media && chown -R appuser:appuser /app/media
+
+# Switch to non-root user
+USER appuser
+
+# Run collectstatic
 RUN python manage.py collectstatic --noinput
 
-# Expose the port Django runs on
+# Expose port
 EXPOSE 8000
 
 # Command to run the app using Gunicorn
