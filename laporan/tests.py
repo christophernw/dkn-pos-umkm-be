@@ -1,4 +1,4 @@
-# laporan/tests.py (perbaikan)
+# laporan/tests.py (fixed)
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -41,7 +41,10 @@ class HutangPiutangAPITestCase(TestCase):
             category="Pembelian Stok",
             total_amount=Decimal("100000"),
             amount=Decimal("100000"),
-            status="Belum Lunas",
+            status="Belum Lunas"
+        )
+        # Ubah created_at secara langsung setelah dibuat
+        Transaksi.objects.filter(id="HUTANG001").update(
             created_at=timezone.now() - timedelta(days=5)
         )
         
@@ -53,11 +56,14 @@ class HutangPiutangAPITestCase(TestCase):
             category="Biaya Operasional",
             total_amount=Decimal("50000"),
             amount=Decimal("50000"),
-            status="Belum Lunas",
+            status="Belum Lunas"
+        )
+        # Ubah created_at secara langsung setelah dibuat
+        Transaksi.objects.filter(id="HUTANG002").update(
             created_at=timezone.now() - timedelta(days=3)
         )
         
-        # 2. Piutang (pemasukan belum lunas)
+        # 2. Piutang (pemasukan belum lunas) - Menambahkan ini untuk memperbaiki test
         self.piutang1 = Transaksi.objects.create(
             id="PIUTANG001",
             toko=self.toko,
@@ -66,8 +72,11 @@ class HutangPiutangAPITestCase(TestCase):
             category="Penjualan Barang",
             total_amount=Decimal("200000"),
             amount=Decimal("200000"),
-            status="Belum Lunas",
-            created_at=timezone.now() - timedelta(days=4)
+            status="Belum Lunas"
+        )
+        # Ubah created_at secara langsung setelah dibuat
+        Transaksi.objects.filter(id="PIUTANG001").update(
+            created_at=timezone.now() - timedelta(days=2)
         )
         
         # 3. Transaksi lunas (tidak seharusnya dihitung)
@@ -79,7 +88,10 @@ class HutangPiutangAPITestCase(TestCase):
             category="Penjualan Barang",
             total_amount=Decimal("75000"),
             amount=Decimal("75000"),
-            status="Lunas",
+            status="Lunas"
+        )
+        # Ubah created_at secara langsung setelah dibuat
+        Transaksi.objects.filter(id="LUNAS001").update(
             created_at=timezone.now() - timedelta(days=2)
         )
     
@@ -98,7 +110,7 @@ class HutangPiutangAPITestCase(TestCase):
         
         # Objek response sudah berupa HutangPiutangSummaryResponse, tidak perlu json()
         self.assertEqual(response.total_hutang, 150000.0)  # 100000 + 50000
-        self.assertEqual(response.total_piutang, 200000.0)
+        self.assertEqual(response.total_piutang, 200000.0)  # Dari PIUTANG001
         self.assertEqual(response.jumlah_transaksi_hutang, 2)
         self.assertEqual(response.jumlah_transaksi_piutang, 1)
     
@@ -308,3 +320,147 @@ class HutangPiutangAPITestCase(TestCase):
         
         # Harusnya tetap berhasil (API akan menangani kasus ini)
         self.assertIn("message", response)
+
+    def test_get_hutang_piutang_detail_with_date_filter(self):
+        """
+        Test mendapatkan detail transaksi hutang dan piutang dengan filter tanggal
+        """
+        today = timezone.now().date()
+        yesterday = today - timedelta(days=1)
+        week_ago = today - timedelta(days=7)
+        
+        # Tambahkan transaksi baru dengan tanggal hari ini
+        today_trans = Transaksi.objects.create(
+            id="TODAY001",
+            toko=self.toko,
+            created_by=self.user,
+            transaction_type="pengeluaran",
+            category="Biaya Lain",
+            total_amount=Decimal("25000"),
+            amount=Decimal("25000"),
+            status="Belum Lunas",
+            created_at=timezone.now()
+        )
+        
+        # Tambahkan piutang baru dengan tanggal hari ini
+        today_piutang = Transaksi.objects.create(
+            id="TODAYPIUTANG",
+            toko=self.toko,
+            created_by=self.user,
+            transaction_type="pemasukan",
+            category="Penjualan Hari ini",
+            total_amount=Decimal("35000"),
+            amount=Decimal("35000"),
+            status="Belum Lunas",
+            created_at=timezone.now()
+        )
+        
+        # Jangan filter tanggal dulu - verifikasi semua transaksi ada
+        request = self._get_mocked_request()
+        response = get_hutang_piutang_detail(request)
+        
+        # Verifikasi semua transaksi muncul
+        hutang_ids = [h.id for h in response.hutang]
+        self.assertIn('HUTANG001', hutang_ids)
+        self.assertIn('HUTANG002', hutang_ids)
+        self.assertIn('TODAY001', hutang_ids)
+        
+        piutang_ids = [p.id for p in response.piutang]
+        self.assertIn('PIUTANG001', piutang_ids)
+        self.assertIn('TODAYPIUTANG', piutang_ids)
+        
+        # Test filter dari seminggu lalu sampai kemarin (tidak termasuk hari ini)
+        request = self._get_mocked_request()
+        response = get_hutang_piutang_detail(request, start_date=week_ago, end_date=yesterday)
+
+        # Seharusnya transaksi hari ini tidak termasuk
+        hutang_ids = [h.id for h in response.hutang]
+        self.assertNotIn('TODAY001', hutang_ids)
+        self.assertIn('HUTANG001', hutang_ids)
+        self.assertIn('HUTANG002', hutang_ids)
+        
+        piutang_ids = [p.id for p in response.piutang]
+        self.assertNotIn('TODAYPIUTANG', piutang_ids)
+        self.assertIn('PIUTANG001', piutang_ids)
+        
+        # Test filter hanya hari ini
+        request = self._get_mocked_request()
+        response = get_hutang_piutang_detail(request, start_date=today, end_date=today)
+        
+        # Seharusnya hanya transaksi hari ini yang termasuk
+        hutang_ids = [h.id for h in response.hutang]
+        self.assertIn('TODAY001', hutang_ids)
+        self.assertNotIn('HUTANG001', hutang_ids)
+        self.assertNotIn('HUTANG002', hutang_ids)
+        
+        piutang_ids = [p.id for p in response.piutang]
+        self.assertIn('TODAYPIUTANG', piutang_ids)
+        self.assertNotIn('PIUTANG001', piutang_ids)
+    
+    def test_additional_coverage(self):
+        """
+        Test untuk meningkatkan code coverage pada beberapa kasus yang belum diuji
+        """
+        # Test get_hutang_piutang_detail for user without toko
+        user_no_toko = User.objects.create_user(
+            username="notoko_detail",
+            email="notoko_detail@example.com",
+            password="testpassword",
+            toko=None
+        )
+        
+        request = self._get_mocked_request(user_no_toko.id)
+        response = get_hutang_piutang_detail(request)
+        
+        # Should return empty lists
+        self.assertEqual(len(response.hutang), 0)
+        self.assertEqual(len(response.piutang), 0)
+        
+        # Test deleting old details when report is updated
+        today = timezone.now().date()
+        
+        # Create initial report
+        report = HutangPiutangReport.objects.create(
+            toko=self.toko,
+            tanggal=today,
+            total_hutang=Decimal("1000"),
+            total_piutang=Decimal("2000"),
+            jumlah_transaksi_hutang=1,
+            jumlah_transaksi_piutang=1
+        )
+        
+        # Add some details
+        DetailHutangPiutang.objects.create(
+            report=report,
+            transaksi_id="TEST001",
+            jenis='hutang',
+            jumlah=Decimal("1000"),
+            tanggal_transaksi=timezone.now(),
+            keterangan="Test"
+        )
+        
+        # Verify detail exists
+        self.assertEqual(DetailHutangPiutang.objects.filter(report=report).count(), 1)
+        
+        # Generate report for today (should update existing report)
+        class MockPayload:
+            def __init__(self, start_date, end_date):
+                self.start_date = start_date
+                self.end_date = end_date
+        
+        payload = MockPayload(today, today)
+        
+        request = self._get_mocked_request()
+        response = generate_hutang_piutang_report(request, payload)
+        
+        # Old details should be deleted and new ones (if any) created
+        updated_details = DetailHutangPiutang.objects.filter(report__tanggal=today)
+        # This will be 0 if there are no transactions for today
+        self.assertNotEqual(updated_details.count(), 1)  # Should not be the initial value
+        
+        # Test per_page <= 0 case
+        request = self._get_mocked_request()
+        response = get_hutang_piutang_reports(request, page=1, per_page=0)
+        
+        # Should default to 10
+        self.assertEqual(response.per_page, 10)

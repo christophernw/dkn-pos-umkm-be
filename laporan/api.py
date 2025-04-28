@@ -5,7 +5,7 @@ from django.db.models import Sum, Count, Q
 from transaksi.models import Transaksi
 from authentication.models import User
 from produk.api import AuthBearer
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, time, timedelta
 from django.utils import timezone
 from .models import HutangPiutangReport, DetailHutangPiutang
 from .schemas import (
@@ -88,18 +88,28 @@ def get_hutang_piutang_detail(request, start_date: date = None, end_date: date =
         is_deleted=False
     )
     
+    print(f"start_date: {start_date}, end_date: {end_date}")
+    
     # Tambahkan filter tanggal jika disediakan
     if start_date:
-        # Filter by date component of created_at
-        query_hutang &= Q(created_at__date__gte=start_date)
-        query_piutang &= Q(created_at__date__gte=start_date)
+        # Konversi date ke datetime dengan timezone yang benar
+        start_datetime = timezone.make_aware(datetime.combine(start_date, time.min))
+        query_hutang &= Q(created_at__gte=start_datetime)
+        query_piutang &= Q(created_at__gte=start_datetime)
     
     if end_date:
-        # Filter by date component of created_at
-        query_hutang &= Q(created_at__date__lte=end_date)
-        query_piutang &= Q(created_at__date__lte=end_date)
+        # Konversi date ke datetime dengan timezone yang benar
+        end_datetime = timezone.make_aware(datetime.combine(end_date, time.max))
+        query_hutang &= Q(created_at__lte=end_datetime)
+        query_piutang &= Q(created_at__lte=end_datetime)
     
+    # Tambahkan debug untuk melihat query dan hasilnya
     hutang_transaksi = Transaksi.objects.filter(query_hutang).order_by('-created_at')
+    print(f"Query SQL for hutang: {hutang_transaksi.query}")
+    print(f"Hutang count: {hutang_transaksi.count()}")
+    for t in hutang_transaksi:
+        print(f"Hutang ID: {t.id}, created_at: {t.created_at}")
+
     piutang_transaksi = Transaksi.objects.filter(query_piutang).order_by('-created_at')
     
     hutang_list = [TransaksiHutangPiutangDetail.from_transaksi(t) for t in hutang_transaksi]
