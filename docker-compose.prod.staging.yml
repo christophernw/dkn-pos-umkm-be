@@ -1,0 +1,23 @@
+services:
+  web:
+    image: christophernw/dkn-pos-umkm-be:staging
+    command: bash -c "python manage.py migrate && gunicorn backend.wsgi:application --bind 0.0.0.0:8000"
+    ports:
+      - "8001:8000"
+    environment:
+      ENV: staging
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_HOST: postgres_db_staging
+      DB_PORT: 5432
+      SENTRY_DSN_STAGING: ${SENTRY_DSN_STAGING}
+      APP_VERSION: ${VERSION:-unknown}
+    networks:
+      - postgres_network
+    restart: always
+
+networks:
+  postgres_network:
+    external: true
+    name: postgres_network

@@ -1,0 +1,23 @@
+services:
+  web:
+    image: christophernw/dkn-pos-umkm-be:main
+    command: bash -c "python manage.py migrate && gunicorn backend.wsgi:application --bind 0.0.0.0:8000"
+    ports:
+      - "8000:8000"
+    environment:
+      ENV: production
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_HOST: postgres_db_prod
+      DB_PORT: 5432
+      SENTRY_DSN_PROD: ${SENTRY_DSN_PROD}
+      APP_VERSION: ${VERSION:-unknown}  # Add this line
+    networks:
+      - postgres_network
+    restart: always
+
+networks:
+  postgres_network:
+    external: true
+    name: postgres_network

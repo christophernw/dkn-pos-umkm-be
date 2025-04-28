@@ -1,0 +1,27 @@
+services:
+  db:
+    image: postgres:13
+    container_name: postgres_database_prod
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      PGDATA: /var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      postgres_network:
+        aliases:
+          - postgres_db_prod
+    restart: always
+
+volumes:
+  postgres_data_prod:
+    external: true
+
+networks:
+  postgres_network:
+    external: true
+    name: postgres_network
