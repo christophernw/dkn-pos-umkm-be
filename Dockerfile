@@ -28,7 +28,7 @@ COPY backend/ backend/
 COPY authentication/ authentication/
 COPY produk/ produk/
 COPY transaksi/ transaksi/
-COPY media/ media/
+# Remove the problematic line that tries to copy the non-existent media directory
 
 # Set correct permissions
 RUN chown -R appuser:appuser /app
