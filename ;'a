@@ -1,0 +1,45 @@
+[33m74bd09e[m[33m ([m[1;36mHEAD -> [m[1;32mdev-hilmy[m[33m, [m[1;31morigin/dev-hilmy[m[33m)[m HEAD@{0}: commit: [REFACTOR] delete invitation when expired
+[33m6fe4ed7[m HEAD@{1}: commit: [REFACTOR] implementing separation of concern by separate each test to different file
+[33mc2cab88[m HEAD@{2}: commit: [REFACTOR] fix validate invitation and increase test coverage
+[33m3c13a76[m HEAD@{3}: commit: [GREEN] adjust test for fixing issue detected by sonarqube
+[33m5c60d2d[m HEAD@{4}: commit: [REFACTOR] fix issue #KVI: remove the unused local vatiable
+[33ma40a45c[m HEAD@{5}: commit: [GREEN] increase code coverage
+[33m21cc99b[m HEAD@{6}: commit: [GREEN] create new test for cancel invitation
+[33mc1be74b[m HEAD@{7}: commit: [REFACTOR] remove unused comment
+[33mb42a1fa[m HEAD@{8}: commit: [FEAT] Create an invitation pending feature in get_users
+[33m2ed0cd1[m HEAD@{9}: commit: [GREEN] increase code coverage for authentication module
+[33m5b3e66b[m HEAD@{10}: commit: [GREEN] add testing code for remove user
+[33m213aa9e[m HEAD@{11}: commit: [ISSUE #CJQ] fix issue detected by sonarqube
+[33m288a42a[m HEAD@{12}: commit: delete remaining transaction and product code, making this branch only for my feature, easier for me to check on sonarqube
+[33m919d69c[m HEAD@{13}: commit: delete remaining transaction and product code, making this branch only for my feature, easier for me to check on sonarqube
+[33md0f62e7[m HEAD@{14}: commit: delete transaction and product, making this branch only for my feature, easier for me to check on sonarqube
+[33m03de8bb[m HEAD@{15}: commit: [TEST] remove another feature test (that contain error) so i can check my coverage on sonarqube
+[33mb4043c8[m HEAD@{16}: commit: [GREEN] adjust code based on some changes on auth feature
+[33m8eb376c[m HEAD@{17}: commit (merge): [FEAT] code adjustment with staging
+[33m5794226[m HEAD@{18}: pull origin staging-sp2: Merge made by the 'ort' strategy.
+[33m3f01708[m HEAD@{19}: commit: [CHORES] update workflow
+[33m6f172fa[m HEAD@{20}: commit: [CHORES] update deploy ci/cd
+[33md367610[m HEAD@{21}: commit: [REFACTOR] add role based to every product api and remove unused import in authentication
+[33m9d8827f[m HEAD@{22}: commit: [REFACTOR] Fix model by removing is_valid because it already covered in jwt payload
+[33m60f2648[m HEAD@{23}: commit: [GREEN] Increase code coverage
+[33m253a347[m HEAD@{24}: commit: [GREEN] Remove unused test for unused feature, try increase code coverage
+[33me32ae7b[m HEAD@{25}: commit: [REFACTOR] Fix issues detected by sonarqube: 1 High and 2 Low Severity
+[33md1ca886[m HEAD@{26}: commit: [REFACTOR] Implement send and validate invitation
+[33m7a5867b[m HEAD@{27}: commit: [RED] Add test for sending and validate invitation
+[33m5a66c08[m HEAD@{28}: commit: [REFACTOR] fix issue detected by sonar to remove the comment out of code
+[33m16e0e7f[m HEAD@{29}: commit: [REFACTOR] change default role to Pemilik and change product test based on updated user & product model
+[33m04ad016[m HEAD@{30}: commit: [REFACTOR] implement separatioof concern dengan memisahkan schemas dari ke filenya sendiri
+[33m3a19c29[m HEAD@{31}: commit: fix sonar qube workflow
+[33m2add722[m HEAD@{32}: commit: [REFACTOR] fix test again
+[33m29dacb4[m HEAD@{33}: commit: [REFACTOR] fix test sonar
+[33mfc71fe5[m HEAD@{34}: commit: [GREEN] fix the test also implement new logic for add user and get users
+[33m89eac0f[m HEAD@{35}: commit: [REFACTOR] implement multirole authentication, override auth django model, edit product model
+[33m6cc97e0[m HEAD@{36}: commit: [GREEN] implement get users and remove fetching error
+[33m2ebfd42[m HEAD@{37}: commit: [RED] add test for get users
+[33m557a9c9[m HEAD@{38}: commit: [GREEN] implement add user api and get users
+[33m4fe9508[m HEAD@{39}: commit: [RED] add test for add user API
+[33mb1cb3e2[m[33m ([m[1;32mmain[m[33m)[m HEAD@{40}: checkout: moving from main to dev-hilmy
+[33mb1cb3e2[m[33m ([m[1;32mmain[m[33m)[m HEAD@{41}: pull origin staging: Fast-forward
+[33m8bb11f6[m HEAD@{42}: pull origin staging: Fast-forward
+[33mcc8bd0a[m[33m ([m[1;31morigin/authentication-christo[m[33m)[m HEAD@{43}: pull origin authentication-christo: Fast-forward
+[33mabcaf85[m[33m ([m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m HEAD@{44}: clone: from https://github.com/christophernw/dkn-pos-umkm-be.git
