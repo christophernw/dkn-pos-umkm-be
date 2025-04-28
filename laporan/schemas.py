@@ -61,6 +61,7 @@ class DateRangeRequest(Schema):
     start_date: date = Field(None, description="Start date for filtering (YYYY-MM-DD)")
     end_date: date = Field(None, description="End date for filtering (YYYY-MM-DD)")
 
+# Menambahkan kembali class yang diperlukan oleh views.py
 class IncomeStatementLine(Schema):
     name: str
     total: Decimal 
@@ -71,4 +72,4 @@ class IncomeStatementResponse(Schema):
     currency: str = "IDR"
     income: List[IncomeStatementLine]
     expenses: List[IncomeStatementLine]
-    net_profit: Decimal 
+    net_profit: Decimal
