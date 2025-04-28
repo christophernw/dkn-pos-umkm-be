@@ -1,4 +1,8 @@
-from authentication.tests.test import *
+import jwt
+
+from django.conf import settings
+from django.test import TestCase
+from authentication.api import AuthBearer
 
 class TestAuthBearer(TestCase):
     def setUp(self):

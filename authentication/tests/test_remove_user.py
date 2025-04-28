@@ -1,4 +1,10 @@
-from authentication.tests.test import *
+from django.test import TestCase
+
+from rest_framework_simplejwt.tokens import RefreshToken
+from ninja.testing import TestClient
+
+from authentication.models import Toko, User
+from authentication.api import router 
 
 class RemoveUserFromTokoTests(TestCase):
     def setUp(self):

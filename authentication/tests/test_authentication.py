@@ -1,4 +1,10 @@
-from .test import *
+from django.test import TestCase
+
+from rest_framework_simplejwt.tokens import RefreshToken
+from ninja.testing import TestClient
+
+from authentication.models import User
+from authentication.api import router 
 
 class AuthenticationTests(TestCase):
     def setUp(self):
