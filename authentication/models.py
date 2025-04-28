@@ -31,13 +31,10 @@ class UserManager(BaseUserManager):
 
 class Toko(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
-<<<<<<< HEAD
-=======
 
     def __str__(self):
         owner = self.users.filter(role="Pemilik").first()
         return f"Toko {self.id} - {owner.username if owner else 'No owner'}"
->>>>>>> dddc204e6a50c65ce56a16a5b5772c5c4be7e64a
 
 
 class User(AbstractBaseUser, PermissionsMixin):
@@ -57,9 +54,6 @@ class User(AbstractBaseUser, PermissionsMixin):
         ("Karyawan", "Karyawan"),
     ]
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default="Pemilik")
-<<<<<<< HEAD
-    toko = models.ForeignKey(Toko, on_delete=models.SET_NULL, null=True, blank=True, related_name='users')
-=======
 
     # Add foreign key to Toko
     toko = models.ForeignKey(
@@ -73,7 +67,6 @@ class User(AbstractBaseUser, PermissionsMixin):
     # User manager
     objects = UserManager()
 
->>>>>>> dddc204e6a50c65ce56a16a5b5772c5c4be7e64a
 
 class Invitation(models.Model):
     email = models.EmailField(unique=True)
