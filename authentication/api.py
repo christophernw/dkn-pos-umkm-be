@@ -231,8 +231,9 @@ def remove_user_from_toko(request, payload: RemoveUserRequest):
     removed_user_email = user_to_remove.email
     removed_user_name = user_to_remove.username
     
-    # Simply set the user's toko to None (don't create a new toko)
-    user_to_remove.toko = None
+    # Give new toko to user
+    toko = Toko.objects.create()
+    user_to_remove.toko = toko
     
     # Reset role to regular user 
     user_to_remove.role = "Pemilik"  # Default to lowest role when removed
