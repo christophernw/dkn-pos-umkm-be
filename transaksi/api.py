@@ -11,7 +11,7 @@ from transaksi.schemas import (
 )
 from authentication.models import User
 from produk.api import AuthBearer
-from datetime import datetime
+from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 from django.db.models import Sum
 
@@ -152,66 +152,6 @@ def get_transaksi_list(
     }
 
 
-@router.get("/{id}", response={200: TransaksiResponse, 404: dict})
-def get_transaksi_detail(request, id: str):
-    user_id = request.auth
-    user = get_object_or_404(User, id=user_id)
-    
-    # Check if user has a toko
-    if not user.toko:
-        return 404, {"message": "User doesn't have a toko"}
-    
-    try:
-        # Get transaction by ID and check if it belongs to the user's toko
-        transaksi = get_object_or_404(Transaksi, id=id, toko=user.toko)
-        return 200, TransaksiResponse.from_orm(transaksi)
-    except Exception:
-        return 404, {"message": "Transaksi tidak ditemukan"}
-
-
-@router.delete("/{id}", response={200: dict, 404: dict, 422: dict})
-@transaction.atomic
-def delete_transaksi(request, id: str):
-    user_id = request.auth
-    user = get_object_or_404(User, id=user_id)
-    
-    # Check if user has a toko
-    if not user.toko:
-        return 404, {"message": "User doesn't have a toko"}
-    
-    try:
-        # Get transaction by ID and check if it belongs to the user's toko
-        transaksi = get_object_or_404(Transaksi, id=id, toko=user.toko)
-
-        # Restore product stock if transaction is a product sale
-        if transaksi.category == "Penjualan Barang":
-            for item in transaksi.items.all():
-                product = item.product
-                product.stok += item.quantity
-                product.save()
-
-        # Reduce product stock if transaction is a stock purchase
-        elif transaksi.category == "Pembelian Stok":
-            for item in transaksi.items.all():
-                product = item.product
-                if product.stok < item.quantity:
-                    raise ValueError(
-                        f"Tidak dapat menghapus transaksi. Stok produk {product.nama} tidak mencukupi."
-                    )
-                product.stok -= item.quantity
-                product.save()
-
-        # Instead of transaksi.delete(), do a soft delete
-        transaksi.is_deleted = True
-        transaksi.save()
-
-        return 200, {"message": "Transaksi berhasil dihapus"}
-    except ValueError as e:
-        return 422, {"message": str(e)}
-    except Exception as e:
-        return 404, {"message": f"Error: {str(e)}"}
-
-
 @router.get("/summary/monthly", response={200: dict, 404: dict})
 def get_monthly_summary(request):
     user_id = request.auth
@@ -335,5 +275,123 @@ def toggle_payment_status(request, id: str):
             "transaction_id": str(transaksi.id),
             "status": transaksi.status
         }
+    except Exception as e:
+        return 404, {"message": f"Error: {str(e)}"}
+    
+@router.get("/debt-summary", response={200: dict, 404: dict})
+def get_debt_summary(request):
+    user_id = request.auth
+    user = get_object_or_404(User, id=user_id)
+    
+    if not user.toko:
+        return 404, {"message": "User doesn't have a toko"}
+    
+    # Get unpaid transactions by toko
+    unpaid_transactions = Transaksi.objects.filter(
+        toko=user.toko,
+        status="Belum Lunas",
+        is_deleted=False,
+    )
+    
+    # Calculate total for each type
+    utang_saya = unpaid_transactions.filter(
+        transaction_type="pengeluaran"
+    ).aggregate(total=Sum("total_amount"))["total"] or 0
+    
+    utang_pelanggan = unpaid_transactions.filter(
+        transaction_type="pemasukan"
+    ).aggregate(total=Sum("total_amount"))["total"] or 0
+    
+    return 200, {
+        "utang_saya": float(utang_saya),
+        "utang_pelanggan": float(utang_pelanggan),
+    }
+
+@router.get("/debt-report", response={200: dict, 404: dict})
+def get_debt_report(request):
+    user_id = request.auth
+    user = get_object_or_404(User, id=user_id)
+    
+    if not user.toko:
+        return 404, {"message": "User doesn't have a toko"}
+    
+    # Get days parameter with default of 7
+    days = int(request.GET.get("days", 7))
+    
+    # Calculate date range
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=days)
+    
+    # Get unpaid transactions within date range
+    transactions = Transaksi.objects.filter(
+        toko=user.toko,
+        status="Belum Lunas",
+        is_deleted=False,
+        created_at__gte=start_date,
+        created_at__lte=end_date,
+    ).order_by("-created_at")
+    
+    return 200, {
+        "transactions": [TransaksiResponse.from_orm(t) for t in transactions],
+        "start_date": start_date.strftime("%Y-%m-%d"),
+        "end_date": end_date.strftime("%Y-%m-%d"),
+    }
+
+@router.get("/{id}", response={200: TransaksiResponse, 404: dict})
+def get_transaksi_detail(request, id: str):
+    user_id = request.auth
+    user = get_object_or_404(User, id=user_id)
+    
+    # Check if user has a toko
+    if not user.toko:
+        return 404, {"message": "User doesn't have a toko"}
+    
+    try:
+        # Get transaction by ID and check if it belongs to the user's toko
+        transaksi = get_object_or_404(Transaksi, id=id, toko=user.toko)
+        return 200, TransaksiResponse.from_orm(transaksi)
+    except Exception:
+        return 404, {"message": "Transaksi tidak ditemukan"}
+
+
+@router.delete("/{id}", response={200: dict, 404: dict, 422: dict})
+@transaction.atomic
+def delete_transaksi(request, id: str):
+    user_id = request.auth
+    user = get_object_or_404(User, id=user_id)
+    
+    # Check if user has a toko
+    if not user.toko:
+        return 404, {"message": "User doesn't have a toko"}
+    
+    try:
+        # Get transaction by ID and check if it belongs to the user's toko
+        transaksi = get_object_or_404(Transaksi, id=id, toko=user.toko)
+
+        # Restore product stock if transaction is a product sale
+        if transaksi.category == "Penjualan Barang":
+            for item in transaksi.items.all():
+                product = item.product
+                product.stok += item.quantity
+                product.save()
+
+        # Reduce product stock if transaction is a stock purchase
+        elif transaksi.category == "Pembelian Stok":
+            for item in transaksi.items.all():
+                product = item.product
+                if product.stok < item.quantity:
+                    raise ValueError(
+                        f"Tidak dapat menghapus transaksi. Stok produk {product.nama} tidak mencukupi."
+                    )
+                product.stok -= item.quantity
+                product.save()
+
+        # Instead of transaksi.delete(), do a soft delete
+        transaksi.is_deleted = True
+        transaksi.save()
+
+        return 200, {"message": "Transaksi berhasil dihapus"}
+    except ValueError as e:
+        return 422, {"message": str(e)}
     except Exception as e:
         return 404, {"message": f"Error: {str(e)}"}
