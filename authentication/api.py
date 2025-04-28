@@ -349,38 +349,3 @@ def delete_invitation(request, invitation_id: int):
         return 200, {"message": "Invitation deleted successfully"}
     except Exception as e:
         return 404, {"message": f"Error deleting invitation: {str(e)}"}
-
-@router.post("/create-new-store", response={200: dict, 400: dict}, auth=AuthBearer())
-def create_new_store(request):
-    """Create a new store for the current user and make them the owner."""
-    user_id = request.auth
-    
-    try:
-        user = User.objects.get(id=user_id)
-        
-        # Check if user already has a toko
-        if user.toko:
-            return 400, {"message": "User already has a store"}
-        
-        # Create a new toko
-        toko = Toko.objects.create()
-        
-        # Assign to user and make them a Pemilik
-        user.toko = toko
-        user.role = "Pemilik"
-        user.save()
-        
-        return 200, {
-            "message": "Store created successfully",
-            "toko_id": toko.id,
-            "user": {
-                "id": user.id,
-                "name": user.username,
-                "email": user.email,
-                "role": user.role,
-            }
-        }
-    except User.DoesNotExist:
-        return 400, {"message": "User not found"}
-    except Exception as e:
-        return 400, {"message": f"Error creating store: {str(e)}"}
