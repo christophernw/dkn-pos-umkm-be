@@ -1,6 +1,10 @@
 # Use an official Python image as the base
 FROM python:3.10
 
+# Add version argument
+ARG VERSION=development
+ENV APP_VERSION=$VERSION
+
 # Set the working directory in the container
 WORKDIR /app
 
@@ -12,6 +16,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the entire project into the container
 COPY . .
+
+# Add version label to the image
+LABEL version=$VERSION
 
 # Run migrations and collect static files
 RUN python manage.py collectstatic --noinput
