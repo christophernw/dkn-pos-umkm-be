@@ -132,7 +132,7 @@ class ValidateInvitationTests(TestCase):
 
     def test_validate_invitation_existing_user_no_toko(self):
         # Create existing user without toko
-        existing_user = User.objects.create_user(
+        User.objects.create_user(
             username="existing_user",
             email="existing@example.com",
             password="password"
