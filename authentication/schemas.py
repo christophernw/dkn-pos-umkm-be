@@ -1,3 +1,4 @@
+from datetime import datetime
 from pydantic import BaseModel
 
 class SessionData(BaseModel):
@@ -30,3 +31,18 @@ class InvitationRequest(BaseModel):
 
 class RemoveUserRequest(BaseModel):
     user_id: int
+    
+
+class PendingInvitationResponse(BaseModel):
+    id: int
+    email: str
+    name: str
+    role: str
+    created_at: datetime
+    expires_at: datetime
+
+class DeleteInvitationResponse(BaseModel):
+    message: str
+
+class DeleteInvitationErrorResponse(BaseModel):
+    message: str
