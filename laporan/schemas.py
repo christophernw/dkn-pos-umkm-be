@@ -67,48 +67,9 @@ class IncomeStatementLine(Schema):
 
 class IncomeStatementResponse(Schema):
     toko_id: int
-    period: str 
+    start_date: date
+    end_date: date
     currency: str = "IDR"
     income: List[IncomeStatementLine]
     expenses: List[IncomeStatementLine]
     net_profit: Decimal 
-
-class ArusKasDetailSchema(Schema):
-    id: int
-    jenis: str
-    nominal: Decimal
-    kategori: str
-    tanggal_transaksi: datetime
-    keterangan: Optional[str] = None
-
-    @classmethod
-    def from_orm(cls, detail):
-        return cls(
-            id=detail.id,
-            jenis=detail.jenis,
-            nominal=detail.nominal,
-            kategori=detail.kategori,
-            tanggal_transaksi=detail.tanggal_transaksi,
-            keterangan=detail.keterangan
-        )
-
-class ArusKasReportWithDetailsSchema(Schema):
-    id: int
-    month: int
-    year: int
-    total_inflow: Decimal
-    total_outflow: Decimal
-    balance: Decimal
-    transactions: List[ArusKasDetailSchema]
-
-    @classmethod
-    def from_report(cls, report, transactions):
-        return cls(
-            id=report.id,
-            month=report.bulan,
-            year=report.tahun,
-            total_inflow=report.total_inflow,
-            total_outflow=report.total_outflow,
-            balance=report.saldo,
-            transactions=[ArusKasDetailSchema.from_orm(t) for t in transactions]
-        )

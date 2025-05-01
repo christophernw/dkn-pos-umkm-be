@@ -3,7 +3,7 @@ from ninja import NinjaAPI
 from produk.api import router as produk_router
 from authentication.api import router as auth_router
 from transaksi.api import router as transaksi_router
-from laporan.views import router as laporan_router
+from laporan.api import router as laporan_router
 
 api = NinjaAPI()
 api.add_router("/auth/", auth_router)

@@ -38,8 +38,9 @@ def build_csv(period: str, toko_id: int, income_lines, expense_lines, net_profit
         writer.writerow([line.name, _format_parentheses(line.total)])
     writer.writerow([])
     writer.writerow(["Laba (Rugi) Bersih", _format_parentheses(net_profit)])
-    f.seek(0)
+    raw = f.getvalue().replace('"', '')
+    f2 = StringIO(raw)
     return StreamingHttpResponse(
-        f, content_type="text/csv",
+        f2, content_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="income_statement_{period}.csv"'}
     )
