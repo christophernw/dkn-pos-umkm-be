@@ -46,7 +46,7 @@ jobs:
     - name: Set environment variables
       run: |
         if [ "${{ github.ref }}" == "refs/heads/main" ] || [ "${{ github.base_ref }}" == "main" ]; then
-          echo "BRANCH=main" >> $GITHUB_ENV
+          echo "BRANCH=prod" >> $GITHUB_ENV
           echo "PORT=8000" >> $GITHUB_ENV
           echo "DB_PORT_HOST=5432" >> $GITHUB_ENV
           echo "SENTRY_DSN_VAR=SENTRY_DSN_PROD" >> $GITHUB_ENV
@@ -94,7 +94,6 @@ jobs:
     - name: Deploy database and web application
       run: |
         sshpass -p "${{ secrets.SERVER_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << EOF
-          # Web Application
           cd ~/django-be-${{ env.BRANCH }}
           echo "BRANCH=${{ env.BRANCH }}" > .env
           echo "PORT=${{ env.PORT }}" >> .env
