@@ -80,7 +80,7 @@ class ArusKasDetailSchema(Schema):
     nominal: Decimal
     kategori: str
     tanggal_transaksi: datetime
-    transaksi_id: str
+    transaksi_id: Optional[str] = None
     keterangan: Optional[str] = None
 
     @classmethod
