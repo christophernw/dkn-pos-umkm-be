@@ -14,7 +14,7 @@ from backend import settings
 from laporan.models import ArusKasReport, DetailArusKas
 from transaksi.models import Transaksi
 from authentication.models import Toko, User
-from .schemas import ArusKasReportWithDetailsSchema, IncomeStatementResponse, IncomeStatementLine
+from .schemas import ArusKasDetailSchema, ArusKasReportWithDetailsSchema, DateRangeRequest, IncomeStatementResponse, IncomeStatementLine
 from .utils import INCOME_CATEGORIES, EXPENSE_CATEGORIES, build_csv
 
 router = Router(tags=["Income Statement"])
@@ -201,3 +201,57 @@ def available_months(request):
     ]
 
     return months
+
+
+@router.get("/aruskas-report/date-filtered", response=ArusKasReportWithDetailsSchema)
+def aruskas_report_by_date(request, start_date: Optional[date] = None, end_date: Optional[date] = None):
+    if request.method == "POST":
+        data = DateRangeRequest.model_validate(request.POST)
+        start_date = data.start_date
+        end_date = data.end_date
+    
+    if not start_date or not end_date:
+        raise HttpError(400, "Both start_date and end_date are required")
+        
+    if start_date > end_date:
+        start_date, end_date = end_date, start_date  
+    
+    if hasattr(request, 'auth') and request.auth: 
+        user_id = request.auth
+        user = User.objects.get(id=user_id)
+        toko = user.toko
+    else:  
+        toko = request.user.toko
+    
+    transactions = DetailArusKas.objects.filter(
+        report__toko=toko,
+        tanggal_transaksi__date__gte=start_date,
+        tanggal_transaksi__date__lte=end_date
+    ).select_related('report')
+    
+    inflow_total = transactions.filter(jenis='inflow').aggregate(
+        total=Sum('nominal'))['total'] or Decimal("0")
+    outflow_total = transactions.filter(jenis='outflow').aggregate(
+        total=Sum('nominal'))['total'] or Decimal("0")
+    balance = inflow_total - outflow_total
+    
+    return ArusKasReportWithDetailsSchema(
+        id=0, 
+        month=0, 
+        year=0,
+        total_inflow=inflow_total,
+        total_outflow=outflow_total,
+        balance=balance,
+        transactions=[ArusKasDetailSchema.from_orm(t) for t in transactions]
+    )
+
+router.add_api_operation(
+    "/aruskas-report/date-filtered", 
+    "POST", 
+    aruskas_report_by_date,
+    response=ArusKasReportWithDetailsSchema
+)
+
+
+
+
