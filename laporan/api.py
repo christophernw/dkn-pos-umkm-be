@@ -1,7 +1,7 @@
 from calendar import monthrange
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
-from typing import List
+from typing import List, Optional
 
 from django.db.models import Sum
 from ninja import Router
@@ -14,7 +14,7 @@ from backend import settings
 from laporan.models import ArusKasReport, DetailArusKas
 from transaksi.models import Transaksi
 from authentication.models import Toko, User
-from .schemas import ArusKasReportWithDetailsSchema, IncomeStatementResponse, IncomeStatementLine
+from .schemas import ArusKasReportWithDetailsSchema, DateRangeRequest, IncomeStatementResponse, IncomeStatementLine, ArusKasDetailSchema
 from .utils import INCOME_CATEGORIES, EXPENSE_CATEGORIES, build_csv
 
 router = Router(tags=["Income Statement"])
@@ -160,24 +160,24 @@ def _month_bounds(year: int, month: int):
     return first, last
 
 @router.get("/aruskas-report", response=ArusKasReportWithDetailsSchema)
-def aruskas_report(request, month: str):
-    year, mm = map(int, month.split("-"))
+def aruskas_report(request, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None):
+    """
+    Get a cash flow report with optional date filters for transactions.
+    """
+    if hasattr(request, 'auth') and request.auth:
+        user_id = request.auth
+        user = User.objects.get(id=user_id)
+        toko = user.toko
+    else:
+        toko = request.user.toko
 
-    user_id = request.auth
-    user = User.objects.get(id=user_id)
-    toko = user.toko
-
-    report = ArusKasReport.objects.filter(
-        toko=toko,
-        bulan=mm,
-        tahun=year
-    ).first()
+    report = ArusKasReport.objects.filter(toko=toko).first()
 
     if not report:
         return ArusKasReportWithDetailsSchema(
             id=0,
-            month=mm,
-            year=year,
+            month=0,
+            year=0,
             total_inflow=Decimal("0"),
             total_outflow=Decimal("0"),
             balance=Decimal("0"),
@@ -185,19 +185,28 @@ def aruskas_report(request, month: str):
         )
 
     transactions = DetailArusKas.objects.filter(report=report)
+
+    if start_date:
+        transactions = transactions.filter(tanggal_transaksi__gte=start_date)
+    if end_date:
+        transactions = transactions.filter(tanggal_transaksi__lte=end_date)
+
     return ArusKasReportWithDetailsSchema.from_report(report, transactions)
 
-@router.get("/aruskas-available-months", response=List[str])
-def available_months(request):
-    user_id = request.auth
-    user = User.objects.get(id=user_id)
-    toko = user.toko
+# @router.get("/aruskas-available-months", response=List[str])
+# def available_months(request):
+#     user_id = request.auth
+#     user = User.objects.get(id=user_id)
+#     toko = user.toko
 
-    reports = ArusKasReport.objects.filter(toko=toko).order_by('-tahun', '-bulan')
+#     reports = ArusKasReport.objects.filter(toko=toko).order_by('-tahun', '-bulan')
 
-    months = [
-        f"{report.tahun}-{report.bulan:02d}"
-        for report in reports
-    ]
+#     months = [
+#         f"{report.tahun}-{report.bulan:02d}"
+#         for report in reports
+#     ]
 
-    return months
+#     return months
+
+
+
