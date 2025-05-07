@@ -170,7 +170,7 @@ def get_transaksi_list(
 
 
 @router.get("/summary/monthly", response={200: dict, 404: dict})
-def get_monthly_summary(request):
+def get_monthly_summary(request, month: int = None, year: int = None):
     user_id = request.auth
     user = get_object_or_404(User, id=user_id)
     
@@ -178,9 +178,16 @@ def get_monthly_summary(request):
     if not user.toko:
         return 404, {"message": "User doesn't have a toko"}
 
-    # Get current month period
+    # Get current month period if not specified
     current_date = datetime.now()
-    year, month = current_date.year, current_date.month
+    
+    # Use provided month and year if available, otherwise use current date
+    if month is None or year is None:
+        year, month = current_date.year, current_date.month
+    
+    # Ensure month is valid (1-12)
+    if month < 1 or month > 12:
+        return 400, {"message": "Month must be between 1 and 12"}
 
     # Define the current month period
     start_date = datetime(year, month, 1)
