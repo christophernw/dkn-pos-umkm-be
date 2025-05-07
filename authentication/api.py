@@ -125,7 +125,7 @@ def get_users(request):
             return 3
         if u["role"] == "Pemilik":
             return 0
-        elif u["role"] == "Administrator":
+        elif u["role"] == "Pengelola":
             return 1
         else:
             return 2
@@ -141,6 +141,9 @@ def send_invitation(request, payload: InvitationRequest):
     role = payload.role.strip()
     user = User.objects.get(id=request.auth)
 
+    if user.role not in ["Pemilik", "Pengelola"]:
+        return 400, {"error": "Hanya Pemilik dan Pengelola yang dapat mengundang pengguna baru."}
+    
     # Check if user has a toko
     if not user.toko:
         return 400, {"error": "User doesn't have a toko."}
