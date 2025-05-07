@@ -41,9 +41,14 @@ def get_produk_default(request, sort: str = None):
 
 
 @router.get("/categories", response={200: list, 404: dict})
-def get_categories(request, id=None):  # Make id optional
-    categories = KategoriProduk.objects.all().values_list('nama', flat=True)
-    print(categories)
+def get_categories(request):
+    user_id = request.auth
+    user = User.objects.get(id=user_id)
+
+    if not user.toko:
+        return 404, {"message": "User doesn't have a toko"}
+
+    categories = KategoriProduk.objects.filter(toko=user.toko).values_list('nama', flat=True)
     return 200, list(categories)
 
 
@@ -109,7 +114,10 @@ def create_produk(request, payload: CreateProdukSchema, foto: UploadedFile = Non
         return 422, {"message": "User doesn't have a toko"}
 
     # Get or create category
-    kategori_obj, _ = KategoriProduk.objects.get_or_create(nama=payload.kategori)
+    kategori_obj, _ = KategoriProduk.objects.get_or_create(
+    nama=payload.kategori,
+    toko=user.toko
+)
     
     # Get or create unit (satuan)
     satuan_obj, _ = Satuan.objects.get_or_create(nama=payload.satuan)
@@ -220,7 +228,10 @@ def update_produk(request, id: int, payload: UpdateProdukSchema, foto: UploadedF
         # Handle kategori separately as it needs special processing
         if 'kategori' in update_data:
             kategori_name = update_data.pop('kategori')
-            kategori_obj, _ = KategoriProduk.objects.get_or_create(nama=kategori_name)
+            kategori_obj, _ = KategoriProduk.objects.get_or_create(
+                nama=kategori_name,
+                toko=user.toko
+            )
             produk.kategori = kategori_obj
         
         # Handle satuan separately to ensure it's added to the Satuan model
