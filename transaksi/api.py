@@ -102,6 +102,8 @@ def get_transaksi_list(
     transaction_type: str = "",
     status: str = "",
     show_deleted: bool = False,
+    month: int = None,
+    year: int = None,
 ):
     user_id = request.auth
     user = get_object_or_404(User, id=user_id)
@@ -112,6 +114,21 @@ def get_transaksi_list(
     
     # Filter transactions by toko instead of user
     queryset = Transaksi.objects.filter(toko=user.toko, is_deleted=show_deleted)
+    
+    # Add month and year filters
+    if month and year:
+        from datetime import datetime
+        import pytz
+        
+        # Create start and end date for the selected month
+        start_date = datetime(year, month, 1)
+        next_month = month + 1 if month < 12 else 1
+        next_year = year if month < 12 else year + 1
+        end_date = datetime(next_year, next_month, 1)
+        
+        # Filter by date range
+        queryset = queryset.filter(created_at__gte=start_date, created_at__lt=end_date)
+    
     queryset = queryset.order_by("-created_at")
 
     if q:
