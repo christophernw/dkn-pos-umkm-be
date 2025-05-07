@@ -15,6 +15,9 @@ import environ
 import os
 import environ
 
+import sentry_sdk
+from sentry_sdk.integrations.django import DjangoIntegration
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 env = environ.Env()
@@ -44,6 +47,39 @@ ALLOWED_HOSTS = ["*"]
 
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 
+import sentry_sdk
+from sentry_sdk.integrations.django import DjangoIntegration
+
+# Determine which Sentry DSN to use based on environment
+ENV = os.environ.get('ENV', 'local')
+
+# Get environment-specific DSN
+if ENV == 'production':
+    SENTRY_DSN = os.environ.get('SENTRY_DSN_PROD', '')
+elif ENV == 'staging':
+    SENTRY_DSN = os.environ.get('SENTRY_DSN_STAGING', '')
+else:  # development/local
+    SENTRY_DSN = os.environ.get('SENTRY_DSN_DEV', '')
+
+# Initialize Sentry if DSN is available
+if SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        integrations=[
+            DjangoIntegration(),
+        ],
+        # Adjust sampling rate based on environment
+        traces_sample_rate=1.0 if ENV == 'local' else 0.2,
+        
+        # Explicitly set environment name within each project
+        environment=ENV,
+        
+        # User identification
+        send_default_pii=True,
+        
+        # Debug mode for local only
+        debug=ENV == 'local',
+    )
 # Application definition
 
 INSTALLED_APPS = [
@@ -180,3 +216,5 @@ EMAIL_HOST_PASSWORD = ''
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_BACKEND ='django.core.mail.backends.smtp.EmailBackend'
+
+#asdfasdf
