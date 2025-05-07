@@ -2,7 +2,7 @@ from ninja import Router, UploadedFile
 from django.shortcuts import get_object_or_404
 from django.http import HttpResponseBadRequest
 from backend import settings
-from produk.models import Produk, KategoriProduk
+from produk.models import Produk, KategoriProduk, Satuan
 from ninja.security import HttpBearer
 import jwt
 from django.http import HttpResponse
@@ -38,6 +38,19 @@ router = Router(auth=AuthBearer())
 @router.get("", response={200: PaginatedResponseSchema, 404: dict})
 def get_produk_default(request, sort: str = None):
     return get_produk_paginated(request, page=1, sort=sort)
+
+
+@router.get("/categories", response={200: list, 404: dict})
+def get_categories(request, id=None):  # Make id optional
+    categories = KategoriProduk.objects.all().values_list('nama', flat=True)
+    print(categories)
+    return 200, list(categories)
+
+
+@router.get("/units", response={200: list, 404: dict})
+def get_units(request):
+    units = Satuan.objects.all().values_list('nama', flat=True)
+    return 200, list(units)
 
 
 @router.get("/page/{page}", response={200: PaginatedResponseSchema, 404: dict})
@@ -95,7 +108,11 @@ def create_produk(request, payload: CreateProdukSchema, foto: UploadedFile = Non
     if not user.toko:
         return 422, {"message": "User doesn't have a toko"}
 
+    # Get or create category
     kategori_obj, _ = KategoriProduk.objects.get_or_create(nama=payload.kategori)
+    
+    # Get or create unit (satuan)
+    satuan_obj, _ = Satuan.objects.get_or_create(nama=payload.satuan)
 
     produk = Produk.objects.create(
         nama=payload.nama,
@@ -103,7 +120,7 @@ def create_produk(request, payload: CreateProdukSchema, foto: UploadedFile = Non
         harga_modal=payload.harga_modal,
         harga_jual=payload.harga_jual,
         stok=payload.stok,
-        satuan=payload.satuan,
+        satuan=satuan_obj.nama,  # Use the satuan name
         kategori=kategori_obj,
         toko=user.toko,  # Associate with toko instead of user
     )
@@ -205,6 +222,12 @@ def update_produk(request, id: int, payload: UpdateProdukSchema, foto: UploadedF
             kategori_name = update_data.pop('kategori')
             kategori_obj, _ = KategoriProduk.objects.get_or_create(nama=kategori_name)
             produk.kategori = kategori_obj
+        
+        # Handle satuan separately to ensure it's added to the Satuan model
+        if 'satuan' in update_data:
+            satuan_name = update_data.pop('satuan')
+            satuan_obj, _ = Satuan.objects.get_or_create(nama=satuan_name)
+            produk.satuan = satuan_obj.nama
         
         # Update all other fields
         for field, value in update_data.items():
