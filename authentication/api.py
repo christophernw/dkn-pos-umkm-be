@@ -8,22 +8,31 @@ from authentication.models import Invitation, Toko, User
 from pydantic import BaseModel
 from rest_framework_simplejwt.tokens import RefreshToken, AccessToken
 from rest_framework_simplejwt.exceptions import TokenError
-from produk.api import AuthBearer
 from django.conf import settings
 from django.utils.timezone import now
 from django.db.utils import IntegrityError
+from ninja.security import HttpBearer
 
 from .schemas import (
     RemoveUserRequest,
     SessionData,
     RefreshTokenRequest,
     TokenValidationRequest,
-    AddUserRequest,
     InvitationRequest,
 )
 
+class AuthBearer(HttpBearer):
+    def authenticate(self, request, token):
+        try:
+            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+            user_id = payload.get("user_id")
+            if user_id:
+                return user_id
+        except jwt.PyJWTError:
+            return None
+        return None
+    
 router = Router()
-
 
 @router.post("/process-session")
 def process_session(request, session_data: SessionData):
