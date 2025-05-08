@@ -118,6 +118,9 @@ def send_invitation(request, payload: InvitationRequest):
     role = payload.role.strip()
     user = User.objects.get(id=request.auth)
 
+    if user.role not in ['Pemilik', 'Pengelola']:
+        return 400, {"error": "Hanya Pemilik atau Pengelola yang dapat mengirim undangan."}
+
     # Check if user has a toko
     if not user.toko:
         return 400, {"error": "User doesn't have a toko."}
