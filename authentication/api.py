@@ -5,25 +5,33 @@ from ninja import Router
 from ninja_jwt.tokens import RefreshToken
 from ninja_jwt.exceptions import TokenError
 from authentication.models import Invitation, Toko, User
-from pydantic import BaseModel
 from rest_framework_simplejwt.tokens import RefreshToken, AccessToken
 from rest_framework_simplejwt.exceptions import TokenError
-from produk.api import AuthBearer
 from django.conf import settings
 from django.utils.timezone import now
 from django.db.utils import IntegrityError
+from ninja.security import HttpBearer
 
 from .schemas import (
     RemoveUserRequest,
     SessionData,
     RefreshTokenRequest,
     TokenValidationRequest,
-    AddUserRequest,
     InvitationRequest,
 )
 
+class AuthBearer(HttpBearer):
+    def authenticate(self, request, token):
+        try:
+            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+            user_id = payload.get("user_id")
+            if user_id:
+                return user_id
+        except jwt.PyJWTError:
+            return None
+        return None
+    
 router = Router()
-
 
 @router.post("/process-session")
 def process_session(request, session_data: SessionData):
@@ -36,7 +44,7 @@ def process_session(request, session_data: SessionData):
             username=user_data.get("name"),
             email=user_data.get("email"),
         )
-
+            
         toko = Toko.objects.create()
         user.toko = toko
         user.save()
@@ -52,7 +60,7 @@ def process_session(request, session_data: SessionData):
             "email": user.email,
             "name": user.username,
             "role": user.role,
-            "toko_id": user.toko.id if user.toko else None,
+            "toko_id": user.toko.id if user.toko else None
         },
     }
 
@@ -61,10 +69,12 @@ def process_session(request, session_data: SessionData):
 def refresh_token(request, refresh_data: RefreshTokenRequest):
     try:
         refresh = RefreshToken(refresh_data.refresh)
-        return {"access": str(refresh.access_token), "refresh": str(refresh)}
+        return {
+            "access": str(refresh.access_token),
+            "refresh": str(refresh)
+        }
     except TokenError as e:
         return 401, {"error": f"Invalid refresh token: {str(e)}"}
-
 
 @router.post("/validate-token")
 def validate_token(request, token_data: TokenValidationRequest):
@@ -73,19 +83,16 @@ def validate_token(request, token_data: TokenValidationRequest):
         return {"valid": True}
     except TokenError:
         return {"valid": False}
-
-
+        
 @router.get("/get-users", response={200: list[dict], 401: dict}, auth=AuthBearer())
 def get_users(request):
     user = User.objects.get(id=request.auth)
-
+    
     if user.toko:
-        # Get all users in the same toko
         users = User.objects.filter(toko=user.toko)
     else:
-        # If user has no toko, just return the user
         users = User.objects.filter(id=user.id)
-
+    
     users_data = [
         {
             "id": u.id,
@@ -93,23 +100,39 @@ def get_users(request):
             "email": u.email,
             "role": u.role,
             "toko_id": u.toko.id if u.toko else None,
+            "status": "active"
         }
         for u in users
     ]
 
-    # Sort users based on role hierarchy: Pemilik, Pengelola, Karyawan
-    def role_priority(role):
-        if role == "Pemilik":
+    invitations = Invitation.objects.filter(owner=user)
+
+    invitations_data = [
+        {
+            "id": i.id,
+            "name": i.name,
+            "email": i.email,
+            "role": i.role,
+            "status": "pending"
+        }
+        for i in invitations
+    ]
+
+    users_data.extend(invitations_data)
+
+    def role_priority(u):
+        if u["status"] == "pending":
+            return 3
+        if u["role"] == "Pemilik":
             return 0
-        elif role == "Pengelola":
+        elif u["role"] == "Pengelola":
             return 1
-        else:  # "Karyawan"
+        else:
             return 2
 
-    users_data.sort(key=lambda u: role_priority(u["role"]))
+    users_data.sort(key=lambda u: role_priority(u))
 
     return users_data
-
 
 @router.post("/send-invitation", response={200: dict, 400: dict}, auth=AuthBearer())
 def send_invitation(request, payload: InvitationRequest):
@@ -118,6 +141,9 @@ def send_invitation(request, payload: InvitationRequest):
     role = payload.role.strip()
     user = User.objects.get(id=request.auth)
 
+    if user.role not in ["Pemilik", "Pengelola"]:
+        return 400, {"error": "Hanya Pemilik dan Pengelola yang dapat mengundang pengguna baru."}
+    
     # Check if user has a toko
     if not user.toko:
         return 400, {"error": "User doesn't have a toko."}
@@ -154,8 +180,7 @@ def send_invitation(request, payload: InvitationRequest):
         return 200, {"message": "Invitation sent", "token": token}
     except IntegrityError:
         return 400, {"error": "Invitation already exists."}
-
-
+    
 @router.post("/validate-invitation")
 def validate_invitation(request, payload: TokenValidationRequest):
     try:
@@ -174,12 +199,10 @@ def validate_invitation(request, payload: TokenValidationRequest):
 
         # Check if user already exists
         user = User.objects.filter(email=email).first()
-
+        
         if not user:
-            # Create new user only if doesn't exist
             user = User.objects.create_user(username=name, email=email, role=role)
         else:
-            # Update role for existing user
             user.role = role
             user.username = name
 
@@ -189,40 +212,36 @@ def validate_invitation(request, payload: TokenValidationRequest):
 
         # Clean up the invitation
         invitation.delete()
-
+        
         return {
             "valid": True,
             "message": "User successfully registered",
         }
     except jwt.ExpiredSignatureError:
+        Invitation.objects.filter(token=payload.token).delete()
         return {"valid": False, "error": "Token expired"}
     except jwt.DecodeError:
         return {"valid": False, "error": "Invalid token"}
 
-
-@router.post(
-    "/remove-user-from-toko",
-    response={200: dict, 400: dict, 403: dict},
-    auth=AuthBearer(),
-)
+@router.post("/remove-user-from-toko", response={200: dict, 400: dict, 403: dict}, auth=AuthBearer())
 def remove_user_from_toko(request, payload: RemoveUserRequest):
     # Get the requesting user (must be a Pemilik)
     requester = User.objects.get(id=request.auth)
-
+    
     # Verify requester is a Pemilik
     if requester.role != "Pemilik":
         return 403, {"error": "Only Pemilik can remove users from toko"}
-
+    
     # Get the user to be removed
     try:
         user_to_remove = User.objects.get(id=payload.user_id)
     except User.DoesNotExist:
         return 400, {"error": "User not found"}
-
+    
     # Verify users belong to the same toko
     if not requester.toko or requester.toko != user_to_remove.toko:
         return 400, {"error": "User is not in your toko"}
-
+    
     # Prevent removing oneself
     if requester.id == user_to_remove.id:
         return 400, {"error": "Cannot remove yourself from your own toko"}
