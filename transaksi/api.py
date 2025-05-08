@@ -517,6 +517,7 @@ def get_financial_report_by_date(request):
     transactions = Transaksi.objects.filter(
         toko=user.toko,
         is_deleted=False,
+        created_at__year=end_date.year,
         created_at__gte=start_date,
         created_at__lte=end_date,
     ).order_by("-created_at")

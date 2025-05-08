@@ -187,9 +187,9 @@ def aruskas_report(request, start_date: Optional[datetime] = None, end_date: Opt
     transactions = DetailArusKas.objects.filter(report=report)
 
     if start_date:
-        transactions = transactions.filter(tanggal_transaksi__gte=start_date)
+        transactions = transactions.filter(transaksi__created_at__gte=start_date)
     if end_date:
-        transactions = transactions.filter(tanggal_transaksi__lte=end_date)
+        transactions = transactions.filter(transaksi__created_at__lte=end_date)
 
     return ArusKasReportWithDetailsSchema.from_report(report, transactions)
 
