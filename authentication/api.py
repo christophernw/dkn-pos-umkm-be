@@ -172,3 +172,4 @@ def get_user_by_id(request, user_id: int):
         return 200, UserResponse.from_user(user)
     except Http404:
         return 404, {"error": "User not found"}
+
