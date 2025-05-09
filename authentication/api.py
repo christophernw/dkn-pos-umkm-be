@@ -8,6 +8,7 @@ from rest_framework_simplejwt.exceptions import TokenError
 from .models import StoreInvitation
 from django.utils import timezone
 from django.core.exceptions import ValidationError
+from typing import List
 import uuid
 import random
 
@@ -18,6 +19,17 @@ router = Router()
 class UserData(BaseModel):
     email: str
     name: str
+
+class UserResponse(BaseModel):
+    id: int
+    email: str
+    name: str
+    date_joined: str
+    is_active: bool
+
+class UsersListResponse(BaseModel):
+    users: List[UserResponse]
+    total_count: int
 
 class SessionData(BaseModel):
     user: UserData
@@ -104,3 +116,22 @@ def validate_token(request, token_data: TokenValidationRequest):
     except TokenError:
         return {"valid": False}
 
+@router.get("/users", response={200: UsersListResponse})
+def get_all_users(request):
+    """Get all users in the system"""
+    users = User.objects.all().order_by('id')
+    
+    user_responses = []
+    for user in users:
+        user_responses.append(UserResponse(
+            id=user.id,
+            email=user.email,
+            name=user.username,
+            date_joined=user.date_joined.isoformat(),
+            is_active=user.is_active
+        ))
+    
+    return 200, UsersListResponse(
+        users=user_responses,
+        total_count=len(user_responses)
+    )
