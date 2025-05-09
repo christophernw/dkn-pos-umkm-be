@@ -27,6 +27,17 @@ class UserResponse(BaseModel):
     date_joined: str
     is_active: bool
 
+    @classmethod
+    def from_user(cls, user):
+        """Create UserResponse from User model"""
+        return cls(
+            id=user.id,
+            email=user.email,
+            name=user.username,
+            date_joined=user.date_joined.isoformat(),
+            is_active=user.is_active
+        )
+
 class UsersListResponse(BaseModel):
     users: List[UserResponse]
     total_count: int
@@ -116,22 +127,63 @@ def validate_token(request, token_data: TokenValidationRequest):
     except TokenError:
         return {"valid": False}
 
+# OPTION 1: Simple refactor with list comprehension and better performance
 @router.get("/users", response={200: UsersListResponse})
 def get_all_users(request):
     """Get all users in the system"""
-    users = User.objects.all().order_by('id')
+    users_queryset = User.objects.all().order_by('id')
     
-    user_responses = []
-    for user in users:
-        user_responses.append(UserResponse(
-            id=user.id,
-            email=user.email,
-            name=user.username,
-            date_joined=user.date_joined.isoformat(),
-            is_active=user.is_active
-        ))
+    # Use list comprehension for cleaner code
+    user_responses = [
+        UserResponse.from_user(user) 
+        for user in users_queryset
+    ]
+    
+    # Use queryset count() instead of len() for better performance with large datasets
+    total_count = users_queryset.count()
     
     return 200, UsersListResponse(
         users=user_responses,
-        total_count=len(user_responses)
+        total_count=total_count
     )
+
+# OPTION 2: More functional approach with error handling
+# @router.get("/users", response={200: UsersListResponse, 500: dict})
+# def get_all_users(request):
+#     """Get all users in the system"""
+#     try:
+#         users_queryset = User.objects.all().order_by('id')
+#         
+#         # Transform users using class method
+#         user_responses = [
+#             UserResponse.from_user(user) 
+#             for user in users_queryset
+#         ]
+#         
+#         return 200, UsersListResponse(
+#             users=user_responses,
+#             total_count=users_queryset.count()
+#         )
+#     except Exception as e:
+#         return 500, {"error": f"Failed to retrieve users: {str(e)}"}
+
+# OPTION 3: With pagination support (for future scalability)
+# @router.get("/users", response={200: UsersListResponse})
+# def get_all_users(request, limit: int = None, offset: int = 0):
+#     """Get all users in the system with optional pagination"""
+#     users_queryset = User.objects.all().order_by('id')
+#     total_count = users_queryset.count()
+#     
+#     # Apply pagination if limit is provided
+#     if limit is not None:
+#         users_queryset = users_queryset[offset:offset + limit]
+#     
+#     user_responses = [
+#         UserResponse.from_user(user) 
+#         for user in users_queryset
+#     ]
+#     
+#     return 200, UsersListResponse(
+#         users=user_responses,
+#         total_count=total_count
+#     )
