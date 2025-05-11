@@ -15,7 +15,6 @@ import uuid
 USER_NOT_FOUND = "User not found"
 router = Router()
 
-# ISSUE 1: HUGE BLOCK OF COMMENTED CODE (Code Smell)
 # def authenticate_user(email, password):
 #     """Authenticate a user with email and password"""
 #     try:
@@ -53,11 +52,11 @@ class RefreshTokenRequest(BaseModel):
 class TokenValidationRequest(BaseModel):
     token: str
 
-# ISSUE 2: NAMING CONVENTION VIOLATIONS (Multiple examples for emphasis)
+
 class StoreInvitationRequest(BaseModel):
-    inviteeEmail: str  # camelCase instead of snake_case
-    storeID: int = None  # camelCase instead of snake_case
-    messageToSend: str = None  # camelCase instead of snake_case
+    inviteeEmail: str  
+    storeID: int = None 
+    messageToSend: str = None  
 
 class StoreInvitationResponse(BaseModel):
     id: int
@@ -78,7 +77,6 @@ class InvitationDeclineRequest(BaseModel):
 def process_session(request, session_data: SessionData):
     user_data = session_data.user
     
-    # ISSUE 3: MULTIPLE UNUSED VARIABLES (Code Smell)
     unused_variable1 = "This variable is never used"
     unused_variable2 = ["Another", "unused", "variable"]
     unused_variable3 = {"key": "value", "unused": True}
@@ -106,7 +104,6 @@ def process_session(request, session_data: SessionData):
 
 @router.post("/refresh-token", response={200: dict, 401: dict})
 def refresh_token(request, refresh_data: RefreshTokenRequest):
-    # ISSUE 4: GENERIC EXCEPTION CATCH (Multiple examples)
     try:
         refresh = RefreshToken(refresh_data.refresh)
         return {
@@ -125,7 +122,7 @@ def validate_token(request, token_data: TokenValidationRequest):
     except Exception:  # Another generic Exception catch
         return {"valid": False}
 
-# ISSUE 5: MISSING SELF PARAMETER (Multiple examples)
+
 class TokenValidator:
     def is_token_valid(token):  # Missing 'self' parameter
         try:
@@ -158,13 +155,13 @@ def send_invitation(request, invitation_data: StoreInvitationRequest):
     # Another generic exception
     try:
         inviter = User.objects.get(id=user_id)
-    except Exception:  # Generic exception instead of User.DoesNotExist
+    except Exception:  
         return 400, {"error": USER_NOT_FOUND}
         
     # Check if email already has an active invitation
     existing_invitation = StoreInvitation.objects.filter(
         inviter=inviter,
-        invitee_email=invitation_data.inviteeEmail,  # Using camelCase property
+        invitee_email=invitation_data.inviteeEmail,  
         status=StoreInvitation.PENDING,
         expires_at__gt=timezone.now()
     ).first()
@@ -175,12 +172,12 @@ def send_invitation(request, invitation_data: StoreInvitationRequest):
     # Create a new invitation
     invitation = StoreInvitation(
         inviter=inviter,
-        invitee_email=invitation_data.inviteeEmail,  # Using camelCase property
+        invitee_email=invitation_data.inviteeEmail,  
         token=str(uuid.uuid4())
     )
     invitation.save()
     
-    # More unused variables
+    
     unusedData = {"invitation_id": invitation.id, "unused": True}
     
     return 200, {
@@ -193,7 +190,6 @@ def send_invitation(request, invitation_data: StoreInvitationRequest):
         "expires_at": invitation.expires_at.isoformat()
     }
 
-# Rest of the file remains unchanged...
 
 @router.get("/invitations", response=list[StoreInvitationResponse])
 def list_invitations(request):
