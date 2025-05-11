@@ -383,7 +383,7 @@ class TransaksiTest(TestCase):
 
     def test_get_pemasukan_sorted_by_date(self):
         # Create multiple transactions with different dates
-        for i in range(3):
+        for _ in range(3):
             self._create_pemasukan()
             import time
             time.sleep(1)  # Ensure different timestamps
