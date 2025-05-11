@@ -13,11 +13,9 @@ from produk.schemas import (
     UpdateProdukSchema,
 )
 from authentication.models import User
-from django.db.models import Sum, F
+from django.db.models import Sum
 from datetime import datetime
-from dateutil.relativedelta import relativedelta
 from transaksi.models import TransaksiItem
-from typing import Optional
 
 
 class AuthBearer(HttpBearer):
@@ -34,21 +32,42 @@ class AuthBearer(HttpBearer):
 
 router = Router(auth=AuthBearer())
 
+# ==== REFACTORED HELPERS ====
+
+def _get_user_and_toko(request):
+    user_id = request.auth
+    user = get_object_or_404(User, id=user_id)
+    if not user.toko:
+        return None, {"status": 404, "message": "User doesn't have a toko"}
+    return user, None
+
+def _resolve_kategori(nama, toko):
+    return KategoriProduk.objects.get_or_create(nama=nama, toko=toko)[0]
+
+def _resolve_satuan(nama):
+    return Satuan.objects.get_or_create(nama=nama)[0]
+
+def _get_month_range(year, month):
+    start = datetime(year, month, 1)
+    if month == 12:
+        end = datetime(year + 1, 1, 1)
+    else:
+        end = datetime(year, month + 1, 1)
+    return start, end
+
+
+# ==== API ROUTES ====
 
 @router.get("", response={200: PaginatedResponseSchema, 404: dict})
 def get_produk_default(request, sort: str = None):
     return get_produk_paginated(request, page=1, sort=sort)
 
 
-# SRP VIOLATION – Logic pengambilan user dan validasi toko berulang di semua endpoint
-# Solusi: buat helper _get_user_and_toko(request)
-
 @router.get("/categories", response={200: list, 404: dict})
 def get_categories(request):
-    user_id = request.auth
-    user = User.objects.get(id=user_id)
-    if not user.toko:
-        return 404, {"message": "User doesn't have a toko"}
+    user, error = _get_user_and_toko(request)
+    if error:
+        return error["status"], {"message": error["message"]}
     categories = KategoriProduk.objects.filter(toko=user.toko).values_list('nama', flat=True)
     return 200, list(categories)
 
@@ -61,18 +80,13 @@ def get_units(request):
 
 @router.get("/page/{page}", response={200: PaginatedResponseSchema, 404: dict})
 def get_produk_paginated(request, page: int, sort: str = None, q: str = ""):
-    # OCP VIOLATION – Logika sort, filter, pagination tercampur
-    # Solusi: pisah ke fungsi kecil per fitur agar mudah diperluas
-
     if sort not in [None, "stok", "-stok", "-id"]:
         return HttpResponseBadRequest("Invalid sort parameter.")
-    if sort is None:
-        sort = "-id"
+    sort = sort or "-id"
 
-    user_id = request.auth
-    user = User.objects.get(id=user_id)
-    if not user.toko:
-        return 404, {"message": "User doesn't have a toko"}
+    user, error = _get_user_and_toko(request)
+    if error:
+        return error["status"], {"message": error["message"]}
 
     queryset = Produk.objects.filter(toko=user.toko)
     if q:
@@ -90,7 +104,7 @@ def get_produk_paginated(request, page: int, sort: str = None, q: str = ""):
         return 404, {"message": "Page not found"}
 
     offset = (page - 1) * per_page
-    page_items = queryset[offset : offset + per_page]
+    page_items = queryset[offset: offset + per_page]
 
     return 200, {
         "items": [ProdukResponseSchema.from_orm(p) for p in page_items],
@@ -103,20 +117,12 @@ def get_produk_paginated(request, page: int, sort: str = None, q: str = ""):
 
 @router.post("/create", response={201: ProdukResponseSchema, 422: dict})
 def create_produk(request, payload: CreateProdukSchema, foto: UploadedFile = None):
-    user_id = request.auth
-    user = get_object_or_404(User, id=user_id)
+    user, error = _get_user_and_toko(request)
+    if error:
+        return 422, {"message": error["message"]}
 
-    if not user.toko:
-        return 422, {"message": "User doesn't have a toko"}
-
-    # DIP VIOLATION – Logika get_or_create kategori dan satuan terlalu melekat di controller
-    # Solusi: buat fungsi _resolve_kategori / _resolve_satuan agar reusable
-
-    kategori_obj, _ = KategoriProduk.objects.get_or_create(
-        nama=payload.kategori,
-        toko=user.toko
-    )
-    satuan_obj, _ = Satuan.objects.get_or_create(nama=payload.satuan)
+    kategori_obj = _resolve_kategori(payload.kategori, user.toko)
+    satuan_obj = _resolve_satuan(payload.satuan)
 
     produk = Produk.objects.create(
         nama=payload.nama,
@@ -134,13 +140,9 @@ def create_produk(request, payload: CreateProdukSchema, foto: UploadedFile = Non
 
 @router.get("/most-popular", response={200: list, 404: dict})
 def get_most_popular_products(request):
-    user_id = request.auth
-    user = User.objects.get(id=user_id)
-    if not user.toko:
-        return 404, {"message": "User doesn't have a toko"}
-
-    # SRP VIOLATION – Controller berisi query berat dan logic mapping hasil
-    # Solusi: pindahkan query ke fungsi khusus
+    user, error = _get_user_and_toko(request)
+    if error:
+        return error["status"], {"message": error["message"]}
 
     popular_products = (
         TransaksiItem.objects
@@ -167,33 +169,48 @@ def get_most_popular_products(request):
     return 200, result
 
 
+@router.get("/low-stock", response={200: list, 404: dict})
+def get_low_stock_products(request):
+    user, error = _get_user_and_toko(request)
+    if error:
+        return error["status"], {"message": error["message"]}
+
+    products = Produk.objects.select_related("kategori").filter(toko=user.toko).order_by('stok')[:5]
+
+    result = [{
+        "id": product.id,
+        "name": product.nama,
+        "stock": product.stok,
+        "imageUrl": product.foto.url if product.foto else None,
+    } for product in products]
+
+    return 200, result
+
+
+@router.get("/{id}", response={200: ProdukResponseSchema, 404: dict})
+def get_produk_by_id(request, id: int):
+    user, error = _get_user_and_toko(request)
+    if error:
+        return error["status"], {"message": error["message"]}
+    produk = get_object_or_404(Produk, id=id, toko=user.toko)
+    return 200, ProdukResponseSchema.from_orm(produk)
+
+
 @router.post("/update/{id}", response={200: ProdukResponseSchema, 404: dict, 422: dict})
 def update_produk(request, id: int, payload: UpdateProdukSchema, foto: UploadedFile = None):
-    user_id = request.auth
-    user = User.objects.get(id=user_id)
-    if not user.toko:
-        return 422, {"message": "User doesn't have a toko"}
+    user, error = _get_user_and_toko(request)
+    if error:
+        return 422, {"message": error["message"]}
 
     try:
         produk = get_object_or_404(Produk, id=id, toko=user.toko)
-
-        # SRP + OCP VIOLATION – Update dicampur logika parsing dict, file, kategori, satuan
-        # Solusi: refactor ke beberapa fungsi helper kecil
-
         update_data = {k: v for k, v in payload.dict().items() if v is not None}
 
         if 'kategori' in update_data:
-            kategori_name = update_data.pop('kategori')
-            kategori_obj, _ = KategoriProduk.objects.get_or_create(
-                nama=kategori_name,
-                toko=user.toko
-            )
-            produk.kategori = kategori_obj
+            produk.kategori = _resolve_kategori(update_data.pop('kategori'), user.toko)
 
         if 'satuan' in update_data:
-            satuan_name = update_data.pop('satuan')
-            satuan_obj, _ = Satuan.objects.get_or_create(nama=satuan_name)
-            produk.satuan = satuan_obj.nama
+            produk.satuan = _resolve_satuan(update_data.pop('satuan')).nama
 
         for field, value in update_data.items():
             setattr(produk, field, value)
@@ -208,21 +225,22 @@ def update_produk(request, id: int, payload: UpdateProdukSchema, foto: UploadedF
         return 422, {"message": str(e)}
 
 
+@router.delete("/delete/{id}")
+def delete_produk(request, id: int):
+    user, error = _get_user_and_toko(request)
+    if error:
+        return {"message": error["message"]}
+    produk = get_object_or_404(Produk, id=id, toko=user.toko)
+    produk.delete()
+    return {"message": "Produk berhasil dihapus"}
+
+
 @router.get("/top-selling/{year}/{month}", response={200: list, 404: dict})
 def get_top_selling_products(request, year: int, month: int):
-    user_id = request.auth
-    user = User.objects.get(id=user_id)
-    if not user.toko:
-        return 404, {"message": "User doesn't have a toko"}
-
-    # DIP VIOLATION – Logic penentuan range tanggal dan query agregat bisa dipisah
-    # Solusi: buat helper _get_month_range(year, month)
-
-    start_date = datetime(year, month, 1)
-    if month == 12:
-        end_date = datetime(year + 1, 1, 1)
-    else:
-        end_date = datetime(year, month + 1, 1)
+    user, error = _get_user_and_toko(request)
+    if error:
+        return error["status"], {"message": error["message"]}
+    start_date, end_date = _get_month_range(year, month)
 
     top_products = (
         TransaksiItem.objects
@@ -238,13 +256,11 @@ def get_top_selling_products(request, year: int, month: int):
         .order_by('-sold')[:3]
     )
 
-    result = []
-    for product in top_products:
-        result.append({
-            "id": product['product__id'],
-            "name": product['product__nama'],
-            "imageUrl": product['product__foto'],
-            "sold": product['sold']
-        })
+    result = [{
+        "id": product['product__id'],
+        "name": product['product__nama'],
+        "imageUrl": product['product__foto'],
+        "sold": product['sold']
+    } for product in top_products]
 
     return 200, result
