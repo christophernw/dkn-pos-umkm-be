@@ -187,8 +187,6 @@ def accept_invitation(request, accept_data: InvitationAcceptRequest):
     """Accept a store invitation"""
     user_id = request.auth
     
-    get_user = User.objects.get(id=user_id)
-    
     try:
         user = User.objects.get(id=user_id)
     except User.DoesNotExist:
