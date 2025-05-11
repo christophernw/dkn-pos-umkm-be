@@ -15,34 +15,6 @@ import uuid
 USER_NOT_FOUND = "User not found"
 router = Router()
 
-# def authenticate_user(email, password):
-#     """Authenticate a user with email and password"""
-#     try:
-#         user = User.objects.get(email=email)
-#         if user.check_password(password):
-#             return user
-#         else:
-#             return None
-#     except User.DoesNotExist:
-#         return None
-#
-# def create_user(email, username, password):
-#     """Create a new user"""
-#     user = User.objects.create_user(
-#         username=username,
-#         email=email,
-#         password=password
-#     )
-#     return user
-#
-# def generate_auth_token(user):
-#     """Generate authentication token for user"""
-#     refresh = RefreshToken.for_user(user)
-#     return {
-#         "refresh": str(refresh),
-#         "access": str(refresh.access_token)
-#     }
-
 class SessionData(BaseModel):
     user: dict
     
@@ -54,9 +26,9 @@ class TokenValidationRequest(BaseModel):
 
 
 class StoreInvitationRequest(BaseModel):
-    inviteeEmail: str  
-    storeID: int = None 
-    messageToSend: str = None  
+    invite_email: str  
+    store_id: int = None 
+    message_to_send: str = None  
 
 class StoreInvitationResponse(BaseModel):
     id: int
@@ -77,9 +49,7 @@ class InvitationDeclineRequest(BaseModel):
 def process_session(request, session_data: SessionData):
     user_data = session_data.user
     
-    unused_variable1 = "This variable is never used"
-    unused_variable2 = ["Another", "unused", "variable"]
-    unused_variable3 = {"key": "value", "unused": True}
+
 
     try:
         user = User.objects.get(email=user_data.get("email"))
@@ -124,14 +94,14 @@ def validate_token(request, token_data: TokenValidationRequest):
 
 
 class TokenValidator:
-    def is_token_valid(token):  # Missing 'self' parameter
+    def is_token_valid(self, token):  # Missing 'self' parameter
         try:
             AccessToken(token)
             return True
         except TokenError:
             return False
     
-    def get_token_user(token):  # Another missing 'self' parameter
+    def get_token_user(self, token):  # Another missing 'self' parameter
         try:
             decoded = AccessToken(token)
             user_id = decoded['user_id']
@@ -155,7 +125,7 @@ def send_invitation(request, invitation_data: StoreInvitationRequest):
     # Another generic exception
     try:
         inviter = User.objects.get(id=user_id)
-    except Exception:  
+    except User.DoesNotExist:
         return 400, {"error": USER_NOT_FOUND}
         
     # Check if email already has an active invitation
