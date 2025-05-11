@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Needed for better SonarQube analysis
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -38,9 +40,36 @@ jobs:
         run: |
           coverage run manage.py test
           coverage xml
+          coverage report --omit="manage.py,backend/settings.py,backend/wsgi.py,backend/asgi.py,backend/urls.py,backend/migrations/**,produk/**,transaksi/test.py" > coverage_report.txt
+          
+      - name: Check Coverage is 100%
+        run: |
+          echo "Checking test coverage..."
+          COVERAGE_REPORT=$(cat coverage_report.txt | grep "TOTAL" | awk '{print $4}')
+          echo "Current coverage: $COVERAGE_REPORT"
+          if [[ "$COVERAGE_REPORT" != "100%" ]]; then
+            echo "::error::Test coverage is not 100%. Current coverage: $COVERAGE_REPORT"
+            exit 1
+          else
+            echo "Great! Test coverage is 100%."
+          fi
+
+      - name: Generate HTML Coverage Report
+        if: always()
+        run: |
+          coverage html --omit="manage.py,backend/settings.py,backend/wsgi.py,backend/asgi.py,backend/urls.py,backend/migrations/**,produk/**,transaksi/test.py"
+          
+      - name: Upload Coverage Report
+        if: always()
+        uses: actions/upload-artifact@v4  # Updated to v4
+        with:
+          name: coverage-report
+          path: htmlcov/
+          retention-days: 7
 
       - name: Run SonarQube Scanner
         uses: SonarSource/sonarqube-scan-action@v2
+        if: always()
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
@@ -51,3 +80,18 @@ jobs:
             -Dsonar.login=${{ secrets.SONAR_TOKEN }}
             -Dsonar.python.coverage.reportPaths=coverage.xml
             -Dsonar.exclusions=manage.py,backend/settings.py,backend/wsgi.py,backend/asgi.py,backend/urls.py,backend/migrations/**,produk/**,transaksi/test.py
+
+      - name: Notify on Failure
+        if: failure()
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const issue_number = context.issue.number;
+            if (issue_number) {
+              github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue_number,
+                body: '❌ Quality checks failed! The build did not meet quality criteria. Please check the coverage report for details.'
+              });
+            }
