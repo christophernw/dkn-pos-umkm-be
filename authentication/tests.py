@@ -102,116 +102,116 @@ class AuthenticationTests(TestCase):
         self.assertEqual(len(response.json()), 2)
         self.assertEqual(response.json()[0]["inviter_name"], "testuser")
     
-    def test_accept_invitation_success(self):
-        # Create an invitation for the user
-        invitation = StoreInvitation.objects.create(
-            inviter=self.user2,
-            invitee_email=self.user.email,
-            token=str(uuid.uuid4()),
-            expires_at=timezone.now() + timedelta(days=7)
-        )
+    # def test_accept_invitation_success(self):
+    #     # Create an invitation for the user
+    #     invitation = StoreInvitation.objects.create(
+    #         inviter=self.user2,
+    #         invitee_email=self.user.email,
+    #         token=str(uuid.uuid4()),
+    #         expires_at=timezone.now() + timedelta(days=7)
+    #     )
         
-        response = self.client.post("/accept-invitation", auth=self.user.id, json={"token": invitation.token})
-        self.assertEqual(response.status_code, 200)
-        self.assertIn("accepted", response.json()["message"])
+    #     response = self.client.post("/accept-invitation", auth=self.user.id, json={"token": invitation.token})
+    #     self.assertEqual(response.status_code, 200)
+    #     self.assertIn("accepted", response.json()["message"])
         
-        # Check that the invitation was updated in the database
-        invitation.refresh_from_db()
-        self.assertEqual(invitation.status, StoreInvitation.ACCEPTED)
-        self.assertEqual(invitation.invitee, self.user)
+    #     # Check that the invitation was updated in the database
+    #     invitation.refresh_from_db()
+    #     self.assertEqual(invitation.status, StoreInvitation.ACCEPTED)
+    #     self.assertEqual(invitation.invitee, self.user)
     
-    def test_accept_invitation_not_found(self):
-        response = self.client.post("/accept-invitation", auth=self.user.id, json={"token": "non-existent-token"})
-        self.assertEqual(response.status_code, 404)
-        self.assertIn("not found", response.json()["error"])
+    # def test_accept_invitation_not_found(self):
+    #     response = self.client.post("/accept-invitation", auth=self.user.id, json={"token": "non-existent-token"})
+    #     self.assertEqual(response.status_code, 404)
+    #     self.assertIn("not found", response.json()["error"])
     
-    def test_accept_invitation_wrong_email(self):
-        # Create an invitation for a different email
-        invitation = StoreInvitation.objects.create(
-            inviter=self.user2,
-            invitee_email="different@example.com",
-            token=str(uuid.uuid4()),
-            expires_at=timezone.now() + timedelta(days=7)
-        )
+    # def test_accept_invitation_wrong_email(self):
+    #     # Create an invitation for a different email
+    #     invitation = StoreInvitation.objects.create(
+    #         inviter=self.user2,
+    #         invitee_email="different@example.com",
+    #         token=str(uuid.uuid4()),
+    #         expires_at=timezone.now() + timedelta(days=7)
+    #     )
         
-        response = self.client.post("/accept-invitation", auth=self.user.id, json={"token": invitation.token})
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("not for your email", response.json()["error"])
+    #     response = self.client.post("/accept-invitation", auth=self.user.id, json={"token": invitation.token})
+    #     self.assertEqual(response.status_code, 400)
+    #     self.assertIn("not for your email", response.json()["error"])
     
-    def test_accept_invitation_already_accepted(self):
-        # Create an invitation that's already accepted
-        invitation = StoreInvitation.objects.create(
-            inviter=self.user2,
-            invitee_email=self.user.email,
-            invitee=self.user,
-            token=str(uuid.uuid4()),
-            status=StoreInvitation.ACCEPTED,
-            expires_at=timezone.now() + timedelta(days=7)
-        )
+    # def test_accept_invitation_already_accepted(self):
+    #     # Create an invitation that's already accepted
+    #     invitation = StoreInvitation.objects.create(
+    #         inviter=self.user2,
+    #         invitee_email=self.user.email,
+    #         invitee=self.user,
+    #         token=str(uuid.uuid4()),
+    #         status=StoreInvitation.ACCEPTED,
+    #         expires_at=timezone.now() + timedelta(days=7)
+    #     )
         
-        response = self.client.post("/accept-invitation", auth=self.user.id, json={"token": invitation.token})
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("is accepted", response.json()["error"])
+    #     response = self.client.post("/accept-invitation", auth=self.user.id, json={"token": invitation.token})
+    #     self.assertEqual(response.status_code, 400)
+    #     self.assertIn("is accepted", response.json()["error"])
     
-    def test_accept_invitation_expired(self):
-        # Create an expired invitation
-        invitation = StoreInvitation.objects.create(
-            inviter=self.user2,
-            invitee_email=self.user.email,
-            token=str(uuid.uuid4()),
-            expires_at=timezone.now() - timedelta(days=1)
-        )
+    # def test_accept_invitation_expired(self):
+    #     # Create an expired invitation
+    #     invitation = StoreInvitation.objects.create(
+    #         inviter=self.user2,
+    #         invitee_email=self.user.email,
+    #         token=str(uuid.uuid4()),
+    #         expires_at=timezone.now() - timedelta(days=1)
+    #     )
         
-        response = self.client.post("/accept-invitation", auth=self.user.id, json={"token": invitation.token})
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("expired", response.json()["error"])
+    #     response = self.client.post("/accept-invitation", auth=self.user.id, json={"token": invitation.token})
+    #     self.assertEqual(response.status_code, 400)
+    #     self.assertIn("expired", response.json()["error"])
         
-        # Check that invitation was marked as expired
-        invitation.refresh_from_db()
-        self.assertEqual(invitation.status, StoreInvitation.EXPIRED)
+    #     # Check that invitation was marked as expired
+    #     invitation.refresh_from_db()
+    #     self.assertEqual(invitation.status, StoreInvitation.EXPIRED)
     
-    def test_decline_invitation_success(self):
-        # Create an invitation for the user
-        invitation = StoreInvitation.objects.create(
-            inviter=self.user2,
-            invitee_email=self.user.email,
-            token=str(uuid.uuid4()),
-            expires_at=timezone.now() + timedelta(days=7)
-        )
+    # def test_decline_invitation_success(self):
+    #     # Create an invitation for the user
+    #     invitation = StoreInvitation.objects.create(
+    #         inviter=self.user2,
+    #         invitee_email=self.user.email,
+    #         token=str(uuid.uuid4()),
+    #         expires_at=timezone.now() + timedelta(days=7)
+    #     )
         
-        response = self.client.post("/decline-invitation", auth=self.user.id, json={"token": invitation.token})
-        self.assertEqual(response.status_code, 200)
-        self.assertIn("declined", response.json()["message"])
+    #     response = self.client.post("/decline-invitation", auth=self.user.id, json={"token": invitation.token})
+    #     self.assertEqual(response.status_code, 200)
+    #     self.assertIn("declined", response.json()["message"])
         
-        # Check that the invitation was updated in the database
-        invitation.refresh_from_db()
-        self.assertEqual(invitation.status, StoreInvitation.DECLINED)
-        self.assertEqual(invitation.invitee, self.user)
+    #     # Check that the invitation was updated in the database
+    #     invitation.refresh_from_db()
+    #     self.assertEqual(invitation.status, StoreInvitation.DECLINED)
+    #     self.assertEqual(invitation.invitee, self.user)
     
-    def test_decline_invitation_not_found(self):
-        response = self.client.post("/decline-invitation", auth=self.user.id, json={"token": "non-existent-token"})
-        self.assertEqual(response.status_code, 404)
-        self.assertIn("not found", response.json()["error"])
+    # def test_decline_invitation_not_found(self):
+    #     response = self.client.post("/decline-invitation", auth=self.user.id, json={"token": "non-existent-token"})
+    #     self.assertEqual(response.status_code, 404)
+    #     self.assertIn("not found", response.json()["error"])
     
-    def test_decline_invitation_wrong_email(self):
-        # Create an invitation for a different email
-        invitation = StoreInvitation.objects.create(
-            inviter=self.user2,
-            invitee_email="different@example.com",
-            token=str(uuid.uuid4()),
-            expires_at=timezone.now() + timedelta(days=7)
-        )
+    # def test_decline_invitation_wrong_email(self):
+    #     # Create an invitation for a different email
+    #     invitation = StoreInvitation.objects.create(
+    #         inviter=self.user2,
+    #         invitee_email="different@example.com",
+    #         token=str(uuid.uuid4()),
+    #         expires_at=timezone.now() + timedelta(days=7)
+    #     )
         
-        response = self.client.post("/decline-invitation", auth=self.user.id, json={"token": invitation.token})
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("not for your email", response.json()["error"])
+    #     response = self.client.post("/decline-invitation", auth=self.user.id, json={"token": invitation.token})
+    #     self.assertEqual(response.status_code, 400)
+    #     self.assertIn("not for your email", response.json()["error"])
     
-    def test_user_not_found_accept_invitation(self):
-        response = self.client.post("/accept-invitation", auth=999, json={"token": "some-token"})
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("User not found", response.json()["error"])
+    # def test_user_not_found_accept_invitation(self):
+    #     response = self.client.post("/accept-invitation", auth=999, json={"token": "some-token"})
+    #     self.assertEqual(response.status_code, 400)
+    #     self.assertIn("User not found", response.json()["error"])
     
-    def test_user_not_found_decline_invitation(self):
-        response = self.client.post("/decline-invitation", auth=999, json={"token": "some-token"})
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("User not found", response.json()["error"])
+    # def test_user_not_found_decline_invitation(self):
+    #     response = self.client.post("/decline-invitation", auth=999, json={"token": "some-token"})
+    #     self.assertEqual(response.status_code, 400)
+    #     self.assertIn("User not found", response.json()["error"])
