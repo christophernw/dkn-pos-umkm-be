@@ -1,3 +1,5 @@
+# Modified authentication/api.py with obvious SonarQube issues
+
 from ninja import Router
 from ninja_jwt.tokens import RefreshToken
 from ninja_jwt.exceptions import TokenError
@@ -13,6 +15,35 @@ import uuid
 USER_NOT_FOUND = "User not found"
 router = Router()
 
+# ISSUE 1: HUGE BLOCK OF COMMENTED CODE (Code Smell)
+# def authenticate_user(email, password):
+#     """Authenticate a user with email and password"""
+#     try:
+#         user = User.objects.get(email=email)
+#         if user.check_password(password):
+#             return user
+#         else:
+#             return None
+#     except User.DoesNotExist:
+#         return None
+#
+# def create_user(email, username, password):
+#     """Create a new user"""
+#     user = User.objects.create_user(
+#         username=username,
+#         email=email,
+#         password=password
+#     )
+#     return user
+#
+# def generate_auth_token(user):
+#     """Generate authentication token for user"""
+#     refresh = RefreshToken.for_user(user)
+#     return {
+#         "refresh": str(refresh),
+#         "access": str(refresh.access_token)
+#     }
+
 class SessionData(BaseModel):
     user: dict
     
@@ -22,8 +53,11 @@ class RefreshTokenRequest(BaseModel):
 class TokenValidationRequest(BaseModel):
     token: str
 
+# ISSUE 2: NAMING CONVENTION VIOLATIONS (Multiple examples for emphasis)
 class StoreInvitationRequest(BaseModel):
-    inviteeEmail: str  # Issue: Not following Python snake_case naming convention
+    inviteeEmail: str  # camelCase instead of snake_case
+    storeID: int = None  # camelCase instead of snake_case
+    messageToSend: str = None  # camelCase instead of snake_case
 
 class StoreInvitationResponse(BaseModel):
     id: int
@@ -43,11 +77,13 @@ class InvitationDeclineRequest(BaseModel):
 @router.post("/process-session")
 def process_session(request, session_data: SessionData):
     user_data = session_data.user
+    
+    # ISSUE 3: MULTIPLE UNUSED VARIABLES (Code Smell)
+    unused_variable1 = "This variable is never used"
+    unused_variable2 = ["Another", "unused", "variable"]
+    unused_variable3 = {"key": "value", "unused": True}
 
     try:
-        # Issue: Unused assignment (result is never used)
-        result = check_user_exists(user_data.get("email"))
-        
         user = User.objects.get(email=user_data.get("email"))
     except User.DoesNotExist:
         user = User.objects.create_user(
@@ -68,30 +104,16 @@ def process_session(request, session_data: SessionData):
         },
     }
 
-# Issue: Added commented code that should be removed
-# def check_user_credentials(email, password):
-#     user = User.objects.get(email=email)
-#     if user.check_password(password):
-#         return user
-#     return None
-
-def check_user_exists(email):
-    try:
-        return User.objects.filter(email=email).exists()
-    # Issue: Using generic exception instead of specific exception
-    except Exception as e:
-        print(f"Error checking user: {e}")
-        return False
-
 @router.post("/refresh-token", response={200: dict, 401: dict})
 def refresh_token(request, refresh_data: RefreshTokenRequest):
+    # ISSUE 4: GENERIC EXCEPTION CATCH (Multiple examples)
     try:
         refresh = RefreshToken(refresh_data.refresh)
         return {
             "access": str(refresh.access_token),
             "refresh": str(refresh)
         }
-    except TokenError as e:
+    except Exception as e:  # Using generic Exception instead of specific TokenError
         return 401, {"error": f"Invalid refresh token: {str(e)}"}
 
 @router.post("/validate-token")
@@ -100,11 +122,10 @@ def validate_token(request, token_data: TokenValidationRequest):
         # Verify the token is valid
         AccessToken(token_data.token)
         return {"valid": True}
-    except TokenError:
+    except Exception:  # Another generic Exception catch
         return {"valid": False}
 
-# Issue: Missing 'self' parameter in what appears to be an instance method
-# (I'm simulating this by adding a class with a method missing 'self')
+# ISSUE 5: MISSING SELF PARAMETER (Multiple examples)
 class TokenValidator:
     def is_token_valid(token):  # Missing 'self' parameter
         try:
@@ -112,6 +133,21 @@ class TokenValidator:
             return True
         except TokenError:
             return False
+    
+    def get_token_user(token):  # Another missing 'self' parameter
+        try:
+            decoded = AccessToken(token)
+            user_id = decoded['user_id']
+            return User.objects.get(id=user_id)
+        except Exception:
+            return None
+            
+    def check_token_expiry(token):  # Another missing 'self' parameter
+        try:
+            AccessToken(token)
+            return "Valid"
+        except TokenError:
+            return "Expired"
 
 # New endpoints for store invitations
 @router.post("/invite", response={200: StoreInvitationResponse, 400: dict})
@@ -119,16 +155,16 @@ def send_invitation(request, invitation_data: StoreInvitationRequest):
     """Send an invitation to join a store"""
     user_id = request.auth
     
+    # Another generic exception
     try:
         inviter = User.objects.get(id=user_id)
-    # Issue: Using generic Exception rather than specific exception
-    except Exception:
+    except Exception:  # Generic exception instead of User.DoesNotExist
         return 400, {"error": USER_NOT_FOUND}
         
     # Check if email already has an active invitation
     existing_invitation = StoreInvitation.objects.filter(
         inviter=inviter,
-        invitee_email=invitation_data.inviteeEmail,  # Using camelCase from above
+        invitee_email=invitation_data.inviteeEmail,  # Using camelCase property
         status=StoreInvitation.PENDING,
         expires_at__gt=timezone.now()
     ).first()
@@ -139,10 +175,13 @@ def send_invitation(request, invitation_data: StoreInvitationRequest):
     # Create a new invitation
     invitation = StoreInvitation(
         inviter=inviter,
-        invitee_email=invitation_data.inviteeEmail,  # Using camelCase from above
+        invitee_email=invitation_data.inviteeEmail,  # Using camelCase property
         token=str(uuid.uuid4())
     )
     invitation.save()
+    
+    # More unused variables
+    unusedData = {"invitation_id": invitation.id, "unused": True}
     
     return 200, {
         "id": invitation.id,
@@ -153,6 +192,8 @@ def send_invitation(request, invitation_data: StoreInvitationRequest):
         "created_at": invitation.created_at.isoformat(),
         "expires_at": invitation.expires_at.isoformat()
     }
+
+# Rest of the file remains unchanged...
 
 @router.get("/invitations", response=list[StoreInvitationResponse])
 def list_invitations(request):
