@@ -4,6 +4,7 @@ from authentication.models import User
 from decimal import Decimal
 import json
 from unittest.mock import patch, MagicMock
+from django.core.files.uploadedfile import SimpleUploadedFile
 
 import jwt
 from pydantic import ValidationError
@@ -297,3 +298,65 @@ class TestProductAPI(TestCase):
         # Verify default per_page was used (7)
         self.assertEqual(status, 200)
         self.assertEqual(response["per_page"], 7)
+
+    def test_create_produk_invalid_file_type(self):
+        """Test that creating a product with an invalid image file type returns an error"""
+
+        payload = CreateProdukSchema(
+            nama="Invalid Product",
+            harga_modal=15000,
+            harga_jual=20000,
+            stok=25,
+            satuan="Box",
+            kategori="Invalid Category"
+        )
+        
+        # Create a dummy file that simulates a PDF file
+        dummy_file = SimpleUploadedFile("test.pdf", b"%PDF-1.4", content_type="application/pdf")
+        
+        # Patch imghdr.what so that it returns a type not allowed (e.g., "pdf")
+        with patch("produk.api.imghdr.what", return_value="pdf"):
+            request = MockAuthenticatedRequest(user_id=self.user1.id)
+            status, response = create_produk(request, payload=payload, foto=dummy_file)
+            self.assertEqual(status, 422)
+            self.assertEqual(response["message"], "Format file tidak valid! Harap unggah PNG, JPG, atau JPEG.")
+
+    def test_create_produk_valid_file(self):
+        """Test that creating a product with a valid image file (<=3MB) succeeds"""
+        payload = CreateProdukSchema(
+            nama="Valid Image Product",
+            harga_modal=10000,
+            harga_jual=15000,
+            stok=10,
+            satuan="Kg",
+            kategori="Valid Category"
+        )
+
+        valid_file = SimpleUploadedFile("valid_image.jpg", b"\xFF\xD8\xFF" + b"A" * (2 * 1024 * 1024), content_type="image/jpeg")
+
+        with patch("produk.api.imghdr.what", return_value="jpeg"):
+            request = MockAuthenticatedRequest(user_id=self.user1.id)
+            status, response = create_produk(request, payload=payload, foto=valid_file)
+
+            self.assertEqual(status, 201)
+            self.assertEqual(response.nama, "Valid Image Product")
+
+    def test_create_produk_large_file(self):
+        """Test that creating a product with a file larger than 3MB is rejected"""
+        payload = CreateProdukSchema(
+            nama="Large File Product",
+            harga_modal=15000,
+            harga_jual=20000,
+            stok=25,
+            satuan="Box",
+            kategori="Test Category"
+        )
+        
+        large_file = SimpleUploadedFile("large_image.jpg", b"\xFF\xD8\xFF" + b"A" * (4 * 1024 * 1024), content_type="image/jpeg")
+        
+        with patch("produk.api.imghdr.what", return_value="jpeg"):
+            request = MockAuthenticatedRequest(user_id=self.user1.id)
+            status, response = create_produk(request, payload=payload, foto=large_file)
+
+            self.assertEqual(status, 422)
+            self.assertEqual(response["message"], "Ukuran file terlalu besar! Maksimal 3MB.")
