@@ -1,5 +1,3 @@
-# Modified authentication/api.py with obvious SonarQube issues
-
 from ninja import Router
 from ninja_jwt.tokens import RefreshToken
 from ninja_jwt.exceptions import TokenError
@@ -24,11 +22,8 @@ class RefreshTokenRequest(BaseModel):
 class TokenValidationRequest(BaseModel):
     token: str
 
-
 class StoreInvitationRequest(BaseModel):
-    invite_email: str  
-    store_id: int = None 
-    message_to_send: str = None  
+    invitee_email: str
 
 class StoreInvitationResponse(BaseModel):
     id: int
@@ -48,8 +43,6 @@ class InvitationDeclineRequest(BaseModel):
 @router.post("/process-session")
 def process_session(request, session_data: SessionData):
     user_data = session_data.user
-    
-
 
     try:
         user = User.objects.get(email=user_data.get("email"))
@@ -80,7 +73,7 @@ def refresh_token(request, refresh_data: RefreshTokenRequest):
             "access": str(refresh.access_token),
             "refresh": str(refresh)
         }
-    except Exception as e:  # Using generic Exception instead of specific TokenError
+    except TokenError as e:
         return 401, {"error": f"Invalid refresh token: {str(e)}"}
 
 @router.post("/validate-token")
@@ -89,32 +82,8 @@ def validate_token(request, token_data: TokenValidationRequest):
         # Verify the token is valid
         AccessToken(token_data.token)
         return {"valid": True}
-    except Exception:  # Another generic Exception catch
+    except TokenError:
         return {"valid": False}
-
-
-class TokenValidator:
-    def is_token_valid(self, token):  # Missing 'self' parameter
-        try:
-            AccessToken(token)
-            return True
-        except TokenError:
-            return False
-    
-    def get_token_user(self, token):  # Another missing 'self' parameter
-        try:
-            decoded = AccessToken(token)
-            user_id = decoded['user_id']
-            return User.objects.get(id=user_id)
-        except Exception:
-            return None
-            
-    def check_token_expiry(token):  # Another missing 'self' parameter
-        try:
-            AccessToken(token)
-            return "Valid"
-        except TokenError:
-            return "Expired"
 
 # New endpoints for store invitations
 @router.post("/invite", response={200: StoreInvitationResponse, 400: dict})
@@ -122,7 +91,6 @@ def send_invitation(request, invitation_data: StoreInvitationRequest):
     """Send an invitation to join a store"""
     user_id = request.auth
     
-    # Another generic exception
     try:
         inviter = User.objects.get(id=user_id)
     except User.DoesNotExist:
@@ -131,7 +99,7 @@ def send_invitation(request, invitation_data: StoreInvitationRequest):
     # Check if email already has an active invitation
     existing_invitation = StoreInvitation.objects.filter(
         inviter=inviter,
-        invitee_email=invitation_data.inviteeEmail,  
+        invitee_email=invitation_data.invitee_email,
         status=StoreInvitation.PENDING,
         expires_at__gt=timezone.now()
     ).first()
@@ -142,13 +110,10 @@ def send_invitation(request, invitation_data: StoreInvitationRequest):
     # Create a new invitation
     invitation = StoreInvitation(
         inviter=inviter,
-        invitee_email=invitation_data.inviteeEmail,  
+        invitee_email=invitation_data.invitee_email,
         token=str(uuid.uuid4())
     )
     invitation.save()
-    
-    
-    unusedData = {"invitation_id": invitation.id, "unused": True}
     
     return 200, {
         "id": invitation.id,
@@ -159,7 +124,6 @@ def send_invitation(request, invitation_data: StoreInvitationRequest):
         "created_at": invitation.created_at.isoformat(),
         "expires_at": invitation.expires_at.isoformat()
     }
-
 
 @router.get("/invitations", response=list[StoreInvitationResponse])
 def list_invitations(request):
