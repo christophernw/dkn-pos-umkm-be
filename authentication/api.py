@@ -23,7 +23,7 @@ class TokenValidationRequest(BaseModel):
     token: str
 
 class StoreInvitationRequest(BaseModel):
-    invitee_email: str
+    inviteeEmail: str  # Issue: Not following Python snake_case naming convention
 
 class StoreInvitationResponse(BaseModel):
     id: int
@@ -45,6 +45,9 @@ def process_session(request, session_data: SessionData):
     user_data = session_data.user
 
     try:
+        # Issue: Unused assignment (result is never used)
+        result = check_user_exists(user_data.get("email"))
+        
         user = User.objects.get(email=user_data.get("email"))
     except User.DoesNotExist:
         user = User.objects.create_user(
@@ -64,6 +67,21 @@ def process_session(request, session_data: SessionData):
             "name": user.username,
         },
     }
+
+# Issue: Added commented code that should be removed
+# def check_user_credentials(email, password):
+#     user = User.objects.get(email=email)
+#     if user.check_password(password):
+#         return user
+#     return None
+
+def check_user_exists(email):
+    try:
+        return User.objects.filter(email=email).exists()
+    # Issue: Using generic exception instead of specific exception
+    except Exception as e:
+        print(f"Error checking user: {e}")
+        return False
 
 @router.post("/refresh-token", response={200: dict, 401: dict})
 def refresh_token(request, refresh_data: RefreshTokenRequest):
@@ -85,6 +103,16 @@ def validate_token(request, token_data: TokenValidationRequest):
     except TokenError:
         return {"valid": False}
 
+# Issue: Missing 'self' parameter in what appears to be an instance method
+# (I'm simulating this by adding a class with a method missing 'self')
+class TokenValidator:
+    def is_token_valid(token):  # Missing 'self' parameter
+        try:
+            AccessToken(token)
+            return True
+        except TokenError:
+            return False
+
 # New endpoints for store invitations
 @router.post("/invite", response={200: StoreInvitationResponse, 400: dict})
 def send_invitation(request, invitation_data: StoreInvitationRequest):
@@ -93,13 +121,14 @@ def send_invitation(request, invitation_data: StoreInvitationRequest):
     
     try:
         inviter = User.objects.get(id=user_id)
-    except User.DoesNotExist:
+    # Issue: Using generic Exception rather than specific exception
+    except Exception:
         return 400, {"error": USER_NOT_FOUND}
         
     # Check if email already has an active invitation
     existing_invitation = StoreInvitation.objects.filter(
         inviter=inviter,
-        invitee_email=invitation_data.invitee_email,
+        invitee_email=invitation_data.inviteeEmail,  # Using camelCase from above
         status=StoreInvitation.PENDING,
         expires_at__gt=timezone.now()
     ).first()
@@ -110,7 +139,7 @@ def send_invitation(request, invitation_data: StoreInvitationRequest):
     # Create a new invitation
     invitation = StoreInvitation(
         inviter=inviter,
-        invitee_email=invitation_data.invitee_email,
+        invitee_email=invitation_data.inviteeEmail,  # Using camelCase from above
         token=str(uuid.uuid4())
     )
     invitation.save()
