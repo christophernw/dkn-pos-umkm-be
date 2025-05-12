@@ -678,3 +678,148 @@ class TransaksiTest(TestCase):
         for product in data["produk_data"]:
             self.assertEqual(product["total_terjual"], 1)
             self.assertAlmostEqual(product["total_pendapatan"], expected_revenue_per_product)
+            
+    def test_get_all_transactions(self):
+        # Create transactions for both users
+        self._create_pemasukan()  # Creates for user1
+        
+        # Create a transaction for user2
+        client2 = APIClient()
+        client2.force_authenticate(user=self.user2)
+        
+        # Create user2's products
+        user2_products = []
+        for i in range(2):
+            product = Produk.objects.create(
+                nama=f"User2 Produk {i}",
+                foto="test.jpg",
+                harga_modal=Decimal(f"{i+1}000"),
+                harga_jual=Decimal(f"{i+3}000"),
+                stok=Decimal(30),
+                satuan="Pcs",
+                kategori=self.kategori1,
+                user=self.user2
+            )
+            user2_products.append(product)
+        
+        # Create transaction for user2
+        client2.post(
+            "/api/transaksi/pemasukan/create",
+            {
+                "status": "LUNAS",
+                "catatan": "User2 payment",
+                "namaPelanggan": "User2 customer",
+                "nomorTeleponPelanggan": "08765432100",
+                "foto": "user2_image.jpg",
+                "daftarProduk": [p.id for p in user2_products],
+                "kategori": "PENJUALAN",
+                "totalPemasukan": 8000.0,
+                "hargaModal": 4000.0,
+            },
+            format="json"
+        )
+        
+        # Get all transactions
+        response = self.client.get("/api/transaksi/all-transactions")
+        self._assert_response_status(response)
+        transactions = response.json()
+        
+        # Verify that we got transactions for both users
+        user_ids = set(t["user"]["id"] for t in transactions)
+        self.assertTrue(self.user1.id in user_ids)
+        self.assertTrue(self.user2.id in user_ids)
+        
+        # Verify that we got both pemasukan transactions
+        self.assertEqual(len(transactions), 2)
+        
+        # Verify the transaction types
+        transaction_types = set(t["type"] for t in transactions)
+        self.assertEqual(transaction_types, {"pemasukan"})
+        
+        # Create a pengeluaran transaction
+        self._create_pengeluaran()
+        
+        # Get all transactions again
+        response = self.client.get("/api/transaksi/all-transactions")
+        self._assert_response_status(response)
+        transactions = response.json()
+        
+        # Verify we now have both types of transactions
+        transaction_types = set(t["type"] for t in transactions)
+        self.assertEqual(transaction_types, {"pemasukan", "pengeluaran"})
+        
+        # Verify we have 3 transactions total
+        self.assertEqual(len(transactions), 3)
+        
+        # Verify sorting by tanggalTransaksi (newest first)
+        for i in range(len(transactions) - 1):
+            self.assertGreaterEqual(
+                transactions[i]["tanggalTransaksi"],
+                transactions[i + 1]["tanggalTransaksi"]
+            )
+
+    def test_get_all_transactions_skip_no_products(self):
+        # Create a transaction with no products
+        transaksi = Transaksi.objects.create(
+            status="LUNAS",
+            catatan="Test no products",
+            namaPelanggan="Test customer",
+            nomorTeleponPelanggan="123456789"
+        )
+        Pemasukan.objects.create(
+            transaksi=transaksi,
+            kategori="PENJUALAN",
+            totalPemasukan=5000.0,
+            hargaModal=3000.0
+        )
+        
+        # Create a normal transaction
+        self._create_pemasukan()
+        
+        # Get all transactions
+        response = self.client.get("/api/transaksi/all-transactions")
+        self._assert_response_status(response)
+        transactions = response.json()
+        
+        # Verify we only got the transaction with products
+        self.assertEqual(len(transactions), 1)
+
+    def test_get_all_transactions_paginated(self):
+        # Create multiple transactions
+        for i in range(15):  # Create 15 transactions to ensure pagination
+            self._create_pemasukan(
+                catatan=f"Test payment {i}",
+                totalPemasukan=1000 * (i + 1),
+                hargaModal=500 * (i + 1),
+            )
+        
+        # Test first page (default 10 per page)
+        response = self.client.get("/api/transaksi/all-transactions/page/1")
+        self._assert_response_status(response)
+        data = response.json()
+        
+        # Verify structure and counts
+        self.assertEqual(data["total"], 15)
+        self.assertEqual(data["page"], 1)
+        self.assertEqual(data["per_page"], 10)
+        self.assertEqual(data["total_pages"], 2)
+        self.assertEqual(len(data["items"]), 10)
+        
+        # Test second page
+        response = self.client.get("/api/transaksi/all-transactions/page/2")
+        self._assert_response_status(response)
+        data = response.json()
+        self.assertEqual(len(data["items"]), 5)
+        
+        # Test custom per_page
+        response = self.client.get("/api/transaksi/all-transactions/page/1?per_page=5")
+        self._assert_response_status(response)
+        data = response.json()
+        self.assertEqual(data["per_page"], 5)
+        self.assertEqual(data["total_pages"], 3)
+        self.assertEqual(len(data["items"]), 5)
+        
+        # Test invalid page number
+        response = self.client.get("/api/transaksi/all-transactions/page/4")
+        self.assertEqual(response.status_code, 404)
+        self.assertIn("Page not found", response.json()["message"])
