@@ -148,3 +148,34 @@ class SendInvitationTests(TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["error"], "User doesn't have a toko.")
+
+    def test_send_invitation_with_karyawan_role(self):
+        # Create a user with "Karyawan" role in the same toko
+        karyawan_user = User.objects.create_user(
+            username="karyawan", 
+            email="karyawan@example.com", 
+            password="password"
+        )
+        karyawan_user.role = "Karyawan"
+        karyawan_user.toko = self.toko
+        karyawan_user.save()
+
+        # Generate token for this user
+        karyawan_token = jwt.encode(
+            {"user_id": karyawan_user.id}, 
+            settings.SECRET_KEY, 
+            algorithm="HS256"
+        )
+
+        # Attempt to send invitation
+        response = self.client.post("/send-invitation", 
+            json={
+                "name": "Another User",
+                "email": "another@example.com",
+                "role": "Karyawan"
+            }, 
+            headers={"Authorization": f"Bearer {karyawan_token}"}
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"], "Hanya Pemilik atau Pengelola yang dapat mengirim undangan.")
