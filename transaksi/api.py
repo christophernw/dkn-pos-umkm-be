@@ -696,7 +696,6 @@ def get_all_transactions_paginated(request, page: int):
     
     # Get all non-deleted transactions
     pemasukan_list = Pemasukan.objects.filter(transaksi__isDeleted=False)
-    pengeluaran_list = Pengeluaran.objects.filter(transaksi__isDeleted=False)
     
     # Process income transactions
     for pemasukan in pemasukan_list:
@@ -725,32 +724,6 @@ def get_all_transactions_paginated(request, page: int):
             "total": pemasukan.totalPemasukan
         })
     
-    # Process expense transactions
-    # for pengeluaran in pengeluaran_list:
-    #     transaksi = pengeluaran.transaksi
-    #     # Get user from the first product (Note: This assumes all products in the transaction belong to the same user)
-    #     if not transaksi.daftarProduk.exists():
-    #         continue
-        
-    #     user = transaksi.daftarProduk.first().user
-        
-    #     all_transactions.append({
-    #         "id": pengeluaran.id,
-    #         "type": "pengeluaran",
-    #         "transaksi_id": transaksi.id,
-    #         "status": transaksi.status,
-    #         "catatan": transaksi.catatan,
-    #         "namaPelanggan": transaksi.namaPelanggan,
-    #         "nomorTeleponPelanggan": transaksi.nomorTeleponPelanggan,
-    #         "tanggalTransaksi": transaksi.tanggalTransaksi.isoformat(),
-    #         "user": {
-    #             "id": user.id,
-    #             "username": user.username,
-    #             "email": user.email
-    #         },
-    #         "kategori": pengeluaran.kategori,
-    #         "total": pengeluaran.totalPengeluaran
-    #     })
     
     # Sort by date (newest first)
     all_transactions.sort(key=lambda t: t["tanggalTransaksi"], reverse=True)
