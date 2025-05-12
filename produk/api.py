@@ -16,12 +16,20 @@ from authentication.models import User
 from django.db.models import Sum
 from datetime import datetime
 from transaksi.models import TransaksiItem
+from ratelimit.decorators import ratelimit
+import logging
 
+logger = logging.getLogger(__name__)
 
 class AuthBearer(HttpBearer):
     def authenticate(self, request, token):
         try:
-            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+            payload = jwt.decode(
+                token,
+                settings.SECRET_KEY,
+                algorithms=["HS256"],
+                options={"require": ["exp"], "verify_exp": True}
+            )
             user_id = payload.get("user_id")
             if user_id:
                 return user_id
@@ -29,10 +37,9 @@ class AuthBearer(HttpBearer):
             return None
         return None
 
-
 router = Router(auth=AuthBearer())
 
-# ==== REFACTORED HELPERS ====
+# ==== HELPERS ====
 
 def _get_user_and_toko(request):
     user_id = request.auth
@@ -49,19 +56,14 @@ def _resolve_satuan(nama):
 
 def _get_month_range(year, month):
     start = datetime(year, month, 1)
-    if month == 12:
-        end = datetime(year + 1, 1, 1)
-    else:
-        end = datetime(year, month + 1, 1)
+    end = datetime(year + 1, 1, 1) if month == 12 else datetime(year, month + 1, 1)
     return start, end
 
-
-# ==== API ROUTES ====
+# ==== ROUTES ====
 
 @router.get("", response={200: PaginatedResponseSchema, 404: dict})
 def get_produk_default(request, sort: str = None):
     return get_produk_paginated(request, page=1, sort=sort)
-
 
 @router.get("/categories", response={200: list, 404: dict})
 def get_categories(request):
@@ -71,18 +73,19 @@ def get_categories(request):
     categories = KategoriProduk.objects.filter(toko=user.toko).values_list('nama', flat=True)
     return 200, list(categories)
 
-
 @router.get("/units", response={200: list, 404: dict})
 def get_units(request):
     units = Satuan.objects.all().values_list('nama', flat=True)
     return 200, list(units)
-
 
 @router.get("/page/{page}", response={200: PaginatedResponseSchema, 404: dict})
 def get_produk_paginated(request, page: int, sort: str = None, q: str = ""):
     if sort not in [None, "stok", "-stok", "-id"]:
         return HttpResponseBadRequest("Invalid sort parameter.")
     sort = sort or "-id"
+
+    if len(q) > 100:
+        return 400, {"message": "Query too long"}
 
     user, error = _get_user_and_toko(request)
     if error:
@@ -114,12 +117,17 @@ def get_produk_paginated(request, page: int, sort: str = None, q: str = ""):
         "total_pages": total_pages,
     }
 
-
 @router.post("/create", response={201: ProdukResponseSchema, 422: dict})
 def create_produk(request, payload: CreateProdukSchema, foto: UploadedFile = None):
     user, error = _get_user_and_toko(request)
     if error:
         return 422, {"message": error["message"]}
+
+    if foto:
+        if not foto.content_type.startswith("image/"):
+            return 400, {"message": "Only image files allowed"}
+        if foto.size > 2 * 1024 * 1024:
+            return 400, {"message": "Image too large (max 2MB)"}
 
     kategori_obj = _resolve_kategori(payload.kategori, user.toko)
     satuan_obj = _resolve_satuan(payload.satuan)
@@ -136,7 +144,6 @@ def create_produk(request, payload: CreateProdukSchema, foto: UploadedFile = Non
     )
 
     return 201, ProdukResponseSchema.from_orm(produk)
-
 
 @router.get("/most-popular", response={200: list, 404: dict})
 def get_most_popular_products(request):
@@ -168,7 +175,6 @@ def get_most_popular_products(request):
 
     return 200, result
 
-
 @router.get("/low-stock", response={200: list, 404: dict})
 def get_low_stock_products(request):
     user, error = _get_user_and_toko(request)
@@ -186,7 +192,7 @@ def get_low_stock_products(request):
 
     return 200, result
 
-
+@ratelimit(key='user', rate='5/m', method='GET', block=True)
 @router.get("/{id}", response={200: ProdukResponseSchema, 404: dict})
 def get_produk_by_id(request, id: int):
     user, error = _get_user_and_toko(request)
@@ -194,7 +200,6 @@ def get_produk_by_id(request, id: int):
         return error["status"], {"message": error["message"]}
     produk = get_object_or_404(Produk, id=id, toko=user.toko)
     return 200, ProdukResponseSchema.from_orm(produk)
-
 
 @router.post("/update/{id}", response={200: ProdukResponseSchema, 404: dict, 422: dict})
 def update_produk(request, id: int, payload: UpdateProdukSchema, foto: UploadedFile = None):
@@ -216,14 +221,18 @@ def update_produk(request, id: int, payload: UpdateProdukSchema, foto: UploadedF
             setattr(produk, field, value)
 
         if foto:
+            if not foto.content_type.startswith("image/"):
+                return 400, {"message": "Only image files allowed"}
+            if foto.size > 2 * 1024 * 1024:
+                return 400, {"message": "Image too large (max 2MB)"}
             produk.foto = foto
 
         produk.save()
         return 200, ProdukResponseSchema.from_orm(produk)
 
     except Exception as e:
-        return 422, {"message": str(e)}
-
+        logger.error(f"Update error: {str(e)}")
+        return 422, {"message": "Terjadi kesalahan sistem"}
 
 @router.delete("/delete/{id}")
 def delete_produk(request, id: int):
@@ -233,7 +242,6 @@ def delete_produk(request, id: int):
     produk = get_object_or_404(Produk, id=id, toko=user.toko)
     produk.delete()
     return {"message": "Produk berhasil dihapus"}
-
 
 @router.get("/top-selling/{year}/{month}", response={200: list, 404: dict})
 def get_top_selling_products(request, year: int, month: int):
@@ -264,3 +272,4 @@ def get_top_selling_products(request, year: int, month: int):
     } for product in top_products]
 
     return 200, result
+
