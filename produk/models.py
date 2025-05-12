@@ -15,6 +15,10 @@ class KategoriProduk(models.Model):
 
 class Satuan(models.Model):
     nama = models.CharField(max_length=50, unique=True)
+    toko = models.ForeignKey(Toko, on_delete=models.CASCADE, related_name="satuan", null=True)
+
+    class Meta:
+        unique_together = ('nama', 'toko')
     
     def __str__(self):
         return self.nama
