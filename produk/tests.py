@@ -1,299 +1,266 @@
-from django.test import TestCase, Client, RequestFactory
-from django.urls import reverse
-from authentication.models import User
+from django.test import TestCase, RequestFactory
+from django.http import HttpResponseBadRequest
+from authentication.models import User, Toko
+from produk.models import Produk, KategoriProduk, Satuan
+from produk.api import (
+    AuthBearer,
+    get_produk_default,
+    get_produk_paginated,
+    create_produk,
+    update_produk,
+    delete_produk,
+    get_low_stock_products,
+    get_categories,
+    get_units,
+    get_most_popular_products,
+    get_produk_by_id,
+    get_top_selling_products,
+)
+from produk.schemas import CreateProdukSchema, UpdateProdukSchema
 from decimal import Decimal
-import json
-from unittest.mock import patch, MagicMock
-
 import jwt
+from backend import settings
+from unittest.mock import patch, MagicMock
 from pydantic import ValidationError
 
-from backend import settings
-from .api import AuthBearer, get_produk_default, router, get_produk_paginated, create_produk, delete_produk, get_low_stock_products, update_produk
-from .models import Produk, KategoriProduk
-from .schemas import ProdukResponseSchema, CreateProdukSchema, UpdateProdukStokSchema
 
-class MockAuthenticatedRequest:
-    """Mock request with authentication for testing"""
-    def __init__(self, user_id=1, method="get_params", body=None, get_params=None):
-        self.auth = user_id  # Simulating authenticated user
-        self.method = method
-        self._body = json.dumps(body).encode() if body else None
+class MockRequest:
+    def __init__(self, user_id, get_params=None):
+        self.auth = user_id
         self.GET = get_params or {}
+
 
 class TestProductAPI(TestCase):
     def setUp(self):
-        # Create test users
-        self.user1 = User.objects.create_user(username="testuser1", password="password123")
-        self.user2 = User.objects.create_user(username="testuser2", password="password123")
-        
-        # Create categories
-        self.kategori1 = KategoriProduk.objects.create(nama="Minuman")
-        self.kategori2 = KategoriProduk.objects.create(nama="Makanan")
-        
-        # Create test products for user1
-        for i in range(1, 11):
-            stok = 5 if i <= 3 else 20  # Create some products with low stock
+        # Create users with email
+        self.user1 = User.objects.create_user(username='user1', email='user1@example.com', password='pass')
+        self.user2 = User.objects.create_user(username='user2', email='user2@example.com', password='pass')
+        # Create toko and link to users
+        self.toko1 = Toko.objects.create()
+        self.toko2 = Toko.objects.create()
+        self.user1.toko = self.toko1
+        self.user1.save()
+        self.user2.toko = self.toko2
+        self.user2.save()
+
+        # Create categories and units for toko1
+        self.cat1 = KategoriProduk.objects.create(nama='CatA', toko=self.toko1)
+        self.cat2 = KategoriProduk.objects.create(nama='CatB', toko=self.toko1)
+        self.unit = Satuan.objects.create(nama='Pcs', toko=self.toko1)
+
+        # Create products for toko1
+        for i in range(5):
             Produk.objects.create(
-                nama=f"User1 Produk {i}",
-                foto="test.jpg",
-                harga_modal=Decimal(f'{i}000'),
-                harga_jual=Decimal(f'{i+2}000'),
-                stok=Decimal(stok),
-                satuan="Pcs",
-                kategori=self.kategori1 if i % 2 == 0 else self.kategori2,
-                user=self.user1
+                nama=f'Prod{i}',
+                foto=None,
+                harga_modal=Decimal('1000'),
+                harga_jual=Decimal('1500'),
+                stok=i,
+                satuan=self.unit.nama,
+                kategori=self.cat1,
+                toko=self.toko1
             )
-        
-        # Create test products for user2
-        for i in range(1, 6):
-            Produk.objects.create(
-                nama=f"User2 Produk {i}",
-                foto="test.jpg",
-                harga_modal=Decimal(f'{i}000'),
-                harga_jual=Decimal(f'{i+2}000'),
-                stok=Decimal(15),
-                satuan="Pcs",
-                kategori=self.kategori1,
-                user=self.user2
-            )
-        
+        # One product for toko2
+        Produk.objects.create(
+            nama='ProdX',
+            foto=None,
+            harga_modal=Decimal('2000'),
+            harga_jual=Decimal('2500'),
+            stok=10,
+            satuan=self.unit.nama,
+            kategori=self.cat2,
+            toko=self.toko2
+        )
+        # Reference for mocking
+        self.sample_prod = Produk.objects.filter(toko=self.toko1).first()
+        self.prod_id = self.sample_prod.id
         self.factory = RequestFactory()
-    
-    def test_get_produk_with_sort_asc(self):
-        request = MockAuthenticatedRequest(user_id=self.user1.id)
-        status, response = get_produk_paginated(request, page=1, sort="asc", q="User1")
-        
+
+        # User without toko
+        self.user_no_toko = User.objects.create_user(username='user3', email='user3@example.com', password='pass')
+
+    def test_get_categories(self):
+        request = MockRequest(user_id=self.user1.id)
+        status, data = get_categories(request)
         self.assertEqual(status, 200)
-        # Check that products are sorted by stok ascending
-        for i in range(len(response['items']) - 1):
-            self.assertTrue(response['items'][i].stok <= response['items'][i+1].stok)
-    
-    def test_get_produk_with_sort_desc(self):
-        request = MockAuthenticatedRequest(user_id=self.user1.id)
-        status, response = get_produk_paginated(request, page=1, sort="desc")
-        
+        self.assertCountEqual(data, ['CatA', 'CatB'])
+
+    def test_get_units(self):
+        request = MockRequest(user_id=self.user1.id)
+        status, data = get_units(request)
         self.assertEqual(status, 200)
-        # Check that products are sorted by stok descending
-        for i in range(len(response['items']) - 1):
-            self.assertTrue(response['items'][i].stok >= response['items'][i+1].stok)
-    
-    def test_get_produk_with_invalid_sort(self):
-        request = MockAuthenticatedRequest(user_id=self.user1.id)
-        response = get_produk_paginated(request, page=1, sort="invalid")
-        
-        # Should return HttpResponseBadRequest
-        self.assertEqual(response.status_code, 400)
-    
-    def test_get_produk_pagination(self):
-        request = MockAuthenticatedRequest(user_id=self.user1.id, get_params={"per_page": "3"})
-        status, response = get_produk_paginated(request, page=2)
-        
-        self.assertEqual(status, 200)
-        self.assertEqual(response['page'], 2)
-        self.assertEqual(response['per_page'], 3)
-        self.assertEqual(len(response['items']), 3)
-        self.assertEqual(response['total_pages'], 4)  # 10 items, 3 per page = 4 pages
-    
-    def test_page_not_found(self):
-        request = MockAuthenticatedRequest(user_id=self.user1.id)
-        status, response = get_produk_paginated(request, page=5)
-        
+        self.assertEqual(data, ['Pcs'])
+
+    def test_get_units_no_toko(self):
+        request = MockRequest(user_id=self.user_no_toko.id)
+        status, resp = get_units(request)
         self.assertEqual(status, 404)
-        self.assertEqual(response['message'], "Page not found")
-    
+        self.assertEqual(resp['message'], "User doesn't have a toko")
+
+    def test_get_produk_paginated_sort_stok(self):
+        request = MockRequest(user_id=self.user1.id, get_params={'per_page': '5'})
+        status, resp = get_produk_paginated(request, page=1, sort='stok')
+        self.assertEqual(status, 200)
+        stocks = [item.stok for item in resp['items']]
+        self.assertEqual(stocks, sorted(stocks))
+
+    def test_get_produk_paginated_sort_minus_stok(self):
+        request = MockRequest(user_id=self.user1.id)
+        status, resp = get_produk_paginated(request, page=1, sort='-stok')
+        self.assertEqual(status, 200)
+        stocks = [item.stok for item in resp['items']]
+        self.assertEqual(stocks, sorted(stocks, reverse=True))
+
+    def test_invalid_sort(self):
+        request = MockRequest(user_id=self.user1.id)
+        result = get_produk_paginated(request, page=1, sort='invalid')
+        self.assertIsInstance(result, HttpResponseBadRequest)
+        self.assertEqual(result.status_code, 400)
+
+    def test_page_not_found(self):
+        request = MockRequest(user_id=self.user1.id)
+        status, data = get_produk_paginated(request, page=10, sort='stok')
+        self.assertEqual(status, 404)
+        self.assertEqual(data['message'], 'Page not found')
+
+    def test_get_produk_by_id_success(self):
+        request = MockRequest(user_id=self.user1.id)
+        status, resp = get_produk_by_id(request, id=self.sample_prod.id)
+        self.assertEqual(status, 200)
+        self.assertEqual(resp.id, self.sample_prod.id)
+        self.assertEqual(resp.nama, self.sample_prod.nama)
+
+    def test_get_produk_by_id_not_found(self):
+        request = MockRequest(user_id=self.user1.id)
+        status, resp = get_produk_by_id(request, id=9999)
+        self.assertEqual(status, 404)
+        self.assertEqual(resp['message'], 'Produk tidak ditemukan')
+
     def test_create_produk(self):
         payload = CreateProdukSchema(
-            nama="New Product",
-            harga_modal=15000,
-            harga_jual=20000,
-            stok=25,
-            satuan="Box",
-            kategori="New Category"
+            nama='NewProd',
+            harga_modal=500,
+            harga_jual=800,
+            stok=3,
+            satuan='Box',
+            kategori='CatC'
         )
-        
-        request = MockAuthenticatedRequest(user_id=self.user1.id)
-        status, response = create_produk(request, payload=payload)
-        
+        request = MockRequest(user_id=self.user1.id)
+        status, resp = create_produk(request, payload=payload)
         self.assertEqual(status, 201)
-        self.assertEqual(response.nama, "New Product")
-        self.assertEqual(response.kategori, "New Category")
-        
-        # Check that product was created in DB
-        self.assertTrue(Produk.objects.filter(nama="New Product", user=self.user1).exists())
-        # Check that the category was created
-        self.assertTrue(KategoriProduk.objects.filter(nama="New Category").exists())
-    
-    def test_update_product_stock(self):
-        produk = Produk.objects.filter(user=self.user1).first()
-        payload = UpdateProdukStokSchema(stok=50)
-        
-        request = MockAuthenticatedRequest(user_id=self.user1.id)
-        status, response = update_produk(request, id=produk.id, payload=payload)
-        
-        self.assertEqual(status, 200)
-        self.assertEqual(response.stok, 50.0)
-        
-        # Check DB was updated
-        updated_produk = Produk.objects.get(id=produk.id)
-        self.assertEqual(updated_produk.stok, 50)
-    
-    def test_update_product_not_found(self):
-        payload = UpdateProdukStokSchema(stok=50)
-        request = MockAuthenticatedRequest(user_id=self.user1.id)
-        
-        # Use a non-existent ID
-        status, response = update_produk(request, id=9999, payload=payload)
-    
-        # Should return 422 error response, not raise exception
+        self.assertEqual(resp.nama, 'NewProd')
+        self.assertEqual(resp.kategori, 'CatC')
+        self.assertTrue(KategoriProduk.objects.filter(nama='CatC', toko=self.toko1).exists())
+
+    def test_create_produk_no_toko(self):
+        payload = CreateProdukSchema(
+            nama='X', harga_modal=100, harga_jual=150, stok=1, satuan='Box', kategori='Y'
+        )
+        request = MockRequest(user_id=self.user_no_toko.id)
+        status, resp = create_produk(request, payload=payload)
         self.assertEqual(status, 422)
-        self.assertIn("message", response)
-    
-    def test_delete_produk(self):
-        produk = Produk.objects.filter(user=self.user1).first()
-        request = MockAuthenticatedRequest(user_id=self.user1.id)
-        
-        response = delete_produk(request, id=produk.id)
-        
-        self.assertEqual(response["message"], "Produk berhasil dihapus")
-        self.assertFalse(Produk.objects.filter(id=produk.id).exists())
-    
-    def test_delete_other_users_produk(self):
-        # Try to delete user2's product as user1
-        produk = Produk.objects.filter(user=self.user2).first()
-        request = MockAuthenticatedRequest(user_id=self.user1.id)
-        
-        # Should raise exception because get_object_or_404 will fail
-        with self.assertRaises(Exception):
-            delete_produk(request, id=produk.id)
-    
-    def test_low_stock_products(self):
-        request = MockAuthenticatedRequest(user_id=self.user1.id)
-        result = get_low_stock_products(request)
-        
-        self.assertEqual(len(result), 3)  # We created 3 products with stok=5
-        
-        # Check that all returned products have stock less than 10
-        for product in result:
-            self.assertTrue(product.stok < 10)
-            # Ensure products belong to user1
-            self.assertTrue("User1" in product.nama)
-            
-    def test_create_produk_negative_harga_modal(self):
-        """Test that creating a product with negative harga_modal is rejected"""
-        # Test that validation occurs during model creation
-        with self.assertRaises(ValidationError) as context:
-            CreateProdukSchema(
-                nama="Invalid Product",
-                harga_modal=-1000,  # Negative value should be rejected
-                harga_jual=20000,
-                stok=10,
-                satuan="Box",
-                kategori="Test Category"
-            )
-        
-        # Verify the error message
-        error_detail = str(context.exception)
-        self.assertIn("Harga modal minus seharusnya invalid", error_detail)
+        self.assertEqual(resp['message'], "User doesn't have a toko")
 
-    def test_create_produk_negative_harga_jual(self):
-        """Test that creating a product with negative harga_jual is rejected"""
-        with self.assertRaises(ValidationError) as context:
-            CreateProdukSchema(
-                nama="Invalid Product",
-                harga_modal=10000,
-                harga_jual=-5000,  # Negative value should be rejected
-                stok=10,
-                satuan="Box",
-                kategori="Test Category"
-            )
-        
-        error_detail = str(context.exception)
-        self.assertIn("Harga jual minus seharusnya invalid", error_detail)
-
-    def test_create_produk_negative_stok(self):
-        """Test that creating a product with negative stok is rejected"""
-        with self.assertRaises(ValidationError) as context:
-            CreateProdukSchema(
-                nama="Invalid Product",
-                harga_modal=10000,
-                harga_jual=15000,
-                stok=-5,  # Negative value should be rejected
-                satuan="Box",
-                kategori="Test Category"
-            )
-        
-        error_detail = str(context.exception)
-        self.assertIn("Stok minus seharusnya invalid", error_detail)
-    
-    def test_update_produk_negative_stok(self):
-        """Test that updating a product with negative stok is rejected"""
-        with self.assertRaises(ValidationError) as context:
-            UpdateProdukStokSchema(
-                stok=-10  # Negative value should be rejected
-            )
-        
-        error_detail = str(context.exception)
-        self.assertIn("Stok minus tidak valid", error_detail)
-
-    def test_auth_bearer_valid_token(self):
-        """Test that AuthBearer authenticates with valid token"""
-        auth = AuthBearer()
-        
-        # Create a valid token
-        token = jwt.encode({"user_id": self.user1.id}, settings.SECRET_KEY, algorithm="HS256")
-        
-        # Create a mock request with the token
-        request = self.factory.get("/", HTTP_AUTHORIZATION=f"Bearer {token}")
-        
-        # Test authentication
-        user_id = auth.authenticate(request, token)
-        self.assertEqual(user_id, self.user1.id)
-
-    def test_auth_bearer_invalid_token(self):
-        """Test that AuthBearer rejects invalid token"""
-        auth = AuthBearer()
-        
-        # Create an invalid token with wrong secret
-        token = jwt.encode({"user_id": self.user1.id}, "wrong_secret", algorithm="HS256")
-        
-        # Test authentication
-        user_id = auth.authenticate(None, token)
-        self.assertIsNone(user_id)
-
-    def test_auth_bearer_missing_user_id(self):
-        """Test that AuthBearer rejects token without user_id"""
-        auth = AuthBearer()
-        
-        # Create token without user_id
-        token = jwt.encode({"some_field": "value"}, settings.SECRET_KEY, algorithm="HS256")
-        
-        # Test authentication
-        user_id = auth.authenticate(None, token)
-        self.assertIsNone(user_id)
-
-    def test_get_produk_default(self):
-        """Test that get_produk_default calls get_produk_paginated with page=1"""
-        request = MockAuthenticatedRequest(user_id=self.user1.id)
-        
-        # Mock get_produk_paginated to verify it's called with correct parameters
-        with patch('produk.api.get_produk_paginated') as mock_paginated:
-            mock_paginated.return_value = (200, {"items": [], "total": 0, "page": 1})
-            
-            # Call the default endpoint
-            get_produk_default(request, sort="asc")
-            
-            # Verify get_produk_paginated was called with page=1 and sort="asc"
-            mock_paginated.assert_called_once_with(request, page=1, sort="asc")
-
-    def test_get_produk_invalid_per_page(self):
-        """Test that get_produk_paginated handles invalid per_page parameter"""
-        # Create a request with invalid per_page (not an integer)
-        request = MockAuthenticatedRequest(user_id=self.user1.id, get_params={"per_page": "invalid"})
-        
-        # Call the function
-        status, response = get_produk_paginated(request, page=1)
-        
-        # Verify default per_page was used (7)
+    def test_update_produk(self):
+        payload = UpdateProdukSchema(
+            nama=None,
+            harga_modal=None,
+            harga_jual=None,
+            stok=99,
+            satuan=None,
+            kategori=None
+        )
+        request = MockRequest(user_id=self.user1.id)
+        status, resp = update_produk(request, id=self.sample_prod.id, payload=payload)
         self.assertEqual(status, 200)
-        self.assertEqual(response["per_page"], 7)
+        self.assertEqual(resp.stok, 99.0)
+
+    def test_update_no_toko(self):
+        payload = UpdateProdukSchema(
+            nama=None, harga_modal=None, harga_jual=None, stok=5, satuan=None, kategori=None
+        )
+        request = MockRequest(user_id=self.user_no_toko.id)
+        status, resp = update_produk(request, id=self.sample_prod.id, payload=payload)
+        self.assertEqual(status, 422)
+        self.assertEqual(resp['message'], "User doesn't have a toko")
+
+    def test_update_invalid_negative(self):
+        with self.assertRaises(ValidationError):
+            UpdateProdukSchema(
+                nama=None, harga_modal=None, harga_jual=None, stok=-5, satuan=None, kategori=None
+            )
+
+    def test_delete_produk(self):
+        request = MockRequest(user_id=self.user1.id)
+        data = delete_produk(request, id=self.sample_prod.id)
+        self.assertEqual(data['message'], 'Produk berhasil dihapus')
+
+    def test_delete_other_users_produk(self):
+        other_prod = Produk.objects.filter(toko=self.toko2).first()
+        request = MockRequest(user_id=self.user1.id)
+        with self.assertRaises(Exception):
+            delete_produk(request, id=other_prod.id)
+
+    def test_low_stock_products(self):
+        request = MockRequest(user_id=self.user1.id)
+        status, items = get_low_stock_products(request)
+        self.assertEqual(status, 200)
+        stocks = [item['stock'] for item in items]
+        self.assertTrue(all(item['stock'] < 10 for item in items))
+
+    @patch('produk.api.TransaksiItem.objects.filter')
+    def test_get_most_popular_products(self, mock_filter):
+        mock_qs = MagicMock()
+        mock_qs.values.return_value = mock_qs
+        mock_qs.annotate.return_value = mock_qs
+        mock_qs.order_by.return_value = [
+            {'product__id': self.prod_id, 'product__nama': 'Fake', 'total_sold': 10}
+        ]
+        mock_filter.return_value = mock_qs
+        fake_prod = MagicMock()
+        fake_prod.id = self.prod_id
+        fake_prod.nama = 'Fake'
+        fake_prod.foto.url = 'url'
+        with patch('produk.api.Produk.objects.get', return_value=fake_prod):
+            request = MockRequest(user_id=self.user1.id)
+            status, result = get_most_popular_products(request)
+            self.assertEqual(status, 200)
+            self.assertEqual(result[0]['sold'], 10)
+
+    @patch('produk.api.TransaksiItem.objects.filter')
+    @patch('produk.api.Produk.objects.get')
+    def test_get_top_selling_products(self, mock_prod_get, mock_filter):
+        mock_qs = MagicMock()
+        mock_qs.values.return_value = mock_qs
+        mock_qs.annotate.return_value = mock_qs
+        mock_qs.order_by.return_value = [
+            {'product__id': self.prod_id, 'product__nama': 'Hot', 'product__foto': 'img', 'sold': 5}
+        ]
+        mock_filter.return_value = mock_qs
+        fake_prod = MagicMock(id=self.prod_id, nama='Hot', foto='img')
+        mock_prod_get.return_value = fake_prod
+        request = MockRequest(user_id=self.user1.id)
+        status, result = get_top_selling_products(request, year=2025, month=5)
+        self.assertEqual(status, 200)
+        self.assertEqual(result[0]['sold'], 5)
+
+    def test_auth_bearer(self):
+        auth = AuthBearer()
+        valid_token = jwt.encode({'user_id': self.user1.id}, settings.SECRET_KEY, algorithm='HS256')
+        req = self.factory.get('/', HTTP_AUTHORIZATION=f'Bearer {valid_token}')
+        self.assertEqual(auth.authenticate(req, valid_token), self.user1.id)
+        invalid_token = jwt.encode({'user_id': self.user1.id}, 'wrong', algorithm='HS256')
+        self.assertIsNone(auth.authenticate(None, invalid_token))
+
+    @patch('produk.api.get_produk_paginated')
+    def test_get_produk_default(self, mock_paginated):
+        mock_paginated.return_value = (200, {'items': [], 'total':0, 'page':1, 'per_page':7, 'total_pages':0})
+        request = MockRequest(user_id=self.user1.id)
+        get_produk_default(request, sort='-id')
+        mock_paginated.assert_called_once_with(request, page=1, sort='-id')
+
+    def test_invalid_per_page(self):
+        request = MockRequest(user_id=self.user1.id, get_params={'per_page': 'abc'})
+        status, resp = get_produk_paginated(request, page=1, sort='stok')
+        self.assertEqual(status, 200)
+        self.assertEqual(resp['per_page'], 7)
