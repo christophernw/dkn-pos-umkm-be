@@ -177,3 +177,145 @@ class ValidateInvitationTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.json()["valid"])
         self.assertEqual(response.json()["error"], "Invalid invitation")
+
+class GetUsersTests(TestCase):
+    def setUp(self):
+        self.client = TestClient(router)
+        self.toko = Toko.objects.create()
+        
+        # Create owner user with toko
+        self.owner = User.objects.create_user(
+            username="owner", email="owner@example.com", password="password"
+        )
+        self.owner.role = "Pemilik"
+        self.owner.toko = self.toko
+        self.owner.save()
+        
+        # Create pengelola user with same toko
+        self.pengelola = User.objects.create_user(
+            username="pengelola", email="pengelola@example.com", password="password"
+        )
+        self.pengelola.role = "Pengelola"
+        self.pengelola.toko = self.toko
+        self.pengelola.save()
+        
+        # Create karyawan user with same toko
+        self.karyawan = User.objects.create_user(
+            username="karyawan", email="karyawan@example.com", password="password"
+        )
+        self.karyawan.role = "Karyawan"
+        self.karyawan.toko = self.toko
+        self.karyawan.save()
+        
+        # Create a user with no toko
+        self.no_toko_user = User.objects.create_user(
+            username="no_toko", email="no_toko@example.com", password="password"
+        )
+        self.no_toko_user.role = "Pemilik"
+        self.no_toko_user.save()
+        
+        # Create JWT tokens for authentication
+        self.owner_token = jwt.encode(
+            {"user_id": self.owner.id}, 
+            settings.SECRET_KEY, 
+            algorithm="HS256"
+        )
+        
+        self.pengelola_token = jwt.encode(
+            {"user_id": self.pengelola.id}, 
+            settings.SECRET_KEY, 
+            algorithm="HS256"
+        )
+        
+        self.no_toko_token = jwt.encode(
+            {"user_id": self.no_toko_user.id}, 
+            settings.SECRET_KEY, 
+            algorithm="HS256"
+        )
+        
+        # Create an invitation to test combined results
+        from django.utils.timezone import now
+        from datetime import timedelta
+        
+        expiration = now() + timedelta(days=1)
+        token = jwt.encode(
+            {
+                "email": "invited@example.com",
+                "name": "Invited User",
+                "role": "Karyawan",
+                "toko_id": self.toko.id,
+                "exp": expiration,
+            },
+            settings.SECRET_KEY,
+            algorithm="HS256"
+        )
+        
+        self.invitation = Invitation.objects.create(
+            email="invited@example.com", 
+            name="Invited User", 
+            role="Karyawan", 
+            toko=self.toko, 
+            created_by=self.owner, 
+            token=token, 
+            expires_at=expiration
+        )
+
+    def test_get_users_with_owner(self):
+        response = self.client.get(
+            "/get-users",
+            headers={"Authorization": f"Bearer {self.owner_token}"}
+        )
+        self.assertEqual(response.status_code, 200)
+        
+        users_data = response.json()
+        
+        # Should return 4 items (3 users + 1 invitation)
+        self.assertEqual(len(users_data), 4)
+        
+        # Check ordering: Pemilik should be first
+        self.assertEqual(users_data[0]["role"], "Pemilik")
+        self.assertEqual(users_data[0]["name"], "owner")
+        
+        # Check invitation is included
+        invited_user = None
+        for user in users_data:
+            if user["status"] == "pending":
+                invited_user = user
+                break
+                
+        self.assertIsNotNone(invited_user)
+        self.assertEqual(invited_user["email"], "invited@example.com")
+        self.assertEqual(invited_user["name"], "Invited User")
+        self.assertEqual(invited_user["role"], "Karyawan")
+
+    def test_get_users_with_pengelola(self):
+        response = self.client.get(
+            "/get-users",
+            headers={"Authorization": f"Bearer {self.pengelola_token}"}
+        )
+        self.assertEqual(response.status_code, 200)
+        
+        users_data = response.json()
+        
+        # Should return 4 items (3 users + 1 invitation)
+        self.assertEqual(len(users_data), 4)
+        
+        # Verify pengelola can see all users
+        user_emails = [user["email"] for user in users_data if "email" in user]
+        self.assertIn("owner@example.com", user_emails)
+        self.assertIn("pengelola@example.com", user_emails) 
+        self.assertIn("karyawan@example.com", user_emails)
+        self.assertIn("invited@example.com", user_emails)
+
+    def test_get_users_with_no_toko(self):
+        response = self.client.get(
+            "/get-users",
+            headers={"Authorization": f"Bearer {self.no_toko_token}"}
+        )
+        self.assertEqual(response.status_code, 200)
+        
+        users_data = response.json()
+        
+        # Should only return themselves
+        self.assertEqual(len(users_data), 1)
+        self.assertEqual(users_data[0]["email"], "no_toko@example.com")
