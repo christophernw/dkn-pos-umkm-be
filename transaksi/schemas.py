@@ -217,3 +217,23 @@ class LaporanProdukResponse(BaseModel):
     total_produk_terjual: int
     total_pendapatan: float
     produk_data: List[LaporanProdukItem]
+    
+# Add these at the end of transaksi/schemas.py
+
+class UserInfo(BaseModel):
+    id: int
+    username: str
+    email: str
+
+class AllTransactionSchema(BaseModel):
+    id: int
+    type: str  # "pemasukan" or "pengeluaran"
+    transaksi_id: int
+    status: str
+    catatan: Optional[str] = None
+    namaPelanggan: Optional[str] = None
+    nomorTeleponPelanggan: Optional[str] = None
+    tanggalTransaksi: str
+    user: UserInfo
+    kategori: str
+    total: float

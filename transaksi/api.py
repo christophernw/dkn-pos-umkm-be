@@ -620,3 +620,160 @@ def laporan_produk(request, payload: LaporanRequest):
     
     # except Exception as e:
     #     return 422, {"error": str(e)}
+    
+@router.get("/all-transactions", response={200: List[dict]})
+def get_all_transactions(request):
+    """Retrieve all transactions from all users/stores."""
+    all_transactions = []
+    
+    # Get all non-deleted transactions
+    pemasukan_list = Pemasukan.objects.filter(transaksi__isDeleted=False)
+    pengeluaran_list = Pengeluaran.objects.filter(transaksi__isDeleted=False)
+    
+    # Process income transactions
+    for pemasukan in pemasukan_list:
+        transaksi = pemasukan.transaksi
+        # Get user from the first product (Note: This assumes all products in the transaction belong to the same user)
+        if not transaksi.daftarProduk.exists():
+            continue
+        
+        user = transaksi.daftarProduk.first().user
+        
+        all_transactions.append({
+            "id": pemasukan.id,
+            "type": "pemasukan",
+            "transaksi_id": transaksi.id,
+            "status": transaksi.status,
+            "catatan": transaksi.catatan,
+            "namaPelanggan": transaksi.namaPelanggan,
+            "nomorTeleponPelanggan": transaksi.nomorTeleponPelanggan,
+            "tanggalTransaksi": transaksi.tanggalTransaksi.isoformat(),
+            "user": {
+                "id": user.id,
+                "username": user.username,
+                "email": user.email
+            },
+            "kategori": pemasukan.kategori,
+            "total": pemasukan.totalPemasukan
+        })
+    
+    # Process expense transactions
+    for pengeluaran in pengeluaran_list:
+        transaksi = pengeluaran.transaksi
+        # Get user from the first product (Note: This assumes all products in the transaction belong to the same user)
+        # if not transaksi.daftarProduk.exists():
+        #     continue
+        
+        user = transaksi.daftarProduk.first().user
+        
+        all_transactions.append({
+            "id": pengeluaran.id,
+            "type": "pengeluaran",
+            "transaksi_id": transaksi.id,
+            "status": transaksi.status,
+            "catatan": transaksi.catatan,
+            "namaPelanggan": transaksi.namaPelanggan,
+            "nomorTeleponPelanggan": transaksi.nomorTeleponPelanggan,
+            "tanggalTransaksi": transaksi.tanggalTransaksi.isoformat(),
+            "user": {
+                "id": user.id,
+                "username": user.username,
+                "email": user.email
+            },
+            "kategori": pengeluaran.kategori,
+            "total": pengeluaran.totalPengeluaran
+        })
+    
+    # Sort by date (newest first)
+    all_transactions.sort(key=lambda t: t["tanggalTransaksi"], reverse=True)
+    
+    return 200, all_transactions
+
+@router.get("/all-transactions/page/{page}", response={200: dict, 404: dict})
+def get_all_transactions_paginated(request, page: int):
+    """Retrieve all transactions from all stores/users with pagination."""
+    all_transactions = []
+    
+    # Get all non-deleted transactions
+    pemasukan_list = Pemasukan.objects.filter(transaksi__isDeleted=False)
+    pengeluaran_list = Pengeluaran.objects.filter(transaksi__isDeleted=False)
+    
+    # Process income transactions
+    for pemasukan in pemasukan_list:
+        transaksi = pemasukan.transaksi
+        # Get user from the first product (Note: This assumes all products in the transaction belong to the same user)
+        # if not transaksi.daftarProduk.exists():
+        #     continue
+        
+        user = transaksi.daftarProduk.first().user
+        
+        all_transactions.append({
+            "id": pemasukan.id,
+            "type": "pemasukan",
+            "transaksi_id": transaksi.id,
+            "status": transaksi.status,
+            "catatan": transaksi.catatan,
+            "namaPelanggan": transaksi.namaPelanggan,
+            "nomorTeleponPelanggan": transaksi.nomorTeleponPelanggan,
+            "tanggalTransaksi": transaksi.tanggalTransaksi.isoformat(),
+            "user": {
+                "id": user.id,
+                "username": user.username,
+                "email": user.email
+            },
+            "kategori": pemasukan.kategori,
+            "total": pemasukan.totalPemasukan
+        })
+    
+    # Process expense transactions
+    # for pengeluaran in pengeluaran_list:
+    #     transaksi = pengeluaran.transaksi
+    #     # Get user from the first product (Note: This assumes all products in the transaction belong to the same user)
+    #     if not transaksi.daftarProduk.exists():
+    #         continue
+        
+    #     user = transaksi.daftarProduk.first().user
+        
+    #     all_transactions.append({
+    #         "id": pengeluaran.id,
+    #         "type": "pengeluaran",
+    #         "transaksi_id": transaksi.id,
+    #         "status": transaksi.status,
+    #         "catatan": transaksi.catatan,
+    #         "namaPelanggan": transaksi.namaPelanggan,
+    #         "nomorTeleponPelanggan": transaksi.nomorTeleponPelanggan,
+    #         "tanggalTransaksi": transaksi.tanggalTransaksi.isoformat(),
+    #         "user": {
+    #             "id": user.id,
+    #             "username": user.username,
+    #             "email": user.email
+    #         },
+    #         "kategori": pengeluaran.kategori,
+    #         "total": pengeluaran.totalPengeluaran
+    #     })
+    
+    # Sort by date (newest first)
+    all_transactions.sort(key=lambda t: t["tanggalTransaksi"], reverse=True)
+    
+    # Pagination
+    # try:
+    per_page = int(request.GET.get("per_page", 10))
+    # except ValueError:
+    #     per_page = 10
+
+    total = len(all_transactions)
+    total_pages = (total + per_page - 1) // per_page if total > 0 else 1
+
+    if page > total_pages and total > 0:
+        return 404, {"message": "Page not found"}
+
+    offset = (page - 1) * per_page
+    page_items = all_transactions[offset : offset + per_page]
+
+    return 200, {
+        "items": page_items,
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "total_pages": total_pages,
+    }
