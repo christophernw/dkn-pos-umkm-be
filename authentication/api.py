@@ -97,7 +97,6 @@ def get_users(request):
         for u in users
     ]
 
-    # Sort users based on role hierarchy: Pemilik, Pengelola, Karyawan
     def role_priority(role):
         if role == "Pemilik":
             return 0
@@ -121,16 +120,13 @@ def send_invitation(request, payload: InvitationRequest):
     if user.role not in ['Pemilik', 'Pengelola']:
         return 400, {"error": "Hanya Pemilik atau Pengelola yang dapat mengirim undangan."}
 
-    # Check if user has a toko
     if not user.toko:
         return 400, {"error": "User doesn't have a toko."}
 
-    # If user already exists in the toko, return an error
     existing_user = User.objects.filter(email=email, toko=user.toko).first()
     if existing_user:
         return 400, {"error": "User sudah ada di toko ini."}
 
-    # Check if invitation already exists for this email and toko
     if Invitation.objects.filter(email=email, toko=user.toko).exists():
         return 400, {"error": "Undangan sudah dikirim ke email ini."}
 
