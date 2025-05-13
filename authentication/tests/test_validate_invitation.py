@@ -131,7 +131,6 @@ class ValidateInvitationTests(TestCase):
         self.assertEqual(new_user.toko, self.toko)
 
     def test_validate_invitation_existing_user_no_toko(self):
-        # Create existing user without toko
         User.objects.create_user(
             username="existing_user",
             email="existing@example.com",
@@ -179,7 +178,7 @@ class ValidateInvitationTests(TestCase):
         token_payload = {
             "email": "existing@example.com",
             "name": "Existing User",
-            "role": "Administrator",
+            "role": "Pengelola",
             "toko_id": self.toko.id,
             "exp": expiration,
         }
@@ -188,7 +187,7 @@ class ValidateInvitationTests(TestCase):
         Invitation.objects.create(
             email="existing@example.com",
             name="Existing User",
-            role="Administrator",
+            role="Pengelola",
             toko=self.toko,
             created_by=self.owner,
             token=token,
@@ -202,5 +201,6 @@ class ValidateInvitationTests(TestCase):
         self.assertEqual(response.json()["message"], "User successfully registered")
 
         updated_user = User.objects.get(email="existing@example.com")
-        self.assertEqual(updated_user.role, "Administrator")
+        self.assertEqual(updated_user.role, "Pengelola")
         self.assertEqual(updated_user.toko, self.toko)
+

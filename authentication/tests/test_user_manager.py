@@ -3,7 +3,6 @@ from django.test import TestCase
 
 class UserManagerTests(TestCase):
     def test_create_user_without_email(self):
-        # Try to create a user without an email
         with self.assertRaises(ValueError) as context:
             User.objects.create_user(email="", password="password")
         self.assertEqual(str(context.exception), "The Email must be set")

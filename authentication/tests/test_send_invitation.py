@@ -46,11 +46,9 @@ class SendInvitationTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["message"], "Invitation sent")
         
-        # Verify invitation was created in the database
         self.assertTrue(Invitation.objects.filter(email="newuser@example.com").exists())
 
     def test_send_invitation_existing_user(self):
-        # Create a user already in the same toko
         existing_user = User.objects.create_user(
             username="existing", 
             email="existing@example.com", 
@@ -121,7 +119,6 @@ class SendInvitationTests(TestCase):
         self.assertEqual(response.json()["error"], "Invitation already exists.")
 
     def test_send_invitation_user_without_toko(self):
-        # Create user without toko
         user_without_toko = User.objects.create_user(
             username="no_toko", 
             email="no_toko@example.com", 
@@ -130,7 +127,6 @@ class SendInvitationTests(TestCase):
         user_without_toko.role = "Pemilik"
         user_without_toko.save()
         
-        # Create token for user without toko
         user_without_toko_token = jwt.encode(
             {"user_id": user_without_toko.id}, 
             settings.SECRET_KEY, 
@@ -150,7 +146,6 @@ class SendInvitationTests(TestCase):
         self.assertEqual(response.json()["error"], "User doesn't have a toko.")
 
     def test_send_invitation_with_karyawan_role(self):
-        # Create a user with "Karyawan" role in the same toko
         karyawan_user = User.objects.create_user(
             username="karyawan", 
             email="karyawan@example.com", 
@@ -160,14 +155,12 @@ class SendInvitationTests(TestCase):
         karyawan_user.toko = self.toko
         karyawan_user.save()
 
-        # Generate token for this user
         karyawan_token = jwt.encode(
             {"user_id": karyawan_user.id}, 
             settings.SECRET_KEY, 
             algorithm="HS256"
         )
 
-        # Attempt to send invitation
         response = self.client.post("/send-invitation", 
             json={
                 "name": "Another User",

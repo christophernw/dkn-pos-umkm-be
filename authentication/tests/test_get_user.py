@@ -53,7 +53,7 @@ class GetUsersTests(TestCase):
             username="admin",
             email="admin@example.com",
             password="password",
-            role="Pengelola",  # Adjusted role to match actual choices
+            role="Pengelola",  
             toko=self.toko
         )
         refresh = RefreshToken.for_user(admin)
@@ -89,3 +89,20 @@ class GetUsersTests(TestCase):
         self.assertEqual(len(users), 1)
         self.assertEqual(users[0]["id"], user_without_toko.id)
         self.assertIsNone(users[0]["toko_id"])
+
+    def test_get_users_expired_token(self):
+        from datetime import datetime, timedelta
+        import jwt
+        from django.conf import settings
+        
+        payload = {
+            "user_id": self.owner.id,
+            "exp": datetime.utcnow() - timedelta(days=1) 
+        }
+        expired_token = jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
+        
+        response = self.client.get(
+            "/get-users", headers={"Authorization": f"Bearer {expired_token}"}
+        )
+        self.assertEqual(response.status_code, 401) 
+

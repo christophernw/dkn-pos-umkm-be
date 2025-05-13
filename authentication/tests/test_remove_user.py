@@ -11,7 +11,6 @@ class RemoveUserFromTokoTests(TestCase):
         self.client = TestClient(router)
         self.toko = Toko.objects.create()
         
-        # Create owner user with toko
         self.owner = User.objects.create_user(
             username="owner", email="owner@example.com", password="password"
         )
@@ -19,7 +18,6 @@ class RemoveUserFromTokoTests(TestCase):
         self.owner.toko = self.toko
         self.owner.save()
         
-        # Create karyawan user with same toko
         self.karyawan = User.objects.create_user(
             username="karyawan", email="karyawan@example.com", password="password"
         )
@@ -27,7 +25,6 @@ class RemoveUserFromTokoTests(TestCase):
         self.karyawan.toko = self.toko
         self.karyawan.save()
         
-        # Create another toko and user
         self.other_toko = Toko.objects.create()
         self.external_user = User.objects.create_user(
             username="external", email="external@example.com", password="password"
@@ -36,7 +33,6 @@ class RemoveUserFromTokoTests(TestCase):
         self.external_user.toko = self.other_toko
         self.external_user.save()
         
-        # Create JWT tokens for authentication
         self.owner_token = jwt.encode(
             {"user_id": self.owner.id}, 
             settings.SECRET_KEY, 
@@ -57,11 +53,10 @@ class RemoveUserFromTokoTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         result = response.json()
-        self.assertEqual(result["user"]["role"], "Pemilik")  # Role is reset to Pemilik
+        self.assertEqual(result["user"]["role"], "Pemilik") 
         
-        # Need to refresh karyawan from database
         self.karyawan.refresh_from_db()
-        self.assertNotEqual(self.karyawan.toko.id, self.toko.id)  # User has a new toko
+        self.assertNotEqual(self.karyawan.toko.id, self.toko.id)
 
     def test_remove_self_should_fail(self):
         response = self.client.post(
@@ -81,7 +76,7 @@ class RemoveUserFromTokoTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["error"], "User is not in your toko")
 
-    def test_non_pemilik_cannot_remove_user(self):
+    def test_karyawan_cannot_remove_user(self):
         response = self.client.post(
             "/remove-user-from-toko",
             json={"user_id": self.owner.id},

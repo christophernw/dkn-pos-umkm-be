@@ -168,25 +168,19 @@ def validate_invitation(request, payload: TokenValidationRequest):
         if not invitation:
             return {"valid": False, "error": "Invalid invitation"}
 
-        # Get toko information
         toko = Toko.objects.get(id=toko_id)
 
-        # Check if user already exists
         user = User.objects.filter(email=email).first()
 
         if not user:
-            # Create new user only if doesn't exist
             user = User.objects.create_user(username=name, email=email, role=role)
         else:
-            # Update role for existing user
             user.role = role
             user.username = name
 
-        # Set toko relationship (for both new and existing users)
         user.toko = toko
         user.save()
 
-        # Clean up the invitation
         invitation.delete()
 
         return {
@@ -197,7 +191,6 @@ def validate_invitation(request, payload: TokenValidationRequest):
         return {"valid": False, "error": "Token expired"}
     except jwt.DecodeError:
         return {"valid": False, "error": "Invalid token"}
-
 
 @router.post(
     "/remove-user-from-toko",
