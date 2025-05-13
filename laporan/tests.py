@@ -306,6 +306,24 @@ class ArusKasReportTests(TestCase):
         self.assertEqual(response.total_inflow, 0)
         self.assertEqual(len(response.transactions), 0)
 
+    def test_get_aruskas_report_with_date_filter(self):
+        detail2 = DetailArusKas.objects.create(
+            report=self.report,
+            jenis="outflow",
+            nominal=Decimal("50000.00"),
+            kategori="Pengeluaran",
+            tanggal_transaksi=datetime(2025, 4, 25, 10, 0),
+            keterangan="Pembayaran"
+        )
+
+        request = MockAuthenticatedRequest(user_id=self.user.id)
+        start = datetime(2025, 4, 15)
+        end = datetime(2025, 4, 30)
+        response = aruskas_report(request, start_date=start, end_date=end)
+
+        self.assertEqual(len(response.transactions), 1)
+        self.assertEqual(response.transactions[0].kategori, "Pengeluaran")
+
     def test_get_available_months(self):
         request = MockAuthenticatedRequest(user_id=self.user.id)
 
@@ -338,6 +356,15 @@ class ArusKasReportTests(TestCase):
         )
         self.assertIn("Hutang", str(detail))
 
+    def test_get_available_months_empty(self):
+        toko_baru = Toko.objects.create()
+        user_baru = User.objects.create_user(username="nouser", password="pass", toko=toko_baru, email="mail@mail.com")
+
+        request = MockAuthenticatedRequest(user_id=user_baru.id)
+        response = available_months(request)
+
+        self.assertEqual(response, []) 
+
     def test_str_aruskas_report(self):
         report = ArusKasReport.objects.create(
             toko=self.toko,
@@ -358,4 +385,27 @@ class ArusKasReportTests(TestCase):
             kategori="Penjualan",
             tanggal_transaksi=timezone.now()
         )
-        self.assertIn("Inflow", str(detail))  # karena jenis="inflow"
+        self.assertIn("Inflow", str(detail)) 
+
+    def test_get_available_months_ordering(self):
+        ArusKasReport.objects.create(
+            toko=self.toko,
+            bulan=3,
+            tahun=2023,
+            total_inflow=0,
+            total_outflow=0,
+            saldo=0
+        )
+        ArusKasReport.objects.create(
+            toko=self.toko,
+            bulan=12,
+            tahun=2024,
+            total_inflow=0,
+            total_outflow=0,
+            saldo=0
+        )
+
+        request = MockAuthenticatedRequest(user_id=self.user.id)
+        response = available_months(request)
+
+        self.assertEqual(response, ["2025-04", "2024-12", "2023-03"])
