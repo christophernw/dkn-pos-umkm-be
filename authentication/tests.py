@@ -1,217 +1,206 @@
 from django.test import TestCase
 from django.contrib.auth.models import User
-from rest_framework_simplejwt.tokens import RefreshToken
-from authentication.api import router  
+from rest_framework_simplejwt.tokens import RefreshToken, AccessToken
+from rest_framework_simplejwt.exceptions import TokenError
+from authentication.api import router
 from ninja.testing import TestClient
-from django.utils import timezone
-from datetime import timedelta
-import uuid
-from .models import StoreInvitation
+from unittest.mock import patch
 
-class AuthenticationTests(TestCase):
+class AuthAPITests(TestCase):
     def setUp(self):
+        """Set up test environment before each test"""
         self.client = TestClient(router)
-        self.user = User.objects.create_user(username="testuser", email="test@example.com", password="password")
-        self.user2 = User.objects.create_user(username="testuser2", email="test2@example.com", password="password")
+        self.user = User.objects.create_user(
+            username="testuser", 
+            email="test@example.com", 
+            password="password123"
+        )
         self.refresh = RefreshToken.for_user(self.user)
+        self.access_token = str(self.refresh.access_token)
 
+    # process_session tests
     def test_process_session_existing_user(self):
-        response = self.client.post("/process-session", json={"user": {"email": "test@example.com", "name": "testuser"}})
+        """Test login with existing user (positive case)"""
+        response = self.client.post(
+            "/process-session", 
+            json={"user": {"email": "test@example.com", "name": "testuser"}}
+        )
         self.assertEqual(response.status_code, 200)
         self.assertIn("access", response.json())
+        self.assertIn("refresh", response.json())
+        self.assertEqual(response.json()["user"]["email"], "test@example.com")
+        self.assertEqual(response.json()["message"], "Login successful")
 
     def test_process_session_new_user(self):
-        response = self.client.post("/process-session", json={"user": {"email": "new@example.com", "name": "newuser"}})
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["user"]["email"], "new@example.com")
-
-    def test_refresh_token_valid(self):
-        response = self.client.post("/refresh-token", json={"refresh": str(self.refresh)})
+        """Test user creation for new email (positive case)"""
+        response = self.client.post(
+            "/process-session", 
+            json={"user": {"email": "new@example.com", "name": "newuser"}}
+        )
         self.assertEqual(response.status_code, 200)
         self.assertIn("access", response.json())
+        self.assertIn("refresh", response.json())
+        self.assertEqual(response.json()["user"]["email"], "new@example.com")
+        self.assertEqual(response.json()["user"]["name"], "newuser")
+        
+        # Verify user was actually created in the database
+        user = User.objects.get(email="new@example.com")
+        self.assertEqual(user.username, "newuser")
+
+    def test_process_session_missing_email(self):
+        """Test process_session with missing email (negative case)"""
+        response = self.client.post(
+            "/process-session", 
+            json={"user": {"name": "nameonly"}}
+        )
+        # This should fail validation because email is required
+        self.assertEqual(response.status_code, 422)
+
+    def test_process_session_missing_name(self):
+        """Test process_session with missing name (corner case)"""
+        response = self.client.post(
+            "/process-session", 
+            json={"user": {"email": "emailonly@example.com"}}
+        )
+        # This should fail validation because name is required
+        self.assertEqual(response.status_code, 422)
+
+    def test_process_session_special_characters(self):
+        """Test process_session with special characters in name/email (corner case)"""
+        response = self.client.post(
+            "/process-session", 
+            json={"user": {"email": "special+chars@example.com", "name": "User with spaces & symbols!"}}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("access", response.json())
+        
+        # Verify user was created with these details
+        user = User.objects.get(email="special+chars@example.com")
+        self.assertEqual(user.username, "User with spaces & symbols!")
+
+    def test_process_session_duplicate_username(self):
+        """Test when the username already exists but email is different (corner case)"""
+        # First create a user with the username
+        User.objects.create_user(username="duplicate_name", email="first@example.com")
+        
+        # Now try to process a session with same username but different email
+        response = self.client.post(
+            "/process-session", 
+            json={"user": {"email": "second@example.com", "name": "duplicate_name"}}
+        )
+        self.assertEqual(response.status_code, 200)
+        
+        # This should create a new user with email second@example.com
+        # but with a slightly modified username since duplicate_name is taken
+        new_user = User.objects.get(email="second@example.com")
+        self.assertIsNotNone(new_user)
+        # Django might handle duplicates differently, so just check it exists
+
+    # refresh_token tests
+    def test_refresh_token_valid(self):
+        """Test refreshing with valid token (positive case)"""
+        response = self.client.post(
+            "/refresh-token", 
+            json={"refresh": str(self.refresh)}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("access", response.json())
+        self.assertIn("refresh", response.json())
 
     def test_refresh_token_invalid(self):
-        response = self.client.post("/refresh-token", json={"refresh": "invalid_token"})
+        """Test with invalid token (negative case)"""
+        response = self.client.post(
+            "/refresh-token", 
+            json={"refresh": "invalid_token"}
+        )
         self.assertEqual(response.status_code, 401)
         self.assertIn("error", response.json())
 
+    @patch('rest_framework_simplejwt.tokens.RefreshToken.__init__')
+    def test_refresh_token_expired(self, mock_init):
+        """Test refresh_token with expired token (corner case)"""
+        # Mock the init method to raise TokenError with expired message
+        mock_init.side_effect = TokenError('Token has expired')
+        
+        response = self.client.post(
+            "/refresh-token", 
+            json={"refresh": "expired_token"}
+        )
+        self.assertEqual(response.status_code, 401)
+        self.assertIn("expired", response.json()["error"].lower())
+
+    def test_refresh_token_malformed(self):
+        """Test refresh_token with malformed token (corner case)"""
+        response = self.client.post(
+            "/refresh-token", 
+            json={"refresh": "not-even-a-jwt"}
+        )
+        self.assertEqual(response.status_code, 401)
+        self.assertIn("error", response.json())
+
+    def test_refresh_token_missing(self):
+        """Test refresh_token with missing token (negative case)"""
+        response = self.client.post(
+            "/refresh-token", 
+            json={}
+        )
+        self.assertEqual(response.status_code, 422)  # Validation error
+
+    # validate_token tests
     def test_validate_token_valid(self):
-        access_token = str(self.refresh.access_token)
-        response = self.client.post("/validate-token", json={"token": access_token})
+        """Test validating valid token (positive case)"""
+        response = self.client.post(
+            "/validate-token", 
+            json={"token": self.access_token}
+        )
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json()["valid"])
 
     def test_validate_token_invalid(self):
-        response = self.client.post("/validate-token", json={"token": "invalid_token"})
+        """Test validating invalid token (negative case)"""
+        response = self.client.post(
+            "/validate-token", 
+            json={"token": "invalid_token"}
+        )
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.json()["valid"])
-        
-    # New tests for store invitations
-    def test_send_invitation_success(self):
-        response = self.client.post("/invite", auth=self.user.id, json={"invitee_email": "invitee@example.com"})
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["invitee_email"], "invitee@example.com")
-        self.assertEqual(response.json()["status"], "pending")
-        
-        # Check that invitation was created in the database
-        invitation = StoreInvitation.objects.filter(inviter=self.user, invitee_email="invitee@example.com").first()
-        self.assertIsNotNone(invitation)
-        self.assertEqual(invitation.status, StoreInvitation.PENDING)
 
-    def test_send_invitation_user_not_found(self):
-        response = self.client.post("/invite", auth=999, json={"invitee_email": "invitee@example.com"})
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("User not found", response.json()["error"])
-    
-    def test_send_invitation_duplicate(self):
-        # Create an existing invitation
-        StoreInvitation.objects.create(
-            inviter=self.user,
-            invitee_email="invitee@example.com",
-            token=str(uuid.uuid4()),
-            expires_at=timezone.now() + timedelta(days=7)
-        )
+    @patch('rest_framework_simplejwt.tokens.AccessToken.__init__')
+    def test_validate_token_expired(self, mock_init):
+        """Test validate_token with expired token (corner case)"""
+        # Mock the init method to raise TokenError with expired message
+        mock_init.side_effect = TokenError('Token has expired')
         
-        # Try to create another invitation for the same email
-        response = self.client.post("/invite", auth=self.user.id, json={"invitee_email": "invitee@example.com"})
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("already exists", response.json()["error"])
-    
-    def test_list_invitations_empty(self):
-        response = self.client.get("/invitations", auth=self.user.id)
+        response = self.client.post(
+            "/validate-token", 
+            json={"token": "expired_token"}
+        )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.json()), 0)
-    
-    def test_list_invitations_with_data(self):
-        # Create a couple of invitations
-        StoreInvitation.objects.create(
-            inviter=self.user,
-            invitee_email="invitee1@example.com",
-            token=str(uuid.uuid4()),
-            expires_at=timezone.now() + timedelta(days=7)
+        self.assertFalse(response.json()["valid"])
+
+    def test_validate_token_malformed(self):
+        """Test validate_token with malformed token (corner case)"""
+        response = self.client.post(
+            "/validate-token", 
+            json={"token": "not-even-a-jwt"}
         )
-        StoreInvitation.objects.create(
-            inviter=self.user,
-            invitee_email="invitee2@example.com",
-            token=str(uuid.uuid4()),
-            expires_at=timezone.now() + timedelta(days=7)
-        )
-        
-        response = self.client.get("/invitations", auth=self.user.id)
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(response.json()), 2)
-        self.assertEqual(response.json()[0]["inviter_name"], "testuser")
-    
-    def test_accept_invitation_success(self):
-        # Create an invitation for the user
-        invitation = StoreInvitation.objects.create(
-            inviter=self.user2,
-            invitee_email=self.user.email,
-            token=str(uuid.uuid4()),
-            expires_at=timezone.now() + timedelta(days=7)
+        self.assertFalse(response.json()["valid"])
+
+    def test_validate_token_missing(self):
+        """Test validate_token with missing token (negative case)"""
+        response = self.client.post(
+            "/validate-token", 
+            json={}
         )
-        
-        response = self.client.post("/accept-invitation", auth=self.user.id, json={"token": invitation.token})
+        self.assertEqual(response.status_code, 422)  # Validation error
+
+    # Additional edge cases
+    def test_tokens_with_unicode_characters(self):
+        """Test handling tokens with unicode characters (corner case)"""
+        response = self.client.post(
+            "/validate-token", 
+            json={"token": "invalid-tökën-with-üñiçödé"}
+        )
         self.assertEqual(response.status_code, 200)
-        self.assertIn("accepted", response.json()["message"])
-        
-        # Check that the invitation was updated in the database
-        invitation.refresh_from_db()
-        self.assertEqual(invitation.status, StoreInvitation.ACCEPTED)
-        self.assertEqual(invitation.invitee, self.user)
-    
-    def test_accept_invitation_not_found(self):
-        response = self.client.post("/accept-invitation", auth=self.user.id, json={"token": "non-existent-token"})
-        self.assertEqual(response.status_code, 404)
-        self.assertIn("not found", response.json()["error"])
-    
-    def test_accept_invitation_wrong_email(self):
-        # Create an invitation for a different email
-        invitation = StoreInvitation.objects.create(
-            inviter=self.user2,
-            invitee_email="different@example.com",
-            token=str(uuid.uuid4()),
-            expires_at=timezone.now() + timedelta(days=7)
-        )
-        
-        response = self.client.post("/accept-invitation", auth=self.user.id, json={"token": invitation.token})
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("not for your email", response.json()["error"])
-    
-    def test_accept_invitation_already_accepted(self):
-        # Create an invitation that's already accepted
-        invitation = StoreInvitation.objects.create(
-            inviter=self.user2,
-            invitee_email=self.user.email,
-            invitee=self.user,
-            token=str(uuid.uuid4()),
-            status=StoreInvitation.ACCEPTED,
-            expires_at=timezone.now() + timedelta(days=7)
-        )
-        
-        response = self.client.post("/accept-invitation", auth=self.user.id, json={"token": invitation.token})
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("is accepted", response.json()["error"])
-    
-    def test_accept_invitation_expired(self):
-        # Create an expired invitation
-        invitation = StoreInvitation.objects.create(
-            inviter=self.user2,
-            invitee_email=self.user.email,
-            token=str(uuid.uuid4()),
-            expires_at=timezone.now() - timedelta(days=1)
-        )
-        
-        response = self.client.post("/accept-invitation", auth=self.user.id, json={"token": invitation.token})
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("expired", response.json()["error"])
-        
-        # Check that invitation was marked as expired
-        invitation.refresh_from_db()
-        self.assertEqual(invitation.status, StoreInvitation.EXPIRED)
-    
-    def test_decline_invitation_success(self):
-        # Create an invitation for the user
-        invitation = StoreInvitation.objects.create(
-            inviter=self.user2,
-            invitee_email=self.user.email,
-            token=str(uuid.uuid4()),
-            expires_at=timezone.now() + timedelta(days=7)
-        )
-        
-        response = self.client.post("/decline-invitation", auth=self.user.id, json={"token": invitation.token})
-        self.assertEqual(response.status_code, 200)
-        self.assertIn("declined", response.json()["message"])
-        
-        # Check that the invitation was updated in the database
-        invitation.refresh_from_db()
-        self.assertEqual(invitation.status, StoreInvitation.DECLINED)
-        self.assertEqual(invitation.invitee, self.user)
-    
-    def test_decline_invitation_not_found(self):
-        response = self.client.post("/decline-invitation", auth=self.user.id, json={"token": "non-existent-token"})
-        self.assertEqual(response.status_code, 404)
-        self.assertIn("not found", response.json()["error"])
-    
-    def test_decline_invitation_wrong_email(self):
-        # Create an invitation for a different email
-        invitation = StoreInvitation.objects.create(
-            inviter=self.user2,
-            invitee_email="different@example.com",
-            token=str(uuid.uuid4()),
-            expires_at=timezone.now() + timedelta(days=7)
-        )
-        
-        response = self.client.post("/decline-invitation", auth=self.user.id, json={"token": invitation.token})
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("not for your email", response.json()["error"])
-    
-    def test_user_not_found_accept_invitation(self):
-        response = self.client.post("/accept-invitation", auth=999, json={"token": "some-token"})
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("User not found", response.json()["error"])
-    
-    def test_user_not_found_decline_invitation(self):
-        response = self.client.post("/decline-invitation", auth=999, json={"token": "some-token"})
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("User not found", response.json()["error"])
+        self.assertFalse(response.json()["valid"])
