@@ -171,7 +171,11 @@ def aruskas_report(request, start_date: Optional[datetime] = None, end_date: Opt
     else:
         toko = request.user.toko
 
-    report = ArusKasReport.objects.filter(toko=toko).first()
+    report = ArusKasReport.objects.filter(
+        toko=toko,
+        bulan=start_date.month if start_date else None,
+        tahun=start_date.year if start_date else None
+    ).first()
 
     if not report:
         return ArusKasReportWithDetailsSchema(
@@ -193,20 +197,20 @@ def aruskas_report(request, start_date: Optional[datetime] = None, end_date: Opt
 
     return ArusKasReportWithDetailsSchema.from_report(report, transactions)
 
-# @router.get("/aruskas-available-months", response=List[str])
-# def available_months(request):
-#     user_id = request.auth
-#     user = User.objects.get(id=user_id)
-#     toko = user.toko
+@router.get("/aruskas-available-months", response=List[str])
+def available_months(request):
+    user_id = request.auth
+    user = User.objects.get(id=user_id)
+    toko = user.toko
 
-#     reports = ArusKasReport.objects.filter(toko=toko).order_by('-tahun', '-bulan')
+    reports = ArusKasReport.objects.filter(toko=toko).order_by('-tahun', '-bulan')
 
-#     months = [
-#         f"{report.tahun}-{report.bulan:02d}"
-#         for report in reports
-#     ]
+    months = [
+        f"{report.tahun}-{report.bulan:02d}"
+        for report in reports
+    ]
 
-#     return months
+    return months
 
 
 
