@@ -26,8 +26,8 @@ class StoreInvitation(models.Model):
     expires_at = models.DateTimeField()
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=PENDING)
     
-    def save(self, *args, **kwargs):
-        # Set expiration date if not already set
-        if not self.expires_at:
-            self.expires_at = timezone.now() + timedelta(days=7)
-        super().save(*args, **kwargs)
+    # def save(self, *args, **kwargs):
+    #     # Set expiration date if not already set
+    #     if not self.expires_at:
+    #         self.expires_at = timezone.now() + timedelta(days=7)
+    #     super().save(*args, **kwargs)
