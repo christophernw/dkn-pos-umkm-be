@@ -69,7 +69,6 @@ class DeleteInvitationTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 404)
-        self.assertIn("Error deleting invitation", response.json()["message"])
 
     def test_delete_invitation_wrong_toko(self):
         other_toko = Toko.objects.create()

@@ -1,24 +1,21 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 from django.shortcuts import get_object_or_404
-import jwt
-from ninja import Router
-from ninja_jwt.tokens import RefreshToken
-from ninja_jwt.exceptions import TokenError
-from authentication.models import Invitation, Toko, User
-from pydantic import BaseModel
-from rest_framework_simplejwt.tokens import RefreshToken, AccessToken
-from rest_framework_simplejwt.exceptions import TokenError
-from produk.api import AuthBearer
-from django.conf import settings
 from django.utils.timezone import now
+from django.conf import settings
 from django.db.utils import IntegrityError
 
+import jwt
+from ninja import Router
+from ninja_jwt.tokens import RefreshToken, AccessToken
+from ninja_jwt.exceptions import TokenError
+
+from authentication.models import Invitation, Toko, User
+from produk.api import AuthBearer
 from .schemas import (
     RemoveUserRequest,
     SessionData,
     RefreshTokenRequest,
     TokenValidationRequest,
-    AddUserRequest,
     InvitationRequest,
 )
 
@@ -28,15 +25,16 @@ router = Router()
 @router.post("/process-session")
 def process_session(request, session_data: SessionData):
     user_data = session_data.user
+    email = user_data.get("email")
 
-    try:
-        user = User.objects.get(email=user_data.get("email"))
-    except User.DoesNotExist:
-        user = User.objects.create_user(
-            username=user_data.get("name"),
-            email=user_data.get("email"),
-        )
+    user, created = User.objects.get_or_create(
+        email=email,
+        defaults={
+            "username": user_data.get("name"),
+        },
+    )
 
+    if created:
         toko = Toko.objects.create()
         user.toko = toko
         user.save()
@@ -77,56 +75,49 @@ def validate_token(request, token_data: TokenValidationRequest):
 
 @router.get("/get-users", response={200: list[dict], 401: dict}, auth=AuthBearer())
 def get_users(request):
-    user = User.objects.get(id=request.auth)
+    user = get_object_or_404(User, id=request.auth)
 
-    if user.toko:
-        # Get all users in the same toko
-        users = User.objects.filter(toko=user.toko)
-    else:
-        # If user has no toko, just return the user
-        users = User.objects.filter(id=user.id)
-
-    users_data = [
-        {
-            "id": u.id,
-            "name": u.username,
-            "email": u.email,
-            "role": u.role,
-            "toko_id": u.toko.id if u.toko else None,
-        }
-        for u in users
-    ]
+    users = (
+        User.objects.filter(toko=user.toko)
+        if user.toko
+        else User.objects.filter(id=user.id)
+    )
 
     def role_priority(role):
-        if role == "Pemilik":
-            return 0
-        elif role == "Pengelola":
-            return 1
-        else:  # "Karyawan"
-            return 2
+        return {"Pemilik": 0, "Pengelola": 1, "Karyawan": 2}.get(role, 3)
 
-    users_data.sort(key=lambda u: role_priority(u["role"]))
+    users_data = sorted(
+        [
+            {
+                "id": u.id,
+                "name": u.username,
+                "email": u.email,
+                "role": u.role,
+                "toko_id": u.toko.id if u.toko else None,
+            }
+            for u in users
+        ],
+        key=lambda u: role_priority(u["role"]),
+    )
 
     return users_data
 
 
 @router.post("/send-invitation", response={200: dict, 400: dict}, auth=AuthBearer())
 def send_invitation(request, payload: InvitationRequest):
-    name = payload.name.strip()
-    email = payload.email.strip().lower()
-    role = payload.role.strip()
-    user = User.objects.get(id=request.auth)
+    user = get_object_or_404(User, id=request.auth)
 
-    if user.role not in ['Pemilik', 'Pengelola']:
+    if user.role not in ["Pemilik", "Pengelola"]:
         return 400, {"error": "Hanya Pemilik atau Pengelola yang dapat mengirim undangan."}
-
     if not user.toko:
         return 400, {"error": "User doesn't have a toko."}
 
-    existing_user = User.objects.filter(email=email, toko=user.toko).first()
-    if existing_user:
-        return 400, {"error": "User sudah ada di toko ini."}
+    email = payload.email.strip().lower()
+    name = payload.name.strip()
+    role = payload.role.strip()
 
+    if User.objects.filter(email=email, toko=user.toko).exists():
+        return 400, {"error": "User sudah ada di toko ini."}
     if Invitation.objects.filter(email=email, toko=user.toko).exists():
         return 400, {"error": "Undangan sudah dikirim ke email ini."}
 
@@ -168,125 +159,86 @@ def validate_invitation(request, payload: TokenValidationRequest):
         if not invitation:
             return {"valid": False, "error": "Invalid invitation"}
 
-        toko = Toko.objects.get(id=toko_id)
+        toko = get_object_or_404(Toko, id=toko_id)
 
-        user = User.objects.filter(email=email).first()
-
-        if not user:
-            user = User.objects.create_user(username=name, email=email, role=role)
-        else:
-            user.role = role
-            user.username = name
-
+        user, _ = User.objects.get_or_create(email=email, defaults={"username": name, "role": role})
+        user.role = role
+        user.username = name
         user.toko = toko
         user.save()
 
         invitation.delete()
 
-        return {
-            "valid": True,
-            "message": "User successfully registered",
-        }
+        return {"valid": True, "message": "User successfully registered"}
     except jwt.ExpiredSignatureError:
         return {"valid": False, "error": "Token expired"}
     except jwt.DecodeError:
         return {"valid": False, "error": "Invalid token"}
 
-@router.post(
-    "/remove-user-from-toko",
-    response={200: dict, 400: dict, 403: dict},
-    auth=AuthBearer(),
-)
-def remove_user_from_toko(request, payload: RemoveUserRequest):
-    # Get the requesting user (must be a Pemilik)
-    requester = User.objects.get(id=request.auth)
 
-    # Verify requester is a Pemilik
+@router.post("/remove-user-from-toko", response={200: dict, 400: dict, 403: dict}, auth=AuthBearer())
+def remove_user_from_toko(request, payload: RemoveUserRequest):
+    requester = get_object_or_404(User, id=request.auth)
+
     if requester.role != "Pemilik":
         return 403, {"error": "Only Pemilik can remove users from toko"}
 
-    # Get the user to be removed
-    try:
-        user_to_remove = User.objects.get(id=payload.user_id)
-    except User.DoesNotExist:
-        return 400, {"error": "User not found"}
+    user_to_remove = get_object_or_404(User, id=payload.user_id)
 
-    # Verify users belong to the same toko
     if not requester.toko or requester.toko != user_to_remove.toko:
         return 400, {"error": "User is not in your toko"}
-
-    # Prevent removing oneself
     if requester.id == user_to_remove.id:
         return 400, {"error": "Cannot remove yourself from your own toko"}
 
-    # Store user information before removal for the email
-    removed_user_email = user_to_remove.email
-    removed_user_name = user_to_remove.username
-    
-    # Give new toko to user
-    toko = Toko.objects.create()
-    user_to_remove.toko = toko
-    
-    # Reset role to regular user 
-    user_to_remove.role = "Pemilik"  # Default to lowest role when removed
+    user_to_remove.toko = Toko.objects.create()
+    user_to_remove.role = "Pemilik"
     user_to_remove.save()
 
     return {
-        "message": f"User {removed_user_name} removed from toko",
+        "message": f"User {user_to_remove.username} removed from toko",
         "user": {
             "id": user_to_remove.id,
-            "name": removed_user_name,
-            "email": removed_user_email,
+            "name": user_to_remove.username,
+            "email": user_to_remove.email,
             "role": user_to_remove.role,
         },
     }
 
+
 @router.get("/pending-invitations", response={200: list[dict], 404: dict}, auth=AuthBearer())
 def get_pending_invitations(request):
-    """Get all pending invitations created for the user's toko."""
-    user_id = request.auth
-    user = get_object_or_404(User, id=user_id)
+    user = get_object_or_404(User, id=request.auth)
 
     if not user.toko:
         return 404, {"message": "User doesn't have a toko"}
 
-    # Get invitations where the toko is the user's toko
     invitations = Invitation.objects.filter(toko=user.toko)
-    
-    invitations_data = [
+
+    return 200, [
         {
             "id": invitation.id,
             "email": invitation.email,
             "name": invitation.name,
             "role": invitation.role,
             "created_by": invitation.created_by.username,
-            "created_at": invitation.expires_at - timedelta(days=1),  # Assuming invitations always expire in 1 day
+            "created_at": invitation.expires_at - timedelta(days=1),
             "expires_at": invitation.expires_at,
         }
         for invitation in invitations
     ]
-    
-    return 200, invitations_data
+
 
 @router.delete("/delete-invitation/{invitation_id}", response={200: dict, 404: dict, 403: dict}, auth=AuthBearer())
 def delete_invitation(request, invitation_id: int):
-    """Delete an invitation by ID. Only users in the same toko can delete invitations."""
-    user_id = request.auth
-    user = get_object_or_404(User, id=user_id)
-    
+    user = get_object_or_404(User, id=request.auth)
+
     if not user.toko:
         return 404, {"message": "User doesn't have a toko"}
-    
-    try:
-        invitation = get_object_or_404(Invitation, id=invitation_id)
-        
-        # Check if the invitation belongs to the user's toko
-        if invitation.toko.id != user.toko.id:
-            return 403, {"message": "You don't have permission to delete this invitation"}
-        
-        # Delete the invitation
-        invitation.delete()
-        
-        return 200, {"message": "Invitation deleted successfully"}
-    except Exception as e:
-        return 404, {"message": f"Error deleting invitation: {str(e)}"}
+
+    invitation = get_object_or_404(Invitation, id=invitation_id)
+
+    if invitation.toko != user.toko:
+        return 403, {"message": "You don't have permission to delete this invitation"}
+
+    invitation.delete()
+    return 200, {"message": "Invitation deleted successfully"}

@@ -92,5 +92,4 @@ class RemoveUserFromTokoTests(TestCase):
             json={"user_id": non_existent_user_id},
             headers={"Authorization": f"Bearer {self.owner_token}"}
         )
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(response.json()["error"], "User not found")
+        self.assertEqual(response.status_code, 404)

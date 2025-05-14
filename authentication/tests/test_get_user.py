@@ -1,10 +1,12 @@
+from django.conf import settings
 from django.test import TestCase
-from django.utils.timezone import now
+from django.utils import timezone
+import jwt
 from rest_framework_simplejwt.tokens import RefreshToken
 from ninja.testing import TestClient
 from datetime import timedelta
 
-from authentication.models import Invitation, Toko, User
+from authentication.models import Toko, User
 from authentication.api import router 
 
 class GetUsersTests(TestCase):
@@ -91,13 +93,9 @@ class GetUsersTests(TestCase):
         self.assertIsNone(users[0]["toko_id"])
 
     def test_get_users_expired_token(self):
-        from datetime import datetime, timedelta
-        import jwt
-        from django.conf import settings
-        
         payload = {
             "user_id": self.owner.id,
-            "exp": datetime.utcnow() - timedelta(days=1) 
+            "exp": timezone.now() - timedelta(days=1) 
         }
         expired_token = jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
         
