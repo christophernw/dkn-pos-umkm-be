@@ -5,7 +5,11 @@ from authentication.models import Toko
 
 class KategoriProduk(models.Model):
     nama = models.CharField(max_length=255)
-    
+    toko = models.ForeignKey("authentication.Toko", on_delete=models.CASCADE, related_name="kategori", null=True)
+
+    class Meta:
+        unique_together = ("nama", "toko")  # Ensure no duplicate names within the same shop
+
     def __str__(self):
         return self.nama
 
