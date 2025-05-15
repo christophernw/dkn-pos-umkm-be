@@ -2,15 +2,18 @@ from ninja import Router
 from ninja_jwt.tokens import RefreshToken
 from ninja_jwt.exceptions import TokenError
 from django.contrib.auth.models import User
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from rest_framework_simplejwt.tokens import RefreshToken, AccessToken
 from rest_framework_simplejwt.exceptions import TokenError
 from .models import StoreInvitation
 from django.utils import timezone
 from django.core.exceptions import ValidationError
-from typing import List
+from django.shortcuts import get_object_or_404
+from django.http import Http404
+from typing import List, Optional
 import uuid
 import random
+import re
 
 USER_NOT_FOUND = "User not found"
 router = Router()
@@ -41,6 +44,20 @@ class UserResponse(BaseModel):
 class UsersListResponse(BaseModel):
     users: List[UserResponse]
     total_count: int
+
+class UpdateUserRequest(BaseModel):
+    email: Optional[str] = None
+    name: Optional[str] = Field(None, min_length=1, max_length=150)
+
+    @field_validator('email')
+    @classmethod
+    def validate_email(cls, v):
+        if v is not None:
+            # Simple email validation regex
+            email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+            if not re.match(email_pattern, v):
+                raise ValueError('Invalid email format')
+        return v
 
 class SessionData(BaseModel):
     user: UserData
@@ -127,7 +144,6 @@ def validate_token(request, token_data: TokenValidationRequest):
     except TokenError:
         return {"valid": False}
 
-# OPTION 1: Simple refactor with list comprehension and better performance
 @router.get("/users", response={200: UsersListResponse})
 def get_all_users(request):
     """Get all users in the system"""
@@ -146,4 +162,14 @@ def get_all_users(request):
         users=user_responses,
         total_count=total_count
     )
+
+# NEW FUNCTION 1: Get user by ID
+@router.get("/users/{user_id}", response={200: UserResponse, 404: dict})
+def get_user_by_id(request, user_id: int):
+    """Get a specific user by their ID"""
+    try:
+        user = get_object_or_404(User, id=user_id)
+        return 200, UserResponse.from_user(user)
+    except Http404:
+        return 404, {"error": "User not found"}
 
