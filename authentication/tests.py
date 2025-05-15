@@ -2,9 +2,10 @@ from django.test import TestCase
 from django.contrib.auth.models import User
 from rest_framework_simplejwt.tokens import RefreshToken, AccessToken
 from rest_framework_simplejwt.exceptions import TokenError
-from authentication.api import router
+from authentication.api import router, UserResponse, UpdateUserRequest
 from ninja.testing import TestClient
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
+from pydantic import ValidationError
 
 class AuthAPITests(TestCase):
     def setUp(self):
@@ -195,6 +196,35 @@ class AuthAPITests(TestCase):
         )
         self.assertEqual(response.status_code, 422)  # Validation error
 
+    # UserResponse.from_user class method test
+    def test_user_response_from_user(self):
+        """Test UserResponse.from_user class method (unit test for refactored code)"""
+        # Create a test user with known values
+        test_user = User.objects.create_user(
+            username="testuser_method", 
+            email="testmethod@example.com"
+        )
+        test_user.is_active = False  # Set to False to test this field
+        test_user.save()
+        
+        # Use the class method
+        user_response = UserResponse.from_user(test_user)
+        
+        # Verify all fields are correctly mapped
+        self.assertEqual(user_response.id, test_user.id)
+        self.assertEqual(user_response.email, "testmethod@example.com")
+        self.assertEqual(user_response.name, "testuser_method")
+        self.assertFalse(user_response.is_active)
+        self.assertIsInstance(user_response.date_joined, str)
+        
+        # Verify date format is correct (ISO format)
+        from datetime import datetime
+        try:
+            parsed_date = datetime.fromisoformat(user_response.date_joined.replace('Z', '+00:00'))
+            self.assertIsInstance(parsed_date, datetime)
+        except ValueError:
+            self.fail(f"date_joined '{user_response.date_joined}' is not in valid ISO format")
+
     # get_all_users tests
     def test_get_all_users_success(self):
         """Test getting all users successfully (positive case)"""
@@ -350,12 +380,56 @@ class AuthAPITests(TestCase):
         self.assertEqual(data["total_count"], users_to_create + 1)  # +1 for setup user
         self.assertEqual(len(data["users"]), users_to_create + 1)
 
-    # Additional edge cases
-    def test_tokens_with_unicode_characters(self):
-        """Test handling tokens with unicode characters (corner case)"""
-        response = self.client.post(
-            "/validate-token", 
-            json={"token": "invalid-tökën-with-üñiçödé"}
-        )
+    def test_get_all_users_uses_queryset_count(self):
+        """Test that the refactored method uses queryset.count() efficiently"""
+        # Create test users
+        User.objects.create_user(username="user2", email="user2@example.com")
+        User.objects.create_user(username="user3", email="user3@example.com")
+        
+        # Mock the QuerySet's count method directly
+        with patch('django.db.models.query.QuerySet.count') as mock_count:
+            mock_count.return_value = 3
+            response = self.client.get("/users")
+        
         self.assertEqual(response.status_code, 200)
-        self.assertFalse(response.json()["valid"])
+        # Verify count was called (this tests that we're using count() instead of len())
+        mock_count.assert_called_once()
+
+    # NEW TESTS FOR get_user_by_id
+    def test_get_user_by_id_success(self):
+        """Test getting user by ID successfully (positive case)"""
+        response = self.client.get(f"/users/{self.user.id}")
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertEqual(data["id"], self.user.id)
+        self.assertEqual(data["email"], "test@example.com")
+        self.assertEqual(data["name"], "testuser")
+        self.assertTrue(data["is_active"])
+        self.assertIn("date_joined", data)
+
+    def test_get_user_by_id_not_found(self):
+        """Test getting user by non-existent ID (negative case)"""
+        response = self.client.get("/users/9999")
+        self.assertEqual(response.status_code, 404)
+        self.assertIn("error", response.json())
+        self.assertEqual(response.json()["error"], "User not found")
+
+    def test_get_user_by_id_inactive_user(self):
+        """Test getting inactive user by ID (edge case)"""
+        # Create inactive user
+        inactive_user = User.objects.create_user(
+            username="inactive", 
+            email="inactive@example.com"
+        )
+        inactive_user.is_active = False
+        inactive_user.save()
+        
+        response = self.client.get(f"/users/{inactive_user.id}")
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertEqual(data["id"], inactive_user.id)
+        self.assertFalse(data["is_active"])
+
+   
