@@ -12,6 +12,8 @@ from produk.api import AuthBearer
 from django.conf import settings
 from django.utils.timezone import now
 from django.db.utils import IntegrityError
+from django.core.cache import cache
+import json
 
 from .schemas import (
     RemoveUserRequest,
@@ -28,13 +30,22 @@ router = Router()
 @router.post("/process-session")
 def process_session(request, session_data: SessionData):
     user_data = session_data.user
-
+    email = user_data.get("email")
+    
+    # Try to get user data from cache first
+    cache_key = f"user_session_{email}"
+    cached_user = cache.get(cache_key)
+    
+    if cached_user:
+        # If user data is in cache, return it
+        return cached_user
+    
     try:
-        user = User.objects.get(email=user_data.get("email"))
+        user = User.objects.get(email=email)
     except User.DoesNotExist:
         user = User.objects.create_user(
             username=user_data.get("name"),
-            email=user_data.get("email"),
+            email=email,
         )
 
         toko = Toko.objects.create()
@@ -42,8 +53,8 @@ def process_session(request, session_data: SessionData):
         user.save()
 
     refresh = RefreshToken.for_user(user)
-
-    return {
+    
+    response_data = {
         "message": "Login successful",
         "refresh": str(refresh),
         "access": str(refresh.access_token),
@@ -55,6 +66,11 @@ def process_session(request, session_data: SessionData):
             "toko_id": user.toko.id if user.toko else None,
         },
     }
+    
+    # Cache the response data for 1 hour
+    cache.set(cache_key, response_data, timeout=3600)
+    
+    return response_data
 
 
 @router.post("/refresh-token", response={200: dict, 401: dict})
