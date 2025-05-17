@@ -242,3 +242,21 @@ def delete_invitation(request, invitation_id: int):
 
     invitation.delete()
     return 200, {"message": "Invitation deleted successfully"}
+
+def test_code_smell():
+    unused_variable = "This variable is not used"
+    SECRET_KEY='TEST_HARDCOED_FOR_QUALITY_GATE'
+    print("Testing CI/CD Quality Gate")
+    print("Testing CI/CD Quality Gate")
+    print("Testing CI/CD Quality Gate")
+    print("Testing CI/CD Quality Gate")
+
+# def test_code_smell():
+#     unused_variable = "This variable is not used"
+#     SECRET_KEY='TEST_HARDCOED_FOR_QUALITY_GATE'
+#     print("Testing CI/CD Quality Gate")
+#     print("Testing CI/CD Quality Gate")
+#     print("Testing CI/CD Quality Gate")
+#     print("Testing CI/CD Quality Gate")
+
+    
