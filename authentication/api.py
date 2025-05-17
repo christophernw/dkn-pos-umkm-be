@@ -3,6 +3,7 @@ from django.shortcuts import get_object_or_404
 from django.utils.timezone import now
 from django.conf import settings
 from django.db.utils import IntegrityError
+from silk.profiling.profiler import silk_profile
 
 import jwt
 from ninja import Router
@@ -74,17 +75,17 @@ def validate_token(request, token_data: TokenValidationRequest):
 
 
 @router.get("/get-users", response={200: list[dict], 401: dict}, auth=AuthBearer())
+@silk_profile(name='Get Users Profilling')
 def get_users(request):
     user = get_object_or_404(User, id=request.auth)
 
-    users = (
-        User.objects.filter(toko=user.toko)
+    users_qs = (
+        User.objects.select_related("toko").filter(toko=user.toko)
         if user.toko
-        else User.objects.filter(id=user.id)
+        else User.objects.select_related("toko").filter(id=user.id)
     )
 
-    def role_priority(role):
-        return {"Pemilik": 0, "Pengelola": 1, "Karyawan": 2}.get(role, 3)
+    role_priority = {"Pemilik": 0, "Pengelola": 1, "Karyawan": 2}
 
     users_data = sorted(
         [
@@ -95,13 +96,12 @@ def get_users(request):
                 "role": u.role,
                 "toko_id": u.toko.id if u.toko else None,
             }
-            for u in users
+            for u in users_qs
         ],
-        key=lambda u: role_priority(u["role"]),
+        key=lambda u: role_priority.get(u["role"], 3),
     )
 
     return users_data
-
 
 @router.post("/send-invitation", response={200: dict, 400: dict}, auth=AuthBearer())
 def send_invitation(request, payload: InvitationRequest):

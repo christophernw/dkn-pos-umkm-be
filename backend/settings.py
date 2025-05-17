@@ -40,7 +40,7 @@ MEDIA_URL = 'api/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 CORS_ALLOW_ALL_ORIGINS = True  # Allow all origins for simplicity, adjust as needed
 
 ALLOWED_HOSTS = ["*"]
@@ -95,9 +95,11 @@ INSTALLED_APPS = [
     'laporan',
     'corsheaders',
     'rest_framework',
+    'silk',
 ]
 
 MIDDLEWARE = [
+    'silk.middleware.SilkyMiddleware', 
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
@@ -217,9 +219,14 @@ EMAIL_USE_TLS = True
 EMAIL_BACKEND ='django.core.mail.backends.smtp.EmailBackend'
 
 #Security 
-# SECURE_SSL_REDIRECT = True
+
+# Mencegah CSRF Attack
 CSRF_COOKIE_SECURE = True
+CSRF_COOKIE_HTTPONLY= True
 SESSION_COOKIE_SECURE = True
-SECURE_HSTS_SECONDS = 31536000
-SECURE_HSTS_INCLUDE_SUBDOMAINS = True
-SECURE_HSTS_PRELOAD = True
+
+# HTTP Security Headers
+SECURE_BROWSER_XSS_FILTER = True
+X_FRAME_OPTIONS = 'DENY'
+SECURE_CONTENT_TYPE_NOSNIFF = True
+
