@@ -24,7 +24,6 @@ from .schemas import (
 
 router = Router()
 
-
 # authentication/api.py
 @router.post("/process-session")
 def process_session(request, session_data: SessionData):
@@ -34,23 +33,21 @@ def process_session(request, session_data: SessionData):
     try:
         user = User.objects.get(email=email)
     except User.DoesNotExist:
-        # Create new user
         user = User.objects.create_user(
             username=user_data.get("name"),
             email=email,
         )
         
-        # Check if this is the BPR email
-        if email == settings.BPR_EMAIL:
-            user.role = "BPR"
-            user.save()
-        else:
-            # Regular user flow
-            toko = Toko.objects.create()
-            user.toko = toko
-            user.save()
+        # Regular user flow - always create a toko for new users
+        # BPR user will have a toko too, but we'll ignore it in the logic
+        toko = Toko.objects.create()
+        user.toko = toko
+        user.save()
 
     refresh = RefreshToken.for_user(user)
+    
+    # Check if this is the BPR email without changing the role
+    is_bpr = (email == settings.BPR_EMAIL)
 
     return {
         "message": "Login successful",
@@ -62,10 +59,9 @@ def process_session(request, session_data: SessionData):
             "name": user.username,
             "role": user.role,
             "toko_id": user.toko.id if user.toko else None,
-            "is_bpr": user.role == "BPR",  # Add this flag for frontend
+            "is_bpr": is_bpr,  # Flag for frontend without changing DB
         },
     }
-
 
 @router.post("/refresh-token", response={200: dict, 401: dict})
 def refresh_token(request, refresh_data: RefreshTokenRequest):
@@ -312,44 +308,33 @@ def delete_invitation(request, invitation_id: int):
     except Exception as e:
         return 404, {"message": f"Error deleting invitation: {str(e)}"}
     
-@router.get("/bpr/shops", response={200: list[dict], 401: dict, 403: dict}, auth=AuthBearer())
+# authentication/api.py
+@router.get("/bpr/shops", response={200: list[dict], 403: dict}, auth=AuthBearer())
 def get_all_shops(request):
     """Get all shops for BPR admin user."""
-    print(f"Auth in request: {request.auth}")  # Debug
-    
-    if request.auth is None:
-        return 401, {"detail": "Authentication credentials were not provided or invalid"}
-    
     user_id = request.auth
+    
     try:
         user = User.objects.get(id=user_id)
-        print(f"User found: {user.email}, role: {user.role}")  # Debug
         
-        # Check if the user is a BPR admin
-        is_bpr = user.email == settings.BPR_EMAIL
-        print(f"Is BPR: {is_bpr}, BPR_EMAIL: {settings.BPR_EMAIL}")  # Debug
-        
-        if not is_bpr:
+        # Check ONLY the email, not the role
+        if user.email != settings.BPR_EMAIL:
             return 403, {"error": "Only BPR users can access this endpoint"}
         
         # Get all shops
         shops = Toko.objects.all()
         
-        shops_data = [
-            {
+        shops_data = []
+        for shop in shops:
+            owner = shop.users.filter(role="Pemilik").first()
+            shops_data.append({
                 "id": shop.id,
-                "owner": (shop.users.filter(role="Pemilik").first().username 
-                         if shop.users.filter(role="Pemilik").exists() else "No owner"),
+                "owner": owner.username if owner else "No owner",
                 "created_at": shop.created_at,
                 "user_count": shop.users.count(),
-            }
-            for shop in shops
-        ]
+            })
         
         return 200, shops_data
-    except User.DoesNotExist:
-        print(f"User not found for ID: {user_id}")  # Debug
-        return 401, {"detail": "User not found"}
     except Exception as e:
-        print(f"Error: {str(e)}")  # Debug
-        return 500, {"error": str(e)}
+        print(f"Error: {str(e)}")
+        return 403, {"error": "Access denied"}
