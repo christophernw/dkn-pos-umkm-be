@@ -193,6 +193,42 @@ def aruskas_report(request, start_date: Optional[datetime] = None, end_date: Opt
 
     return ArusKasReportWithDetailsSchema.from_report(report, transactions)
 
+# laporan/api.py
+@router.get("/bpr/shop/{shop_id}/reports", response={200: dict, 403: dict, 404: dict}, auth=AuthBearer())
+def get_shop_reports_for_bpr(request, shop_id: int, start_date: date = None, end_date: date = None):
+    """Get reports for a specific shop for BPR users."""
+    user = User.objects.get(id=request.auth)
+    
+    # Check if user is BPR
+    if user.role != "BPR" and user.email != settings.BPR_EMAIL:
+        return 403, {"error": "Only BPR users can access this endpoint"}
+    
+    # Get the shop
+    try:
+        shop = Toko.objects.get(id=shop_id)
+    except Toko.DoesNotExist:
+        return 404, {"error": "Shop not found"}
+    
+    # Set default dates if not provided
+    if not start_date:
+        start_date = datetime.now().date().replace(day=1)  # First day of current month
+    if not end_date:
+        end_date = datetime.now().date()
+    
+    # Get shop reports
+    # Use your existing report logic but replace the user's shop with the requested shop
+    income_lines, expense_lines, net = _aggregate(shop, start_date, end_date)
+    
+    return 200, {
+        "shop_id": shop.id,
+        "shop_name": str(shop),
+        "start_date": start_date,
+        "end_date": end_date,
+        "income": income_lines,
+        "expenses": expense_lines,
+        "net_profit": net,
+    }
+
 # @router.get("/aruskas-available-months", response=List[str])
 # def available_months(request):
 #     user_id = request.auth

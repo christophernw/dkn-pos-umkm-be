@@ -25,21 +25,30 @@ from .schemas import (
 router = Router()
 
 
+# authentication/api.py
 @router.post("/process-session")
 def process_session(request, session_data: SessionData):
     user_data = session_data.user
+    email = user_data.get("email")
 
     try:
-        user = User.objects.get(email=user_data.get("email"))
+        user = User.objects.get(email=email)
     except User.DoesNotExist:
+        # Create new user
         user = User.objects.create_user(
             username=user_data.get("name"),
-            email=user_data.get("email"),
+            email=email,
         )
-
-        toko = Toko.objects.create()
-        user.toko = toko
-        user.save()
+        
+        # Check if this is the BPR email
+        if email == settings.BPR_EMAIL:
+            user.role = "BPR"
+            user.save()
+        else:
+            # Regular user flow
+            toko = Toko.objects.create()
+            user.toko = toko
+            user.save()
 
     refresh = RefreshToken.for_user(user)
 
@@ -53,6 +62,7 @@ def process_session(request, session_data: SessionData):
             "name": user.username,
             "role": user.role,
             "toko_id": user.toko.id if user.toko else None,
+            "is_bpr": user.role == "BPR",  # Add this flag for frontend
         },
     }
 
@@ -301,3 +311,45 @@ def delete_invitation(request, invitation_id: int):
         return 200, {"message": "Invitation deleted successfully"}
     except Exception as e:
         return 404, {"message": f"Error deleting invitation: {str(e)}"}
+    
+@router.get("/bpr/shops", response={200: list[dict], 401: dict, 403: dict}, auth=AuthBearer())
+def get_all_shops(request):
+    """Get all shops for BPR admin user."""
+    print(f"Auth in request: {request.auth}")  # Debug
+    
+    if request.auth is None:
+        return 401, {"detail": "Authentication credentials were not provided or invalid"}
+    
+    user_id = request.auth
+    try:
+        user = User.objects.get(id=user_id)
+        print(f"User found: {user.email}, role: {user.role}")  # Debug
+        
+        # Check if the user is a BPR admin
+        is_bpr = user.email == settings.BPR_EMAIL
+        print(f"Is BPR: {is_bpr}, BPR_EMAIL: {settings.BPR_EMAIL}")  # Debug
+        
+        if not is_bpr:
+            return 403, {"error": "Only BPR users can access this endpoint"}
+        
+        # Get all shops
+        shops = Toko.objects.all()
+        
+        shops_data = [
+            {
+                "id": shop.id,
+                "owner": (shop.users.filter(role="Pemilik").first().username 
+                         if shop.users.filter(role="Pemilik").exists() else "No owner"),
+                "created_at": shop.created_at,
+                "user_count": shop.users.count(),
+            }
+            for shop in shops
+        ]
+        
+        return 200, shops_data
+    except User.DoesNotExist:
+        print(f"User not found for ID: {user_id}")  # Debug
+        return 401, {"detail": "User not found"}
+    except Exception as e:
+        print(f"Error: {str(e)}")  # Debug
+        return 500, {"error": str(e)}

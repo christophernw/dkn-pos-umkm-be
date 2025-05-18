@@ -50,6 +50,7 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     # Custom fields
     ROLE_CHOICES = [
+        ("BPR", "BPR"),
         ("Pemilik", "Pemilik"),
         ("Pengelola", "Pengelola"),
         ("Karyawan", "Karyawan"),
