@@ -308,31 +308,36 @@ def delete_invitation(request, invitation_id: int):
     except Exception as e:
         return 404, {"message": f"Error deleting invitation: {str(e)}"}
     
-# authentication/api.py
+# Updated BPR shops endpoint to exclude BPR's own toko
 @router.get("/bpr/shops", response={200: list[dict], 403: dict}, auth=AuthBearer())
 def get_all_shops(request):
-    """Get all shops for BPR admin user."""
+    """Get all shops for BPR admin user, excluding the BPR's own toko."""
     user_id = request.auth
     
     try:
         user = User.objects.get(id=user_id)
         
-        # Check ONLY the email, not the role
+        # Check if the user is a BPR user
         if user.email != settings.BPR_EMAIL:
             return 403, {"error": "Only BPR users can access this endpoint"}
         
-        # Get all shops
+        # Get all shops except BPR's own toko
         shops = Toko.objects.all()
+        
+        # If BPR user has a toko, exclude it
+        if user.toko:
+            shops = shops.exclude(id=user.toko.id)
         
         shops_data = []
         for shop in shops:
             owner = shop.users.filter(role="Pemilik").first()
-            shops_data.append({
-                "id": shop.id,
-                "owner": owner.username if owner else "No owner",
-                "created_at": shop.created_at,
-                "user_count": shop.users.count(),
-            })
+            if owner:
+                shops_data.append({
+                    "id": shop.id,
+                    "owner": owner.username if owner else "No owner",
+                    "created_at": shop.created_at,
+                    "user_count": shop.users.count(),
+                })
         
         return 200, shops_data
     except Exception as e:
