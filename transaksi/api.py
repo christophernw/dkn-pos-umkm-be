@@ -612,3 +612,200 @@ def delete_transaksi(request, id: str):
         return 422, {"message": str(e)}
     except Exception as e:
         return 404, {"message": f"Error: {str(e)}"}
+    
+# Add these imports if not already there
+from django.conf import settings
+
+@router.get("/bpr/shop/{shop_id}/utang", response={200: dict, 403: dict, 404: dict})
+def get_shop_debt_for_bpr(request, shop_id: int):
+    """Get debt report for a specific shop for BPR users."""
+    user_id = request.auth
+    
+    try:
+        user = User.objects.get(id=user_id)
+        
+        # Check if user is BPR using the email from settings
+        if user.email != settings.BPR_EMAIL:
+            return 403, {"error": "Only BPR users can access this endpoint"}
+        
+        # Get the shop
+        shop = get_object_or_404(Toko, id=shop_id)
+        
+        # Get date range parameters - this reuses the same query parameters as the regular endpoint
+        start_date_str = request.GET.get("start_date")
+        end_date_str = request.GET.get("end_date")
+        
+        # Validate date parameters
+        if not start_date_str or not end_date_str:
+            return 400, {"message": "Both start_date and end_date parameters are required"}
+        
+        try:
+            # Parse date strings to datetime objects with timezone handling
+            # The frontend sends date strings with timezone info (UTC+7)
+            from datetime import datetime
+            import pytz
+            
+            # Set the Jakarta timezone (UTC+7)
+            jakarta_tz = pytz.timezone('Asia/Jakarta')
+            
+            # Check if timezone info is included in the strings
+            if 'T' in start_date_str:
+                # Try to parse ISO format with timezone
+                try:
+                    start_date = datetime.fromisoformat(start_date_str)
+                    # Convert to UTC for database query
+                    if start_date.tzinfo is not None:
+                        start_date = start_date.astimezone(pytz.UTC)
+                except ValueError:
+                    # Fall back to simpler parsing
+                    start_date = datetime.strptime(start_date_str.split('T')[0], "%Y-%m-%d")
+                    # Localize to Jakarta time, then convert to UTC
+                    start_date = jakarta_tz.localize(start_date).astimezone(pytz.UTC)
+            else:
+                # Basic date string without time/timezone - assume it's Jakarta time (UTC+7)
+                start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
+                # Localize to Jakarta time, then convert to UTC
+                start_date = jakarta_tz.localize(start_date).astimezone(pytz.UTC)
+                
+            # Similar handling for end_date
+            if 'T' in end_date_str:
+                try:
+                    end_date = datetime.fromisoformat(end_date_str)
+                    if end_date.tzinfo is not None:
+                        end_date = end_date.astimezone(pytz.UTC)
+                except ValueError:
+                    # Parse date part and add time to include the entire day
+                    date_part = end_date_str.split('T')[0]
+                    end_date = datetime.strptime(f"{date_part} 23:59:59", "%Y-%m-%d %H:%M:%S")
+                    # Localize to Jakarta time, then convert to UTC
+                    end_date = jakarta_tz.localize(end_date).astimezone(pytz.UTC)
+            else:
+                # Add time to end_date to include the entire day (23:59:59)
+                end_date = datetime.strptime(f"{end_date_str} 23:59:59", "%Y-%m-%d %H:%M:%S")
+                # Localize to Jakarta time, then convert to UTC for database query
+                end_date = jakarta_tz.localize(end_date).astimezone(pytz.UTC)
+                
+            # Ensure start_date is before end_date
+            if start_date > end_date:
+                return 400, {"message": "start_date must be before end_date"}
+                
+        except ValueError as e:
+            return 400, {"message": f"Invalid date format: {str(e)}"}
+        
+        # Get unpaid transactions for the specific shop
+        transactions = Transaksi.objects.filter(
+            toko=shop,  # Use the shop from the URL parameter
+            status="Belum Lunas",
+            is_deleted=False,
+            created_at__gte=start_date,
+            created_at__lte=end_date,
+        ).order_by("-created_at")
+        
+        # Format the dates back to the Jakarta time zone for the response
+        jakarta_start_date = start_date.astimezone(jakarta_tz).strftime("%Y-%m-%d")
+        jakarta_end_date = end_date.astimezone(jakarta_tz).strftime("%Y-%m-%d")
+        
+        return 200, {
+            "transactions": [TransaksiResponse.from_orm(t) for t in transactions],
+            "start_date": jakarta_start_date,
+            "end_date": jakarta_end_date,
+        }
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        return 403, {"error": "Access denied"}
+
+@router.get("/bpr/shop/{shop_id}/keuangan", response={200: dict, 403: dict, 404: dict})
+def get_shop_financial_for_bpr(request, shop_id: int):
+    """Get financial report for a specific shop for BPR users."""
+    user_id = request.auth
+    
+    try:
+        user = User.objects.get(id=user_id)
+        
+        # Check if user is BPR
+        if user.email != settings.BPR_EMAIL:
+            return 403, {"error": "Only BPR users can access this endpoint"}
+        
+        # Get the shop
+        shop = get_object_or_404(Toko, id=shop_id)
+        
+        # Get date range parameters
+        start_date_str = request.GET.get("start_date")
+        end_date_str = request.GET.get("end_date")
+        
+        # Validate date parameters
+        if not start_date_str or not end_date_str:
+            return 400, {"message": "Both start_date and end_date parameters are required"}
+        
+        try:
+            # Parse date strings to datetime objects with timezone handling
+            from datetime import datetime
+            import pytz
+            
+            # Set the Jakarta timezone (UTC+7)
+            jakarta_tz = pytz.timezone('Asia/Jakarta')
+            
+            # Check if timezone info is included in the strings
+            if 'T' in start_date_str:
+                # Try to parse ISO format with timezone
+                try:
+                    start_date = datetime.fromisoformat(start_date_str)
+                    # Convert to UTC for database query
+                    if start_date.tzinfo is not None:
+                        start_date = start_date.astimezone(pytz.UTC)
+                except ValueError:
+                    # Fall back to simpler parsing
+                    start_date = datetime.strptime(start_date_str.split('T')[0], "%Y-%m-%d")
+                    # Localize to Jakarta time, then convert to UTC
+                    start_date = jakarta_tz.localize(start_date).astimezone(pytz.UTC)
+            else:
+                # Basic date string without time/timezone - assume it's Jakarta time (UTC+7)
+                start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
+                # Localize to Jakarta time, then convert to UTC
+                start_date = jakarta_tz.localize(start_date).astimezone(pytz.UTC)
+                
+            # Similar handling for end_date
+            if 'T' in end_date_str:
+                try:
+                    end_date = datetime.fromisoformat(end_date_str)
+                    if end_date.tzinfo is not None:
+                        end_date = end_date.astimezone(pytz.UTC)
+                except ValueError:
+                    # Parse date part and add time to include the entire day
+                    date_part = end_date_str.split('T')[0]
+                    end_date = datetime.strptime(f"{date_part} 23:59:59", "%Y-%m-%d %H:%M:%S")
+                    # Localize to Jakarta time, then convert to UTC
+                    end_date = jakarta_tz.localize(end_date).astimezone(pytz.UTC)
+            else:
+                # Add time to end_date to include the entire day (23:59:59)
+                end_date = datetime.strptime(f"{end_date_str} 23:59:59", "%Y-%m-%d %H:%M:%S")
+                # Localize to Jakarta time, then convert to UTC for database query
+                end_date = jakarta_tz.localize(end_date).astimezone(pytz.UTC)
+                
+            # Ensure start_date is before end_date
+            if start_date > end_date:
+                return 400, {"message": "start_date must be before end_date"}
+                
+        except ValueError as e:
+            return 400, {"message": f"Invalid date format: {str(e)}"}
+        
+        # Get all transactions for the specific shop
+        transactions = Transaksi.objects.filter(
+            toko=shop,  # Use the shop from the URL parameter
+            is_deleted=False,
+            created_at__gte=start_date,
+            created_at__lte=end_date,
+        ).order_by("-created_at")
+        
+        # Format the dates back to the Jakarta time zone for the response
+        jakarta_start_date = start_date.astimezone(jakarta_tz).strftime("%Y-%m-%d")
+        jakarta_end_date = end_date.astimezone(jakarta_tz).strftime("%Y-%m-%d")
+        
+        return 200, {
+            "transactions": [TransaksiResponse.from_orm(t) for t in transactions],
+            "start_date": jakarta_start_date,
+            "end_date": jakarta_end_date,
+        }
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        return 403, {"error": "Access denied"}
