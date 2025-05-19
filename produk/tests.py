@@ -16,7 +16,7 @@ from produk.api import (
     get_produk_by_id,
     get_top_selling_products,
 )
-from produk.schemas import CreateProdukSchema, UpdateProdukSchema
+from produk.schemas import CreateProdukSchema, ProdukResponseSchema, UpdateProdukSchema
 from decimal import Decimal
 import jwt
 from backend import settings
@@ -264,3 +264,48 @@ class TestProductAPI(TestCase):
         status, resp = get_produk_paginated(request, page=1, sort='stok')
         self.assertEqual(status, 200)
         self.assertEqual(resp['per_page'], 7)
+
+    def test_get_categories_no_toko(self):
+        request = MockRequest(user_id=self.user_no_toko.id)
+        status, resp = get_categories(request)
+        self.assertEqual(status, 404)
+        self.assertEqual(resp['message'], NO_TOKO_MESSAGE)
+
+    def test_get_produk_paginated_default_sort(self):
+        request = MockRequest(user_id=self.user1.id)
+        status, resp = get_produk_paginated(request, page=1)
+        self.assertEqual(status, 200)
+        self.assertEqual(resp['page'], 1)
+
+    def test_get_produk_paginated_with_query(self):
+        Produk.objects.create(
+            nama='Coklat',
+            harga_modal=Decimal('1000'),
+            harga_jual=Decimal('1500'),
+            stok=5,
+            satuan=self.unit.nama,
+            kategori=self.cat1,
+            toko=self.toko1
+        )
+        request = MockRequest(user_id=self.user1.id)
+        request.GET = {'per_page': '5'}
+        status, resp = get_produk_paginated(request, page=1, q='Coklat')
+        self.assertEqual(status, 200)
+        self.assertTrue(any('Coklat' in p.nama for p in resp['items']))
+
+    def test_delete_produk_no_toko(self):
+        request = MockRequest(user_id=self.user_no_toko.id)
+        resp = delete_produk(request, id=self.sample_prod.id)
+        self.assertEqual(resp['message'], NO_TOKO_MESSAGE)
+
+    def test_get_low_stock_products_no_toko(self):
+        request = MockRequest(user_id=self.user_no_toko.id)
+        status, resp = get_low_stock_products(request)
+        self.assertEqual(status, 404)
+        self.assertEqual(resp['message'], NO_TOKO_MESSAGE)
+
+    def test_produk_response_schema_from_orm(self):
+        response = ProdukResponseSchema.from_orm(self.sample_prod)
+        self.assertEqual(response.id, self.sample_prod.id)
+        self.assertEqual(response.nama, self.sample_prod.nama)
+        self.assertEqual(response.kategori, self.sample_prod.kategori.nama)
