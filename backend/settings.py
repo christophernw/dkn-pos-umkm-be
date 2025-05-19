@@ -40,7 +40,7 @@ MEDIA_URL = 'api/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = False
+DEBUG = True
 CORS_ALLOW_ALL_ORIGINS = True  # Allow all origins for simplicity, adjust as needed
 
 ALLOWED_HOSTS = ["*"]

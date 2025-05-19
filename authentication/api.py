@@ -32,6 +32,7 @@ def process_session(request, session_data: SessionData):
         email=email,
         defaults={
             "username": user_data.get("name"),
+            "is_active": True,
         },
     )
 
@@ -161,7 +162,18 @@ def validate_invitation(request, payload: TokenValidationRequest):
 
         toko = get_object_or_404(Toko, id=toko_id)
 
-        user, _ = User.objects.get_or_create(email=email, defaults={"username": name, "role": role})
+        user, created = User.objects.get_or_create(
+            email=email, 
+            defaults={
+                "username": name, 
+                "role": role,
+                "is_active": True  
+            }
+        )
+        
+        if not created and not user.is_active:
+            return {"valid": False, "error": "User account is inactive. Please contact administrator."}
+            
         user.role = role
         user.username = name
         user.toko = toko
@@ -206,13 +218,14 @@ def remove_user_from_toko(request, payload: RemoveUserRequest):
 
 
 @router.get("/pending-invitations", response={200: list[dict], 404: dict}, auth=AuthBearer())
+@silk_profile(name='Get Pending Invitatoin Users Profilling')
 def get_pending_invitations(request):
     user = get_object_or_404(User, id=request.auth)
 
     if not user.toko:
         return 404, {"message": "User doesn't have a toko"}
 
-    invitations = Invitation.objects.filter(toko=user.toko)
+    invitations = Invitation.objects.select_related("created_by").filter(toko=user.toko)
 
     return 200, [
         {
@@ -242,21 +255,3 @@ def delete_invitation(request, invitation_id: int):
 
     invitation.delete()
     return 200, {"message": "Invitation deleted successfully"}
-
-def test_code_smell():
-    unused_variable = "This variable is not used"
-    SECRET_KEY='TEST_HARDCOED_FOR_QUALITY_GATE'
-    print("Testing CI/CD Quality Gate")
-    print("Testing CI/CD Quality Gate")
-    print("Testing CI/CD Quality Gate")
-    print("Testing CI/CD Quality Gate")
-
-# def test_code_smell():
-#     unused_variable = "This variable is not used"
-#     SECRET_KEY='TEST_HARDCOED_FOR_QUALITY_GATE'
-#     print("Testing CI/CD Quality Gate")
-#     print("Testing CI/CD Quality Gate")
-#     print("Testing CI/CD Quality Gate")
-#     print("Testing CI/CD Quality Gate")
-
-    
