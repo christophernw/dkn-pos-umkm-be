@@ -18,7 +18,7 @@ from produk.api import (
 )
 from produk.schemas import CreateProdukSchema, ProdukResponseSchema, UpdateProdukSchema
 from decimal import Decimal
-import jwt
+import jwt, secrets
 from backend import settings
 from unittest.mock import patch, MagicMock
 from pydantic import ValidationError
@@ -33,9 +33,17 @@ class MockRequest:
 
 class TestProductAPI(TestCase):
     def setUp(self):
-        # Create users with email
-        self.user1 = User.objects.create_user(username='user1', email='user1@example.com', password='pass')
-        self.user2 = User.objects.create_user(username='user2', email='user2@example.com', password='pass')
+        dummy_password = secrets.token_urlsafe(12)
+        self.user1 = User.objects.create_user(
+            username='user1',
+            email='user1@example.com',
+            password=dummy_password
+        )
+        self.user2 = User.objects.create_user(
+            username='user2',
+            email='user2@example.com',
+            password=dummy_password
+        )
         # Create toko and link to users
         self.toko1 = Toko.objects.create()
         self.toko2 = Toko.objects.create()
@@ -78,7 +86,11 @@ class TestProductAPI(TestCase):
         self.factory = RequestFactory()
 
         # User without toko
-        self.user_no_toko = User.objects.create_user(username='user3', email='user3@example.com', password='pass')
+        self.user_no_toko = User.objects.create_user(
+            username='user3',
+            email='user3@example.com',
+            password=dummy_password
+        )
 
     def test_get_categories(self):
         request = MockRequest(user_id=self.user1.id)
