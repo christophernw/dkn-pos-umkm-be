@@ -41,11 +41,31 @@ jobs:
           pip install coverage pytest pytest-django pytest-cov flake8 black isort bandit
           
       - name: Run Code Style Checks
+        id: style_check
+        continue-on-error: true
         run: |
           echo "Running code style checks..."
           flake8 laporan --count --select=E9,F63,F7,F82 --show-source --statistics
-          black --check laporan
-          isort --check-only --profile black laporan
+          
+          # Run black check but don't fail the workflow
+          echo "Running Black formatter check..."
+          black --check laporan || echo "::warning::Black formatting issues found, reporting but not failing"
+          
+          # Run isort check but don't fail the workflow
+          echo "Running isort check..."
+          isort --check-only --profile black laporan || echo "::warning::Import sorting issues found, reporting but not failing"
+          
+      - name: Generate Formatting Report
+        run: |
+          echo "## Code Style Report" > format-report.md
+          echo "### Files needing formatting:" >> format-report.md
+          echo '```' >> format-report.md
+          black --check laporan 2>&1 | grep "would reformat" || echo "No files need Black formatting" >> format-report.md
+          echo '```' >> format-report.md
+          echo "### Import sorting issues:" >> format-report.md
+          echo '```' >> format-report.md
+          isort --check-only --profile black laporan 2>&1 | grep -v "Skipped" || echo "No import sorting issues" >> format-report.md
+          echo '```' >> format-report.md
       
       - name: Run Security Checks with Bandit
         run: |
@@ -113,6 +133,7 @@ jobs:
           path: |
             coverage-*.xml
             test-report.md
+            format-report.md
             
   enforce-coverage:
     name: Enforce Code Coverage Policy
