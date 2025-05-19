@@ -19,11 +19,12 @@ from dateutil.relativedelta import relativedelta
 from transaksi.models import TransaksiItem
 from typing import Optional
 
+NO_TOKO_MESSAGE = "User doesn't have a toko"
 
 class AuthBearer(HttpBearer):
     def authenticate(self, request, token):
         try:
-            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
+            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"], options={"verify_exp": True})
             user_id = payload.get("user_id")
             if user_id:
                 return user_id
@@ -46,7 +47,7 @@ def get_categories(request):
     user = User.objects.get(id=user_id)
 
     if not user.toko:
-        return 404, {"message": "User doesn't have a toko"}
+        return 404, {"message": NO_TOKO_MESSAGE}
 
     categories = KategoriProduk.objects.filter(toko=user.toko).values_list('nama', flat=True)
     return 200, list(categories)
@@ -58,7 +59,7 @@ def get_units(request):
     user = User.objects.get(id=user_id)
 
     if not user.toko:
-        return 404, {"message": "User doesn't have a toko"}
+        return 404, {"message": NO_TOKO_MESSAGE}
 
     units = Satuan.objects.filter(toko=user.toko).values_list('nama', flat=True)
     return 200, list(units)
@@ -77,7 +78,7 @@ def get_produk_paginated(request, page: int, sort: str = None, q: str = ""):
     
     # Check if user has a toko
     if not user.toko:
-        return 404, {"message": "User doesn't have a toko"}
+        return 404, {"message": NO_TOKO_MESSAGE}
 
     # Filter products by toko instead of user
     queryset = Produk.objects.filter(toko=user.toko)
@@ -151,7 +152,7 @@ def get_most_popular_products(request):
     user = User.objects.get(id=user_id)
     
     if not user.toko:
-        return 404, {"message": "User doesn't have a toko"}
+        return 404, {"message": NO_TOKO_MESSAGE}
     
     # Get most popular products by all-time sales volume
     popular_products = (
@@ -184,7 +185,7 @@ def get_low_stock_products(request):
     user = User.objects.get(id=user_id)
     
     if not user.toko:
-        return 404, {"message": "User doesn't have a toko"}
+        return 404, {"message": NO_TOKO_MESSAGE}
     
     products = (
         Produk.objects.select_related("kategori")
@@ -209,13 +210,13 @@ def get_produk_by_id(request, id: int):
     user = User.objects.get(id=user_id)
     
     if not user.toko:
-        return 404, {"message": "User doesn't have a toko"}
+        return 404, {"message": NO_TOKO_MESSAGE}
     
     try:
         # Get product by id and check if it belongs to user's toko
         produk = get_object_or_404(Produk, id=id, toko=user.toko)
         return 200, ProdukResponseSchema.from_orm(produk)
-    except Exception as e:
+    except Exception:
         return 404, {"message": "Produk tidak ditemukan"}
 
 
@@ -265,7 +266,7 @@ def update_produk(request, id: int, payload: UpdateProdukSchema, foto: UploadedF
         return 200, ProdukResponseSchema.from_orm(produk)
 
     except Exception as e:
-        return 422, {"message": str(e)}
+        return 422, {"message": "Gagal memperbarui produk. Pastikan data valid dan produk tersedia."}
 
 
 @router.delete("/delete/{id}")
@@ -287,7 +288,7 @@ def get_top_selling_products(request, year: int, month: int):
     user = User.objects.get(id=user_id)
     
     if not user.toko:
-        return 404, {"message": "User doesn't have a toko"}
+        return 404, {"message": NO_TOKO_MESSAGE}
     
     # Define the month period
     start_date = datetime(year, month, 1)

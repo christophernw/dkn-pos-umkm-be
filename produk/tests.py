@@ -205,7 +205,6 @@ class TestProductAPI(TestCase):
         request = MockRequest(user_id=self.user1.id)
         status, items = get_low_stock_products(request)
         self.assertEqual(status, 200)
-        stocks = [item['stock'] for item in items]
         self.assertTrue(all(item['stock'] < 10 for item in items))
 
     @patch('produk.api.TransaksiItem.objects.filter')

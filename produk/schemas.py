@@ -5,13 +5,13 @@ from pydantic import BaseModel, Field, field_validator
 
 class ProdukResponseSchema(Schema):
     id: int
-    nama: str
+    nama: str = Field(max_length=100)
     foto: Optional[str]
     harga_modal: float
     harga_jual: float
     stok: float
-    satuan: str
-    kategori: str
+    satuan: str = Field(max_length=30)
+    kategori: str = Field(max_length=50)
 
     @classmethod
     def from_orm(cls, produk):
@@ -29,12 +29,12 @@ class ProdukResponseSchema(Schema):
 
 
 class CreateProdukSchema(BaseModel):
-    nama: str
+    nama: str = Field(max_length=100)
     harga_modal: float
     harga_jual: float
     stok: float
-    satuan: str
-    kategori: str
+    satuan: str = Field(max_length=30)
+    kategori: str = Field(max_length=50)
 
     @field_validator("harga_modal")
     def validate_harga_modal(cls, v):
