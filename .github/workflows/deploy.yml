@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - staging
+
   pull_request:
     branches:
       - main
@@ -27,26 +28,54 @@ jobs:
     - name: Log in to Docker Hub
       run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
+    # Add this step to set version
+    - name: Set version
+      id: version
+      run: |
+        # Set default version from version.txt
+        VERSION=$(cat version.txt)
+        
+        # If this is a tagged release, use the tag
+        if [[ $GITHUB_REF == refs/tags/v* ]]; then
+          VERSION=${GITHUB_REF#refs/tags/v}
+        fi
+        
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+
     - name: Set environment variables
       run: |
         if [ "${{ github.ref }}" == "refs/heads/main" ] || [ "${{ github.base_ref }}" == "main" ]; then
           echo "BRANCH=prod" >> $GITHUB_ENV
           echo "PORT=8000" >> $GITHUB_ENV
           echo "DB_PORT_HOST=5432" >> $GITHUB_ENV
+          echo "SENTRY_DSN_VAR=SENTRY_DSN_PROD" >> $GITHUB_ENV
         elif [ "${{ github.ref }}" == "refs/heads/staging" ] || [ "${{ github.base_ref }}" == "staging" ]; then
           echo "BRANCH=staging" >> $GITHUB_ENV
           echo "PORT=8001" >> $GITHUB_ENV
           echo "DB_PORT_HOST=5433" >> $GITHUB_ENV
+          echo "SENTRY_DSN_VAR=SENTRY_DSN_STAGING" >> $GITHUB_ENV
         else
           echo "BRANCH=dev" >> $GITHUB_ENV
           echo "PORT=8002" >> $GITHUB_ENV
           echo "DB_PORT_HOST=5434" >> $GITHUB_ENV
+          echo "SENTRY_DSN_VAR=SENTRY_DSN_DEV" >> $GITHUB_ENV
         fi
 
+    # Update this step to tag with version
     - name: Build and Push Docker Image
       run: |
-        docker build -t my-django-app .
+        # Build the image with version as build arg
+        docker build -t my-django-app --build-arg VERSION=${{ env.VERSION }} .
+        
+        # Tag with version and environment
+        docker tag my-django-app christophernw/dkn-pos-umkm-be:${{ env.VERSION }}-${{ env.ENV }}
+        
+        # Also tag with branch name for backward compatibility
         docker tag my-django-app christophernw/dkn-pos-umkm-be:${{ env.BRANCH }}
+        
+        # Push both tags
+        docker push christophernw/dkn-pos-umkm-be:${{ env.VERSION }}-${{ env.ENV }}
         docker push christophernw/dkn-pos-umkm-be:${{ env.BRANCH }}
 
     - name: Copy docker-compose files
@@ -61,6 +90,7 @@ jobs:
         sshpass -p "${{ secrets.SERVER_PASSWORD }}" scp -o StrictHostKeyChecking=no docker-compose.prod.${{ env.BRANCH }}.yml ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }}:~/django-be-${{ env.BRANCH }}/docker-compose.yml
         sshpass -p "${{ secrets.SERVER_PASSWORD }}" scp -o StrictHostKeyChecking=no docker-compose.db.${{ env.BRANCH }}.yml ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }}:~/postgres-db-${{ env.BRANCH }}/docker-compose.yml
 
+    # Update the deploy step to pass VERSION to the environment
     - name: Deploy database and web application
       run: |
         sshpass -p "${{ secrets.SERVER_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << EOF
@@ -68,8 +98,18 @@ jobs:
           echo "BRANCH=${{ env.BRANCH }}" > .env
           echo "PORT=${{ env.PORT }}" >> .env
           echo "DB_NAME=${{ secrets.DB_NAME }}" >> .env
-          echo "DB_USER=${{ secrets.DB_USER }}" >> .env
+          echo "DB_USER=${ls - a{ secrets.DB_USER }}" >> .env
           echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env
+          echo "VERSION=${{ env.VERSION }}" >> .env  # Add VERSION to environment
+          
+          # Dynamically choose correct Sentry DSN based on environment
+          if [ "${{ env.BRANCH }}" == "main" ]; then
+            echo "SENTRY_DSN_PROD=${{ secrets.SENTRY_DSN_PROD }}" >> .env
+          elif [ "${{ env.BRANCH }}" == "staging" ]; then
+            echo "SENTRY_DSN_STAGING=${{ secrets.SENTRY_DSN_STAGING }}" >> .env
+          else
+            echo "SENTRY_DSN_DEV=${{ secrets.SENTRY_DSN_DEV }}" >> .env
+          fi
           
           docker-compose --env-file .env pull
           docker-compose --env-file .env down --remove-orphans
