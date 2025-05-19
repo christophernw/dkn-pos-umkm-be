@@ -36,6 +36,8 @@ SIMPLE_JWT = {
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
 }
 
+BPR_EMAIL = os.environ.get('BPR_EMAIL', 'bprlancar@gmail.com')
+
 MEDIA_URL = 'api/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
