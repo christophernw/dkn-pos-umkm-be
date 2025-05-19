@@ -118,7 +118,7 @@ def create_produk(request, payload: CreateProdukSchema, foto: UploadedFile = Non
     
     # Check if user has a toko
     if not user.toko:
-        return 422, {"message": "User doesn't have a toko"}
+        return 422, {"message": NO_TOKO_MESSAGE}
 
     # Get or create category
     kategori_obj, _ = KategoriProduk.objects.get_or_create(
@@ -226,7 +226,7 @@ def update_produk(request, id: int, payload: UpdateProdukSchema, foto: UploadedF
     user = User.objects.get(id=user_id)
     
     if not user.toko:
-        return 422, {"message": "User doesn't have a toko"}
+        return 422, {"message": NO_TOKO_MESSAGE}
 
     try:
         # Get product by id and check if it belongs to user's toko
@@ -275,7 +275,7 @@ def delete_produk(request, id: int):
     user = User.objects.get(id=user_id)
     
     if not user.toko:
-        return {"message": "User doesn't have a toko"}
+        return {"message": NO_TOKO_MESSAGE}
     
     produk = get_object_or_404(Produk, id=id, toko=user.toko)
     produk.delete()
