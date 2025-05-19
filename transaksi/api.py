@@ -9,7 +9,7 @@ from transaksi.schemas import (
     TransaksiResponse,
     PaginatedTransaksiResponse,
 )
-from authentication.models import User
+from authentication.models import Toko, User
 from produk.api import AuthBearer
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta

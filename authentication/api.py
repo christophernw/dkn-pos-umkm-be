@@ -343,3 +343,31 @@ def get_all_shops(request):
     except Exception as e:
         print(f"Error: {str(e)}")
         return 403, {"error": "Access denied"}
+    
+@router.get("/bpr/shop/{shop_id}", response={200: dict, 403: dict, 404: dict}, auth=AuthBearer())
+def get_shop_info(request, shop_id: int):
+    """Get information about a specific shop for BPR users."""
+    user_id = request.auth
+    
+    try:
+        user = User.objects.get(id=user_id)
+        
+        # Check if the user is a BPR user
+        if user.email != settings.BPR_EMAIL:
+            return 403, {"error": "Only BPR users can access this endpoint"}
+        
+        # Get the shop
+        shop = get_object_or_404(Toko, id=shop_id)
+        
+        # Get the shop owner
+        owner = shop.users.filter(role="Pemilik").first()
+        
+        return 200, {
+            "id": shop.id,
+            "owner": owner.username if owner else "No owner",
+            "created_at": shop.created_at,
+            "user_count": shop.users.count(),
+        }
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        return 403, {"error": "Access denied"}
