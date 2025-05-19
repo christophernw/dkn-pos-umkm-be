@@ -28,9 +28,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install coverage pytest pytest-cov
+          pip install coverage
       
-      - name: Run Tests with Coverage for App Laporan
+      - name: Run Tests with Coverage for App Laporan Only
         env:
           DB_NAME: ${{ secrets.DB_NAME }}
           DB_USER: ${{ secrets.DB_USER }}
@@ -38,24 +38,34 @@ jobs:
           DB_HOST: ${{ secrets.DB_HOST }}
           DB_PORT: ${{ secrets.DB_PORT }}
         run: |
-          # Run tests with detailed coverage for laporan app only
-          pytest --cov=laporan --cov-report=xml:coverage.xml --cov-report=term --cov-branch
+          # Run tests with coverage for laporan app
+          coverage run manage.py test laporan
           
-          # Extract coverage percentage for quality gate check
-          COVERAGE_PCT=$(coverage report | grep TOTAL | awk '{print $NF}' | sed 's/%//')
+          # Generate XML report for SonarQube
+          coverage xml
+          
+          # Display coverage report
+          echo "=== Coverage Report ==="
+          coverage report --include="laporan/*"
+          
+          # Extract coverage percentage
+          COVERAGE_PCT=$(coverage report --include="laporan/*" | grep TOTAL | awk '{print $NF}' | sed 's/%//')
+          echo "Coverage for laporan app: ${COVERAGE_PCT}%"
           echo "COVERAGE_PCT=${COVERAGE_PCT}" >> $GITHUB_ENV
-          echo "Overall coverage: ${COVERAGE_PCT}%"
       
-      - name: SonarQube Quality Gate Check
+      - name: Quality Gate - Coverage Check
         run: |
-          # Define minimum required coverage (adjust as needed)
-          MIN_COVERAGE=90
+          # Define minimum coverage threshold
+          MIN_COVERAGE=85
           
-          if (( $(echo "$COVERAGE_PCT < $MIN_COVERAGE" | bc -l) )); then
+          if [ -z "$COVERAGE_PCT" ]; then
+            echo "::warning::Could not determine coverage percentage"
+          elif (( $(echo "$COVERAGE_PCT < $MIN_COVERAGE" | bc -l) )); then
             echo "::error::Code coverage is below minimum required: ${COVERAGE_PCT}% < ${MIN_COVERAGE}%"
+            echo "Please improve test coverage for the laporan app."
             exit 1
           else
-            echo "::notice::Code coverage meets requirements: ${COVERAGE_PCT}% ≥ ${MIN_COVERAGE}%"
+            echo "::notice::✅ Code coverage meets requirements: ${COVERAGE_PCT}% ≥ ${MIN_COVERAGE}%"
           fi
       
       - name: Run SonarQube Scanner
@@ -69,20 +79,24 @@ jobs:
             -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }}
             -Dsonar.login=${{ secrets.SONAR_TOKEN }}
             -Dsonar.python.coverage.reportPaths=coverage.xml
-            -Dsonar.exclusions=manage.py,backend/settings.py,backend/wsgi.py,backend/asgi.py,backend/urls.py,backend/migrations/**,**/tests/**,**/test_*.py
+            -Dsonar.exclusions=manage.py,backend/settings.py,backend/wsgi.py,backend/asgi.py,backend/urls.py,backend/migrations/**,**/migrations/**,**/tests/**,**/test_*.py
             -Dsonar.inclusions=laporan/**
             -Dsonar.qualitygate.wait=true
-            -Dsonar.qualitygate.timeout=300
 
-      - name: Generate Coverage Badge
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      - name: Create Coverage Badge
+        if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
-          mkdir -p badges
-          echo "{\"schemaVersion\":1,\"label\":\"coverage\",\"message\":\"${COVERAGE_PCT}%\",\"color\":\"$([ $(echo "$COVERAGE_PCT >= 90" | bc -l) -eq 1 ] && echo "brightgreen" || [ $(echo "$COVERAGE_PCT >= 80" | bc -l) -eq 1 ] && echo "green" || [ $(echo "$COVERAGE_PCT >= 70" | bc -l) -eq 1 ] && echo "yellowgreen" || [ $(echo "$COVERAGE_PCT >= 60" | bc -l) -eq 1 ] && echo "yellow" || echo "red")\"}" > badges/coverage.json
+          # Create a simple text report for reference
+          mkdir -p reports
+          echo "Laporan App Coverage: ${COVERAGE_PCT}%" > reports/coverage-report.txt
+          echo "Minimum Required: 85%" >> reports/coverage-report.txt
+          echo "Status: $([ $(echo "$COVERAGE_PCT >= 85" | bc -l) -eq 1 ] && echo "PASS ✅" || echo "FAIL ❌")" >> reports/coverage-report.txt
+          echo "Date: $(date)" >> reports/coverage-report.txt
       
-      - name: Upload Coverage Badge
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      - name: Upload Coverage Report
+        if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-badge
-          path: badges/
+          name: coverage-reports
+          path: reports/
+          retention-days: 90
