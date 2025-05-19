@@ -98,7 +98,7 @@ jobs:
           echo "BRANCH=${{ env.BRANCH }}" > .env
           echo "PORT=${{ env.PORT }}" >> .env
           echo "DB_NAME=${{ secrets.DB_NAME }}" >> .env
-          echo "DB_USER=${ls - a{ secrets.DB_USER }}" >> .env
+          echo "DB_USER=${{ secrets.DB_USER }}" >> .env
           echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env
           echo "VERSION=${{ env.VERSION }}" >> .env  # Add VERSION to environment
           
