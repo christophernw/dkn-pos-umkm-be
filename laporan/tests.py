@@ -10,7 +10,7 @@ from authentication.models import Toko, User
 from laporan.models import ArusKasReport, DetailArusKas, DetailHutangPiutang, HutangPiutangReport
 from laporan.schemas import IncomeStatementLine
 from transaksi.models import Transaksi
-from laporan.api import aruskas_report, available_months, income_statement, download_income_statement, _aggregate
+from laporan.api import aruskas_report, available_months
 from laporan.utils import _format_parentheses, build_csv
 from io import StringIO
 from rest_framework.test import APIClient
@@ -323,6 +323,20 @@ class ArusKasReportTests(TestCase):
 
         self.assertEqual(len(response.transactions), 1)
         self.assertEqual(response.transactions[0].kategori, "Pengeluaran")
+
+    def test_aruskas_start_date_after_end_date(self):
+        request = MockAuthenticatedRequest(user_id=self.user.id)
+
+        start = datetime(2025, 4, 30)
+        end = datetime(2025, 4, 1)
+
+        response = aruskas_report(request, start_date=start, end_date=end)
+
+        # Asumsinya response tetap valid tapi kosong
+        self.assertEqual(response.total_inflow, 0)
+        self.assertEqual(response.total_outflow, 0)
+        self.assertEqual(response.saldo, 0)
+        self.assertEqual(len(response.transactions), 0)
 
     def test_get_available_months(self):
         request = MockAuthenticatedRequest(user_id=self.user.id)
