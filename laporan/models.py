@@ -25,10 +25,12 @@ class DetailHutangPiutang(models.Model):
     jenis = models.CharField(max_length=10, choices=[('hutang', 'Hutang'), ('piutang', 'Piutang')])
     jumlah = models.DecimalField(max_digits=12, decimal_places=2)
     tanggal_transaksi = models.DateTimeField()
-    keterangan = models.CharField(max_length=255, blank=True, null=True)
+    keterangan = models.CharField(max_length=255, blank=True)  # Removed null=True
     
     class Meta:
         ordering = ['-tanggal_transaksi']
         
     def __str__(self):
         return f"{self.jenis.capitalize()} - {self.transaksi_id} - {self.jumlah}"
+    
+    

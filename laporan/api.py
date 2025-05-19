@@ -17,6 +17,11 @@ from .schemas import (
     HutangPiutangReportListItem
 )
 
+# Constants
+STATUS_BELUM_LUNAS = "Belum Lunas"
+TRANSACTION_TYPE_PENGELUARAN = "pengeluaran"
+TRANSACTION_TYPE_PEMASUKAN = "pemasukan"
+
 router = Router(auth=AuthBearer())
 
 @router.get("/hutang-piutang/summary", response=HutangPiutangSummaryResponse)
@@ -38,16 +43,16 @@ def get_hutang_piutang_summary(request):
     # Hutang: transaksi pengeluaran yang belum lunas
     hutang_transaksi = Transaksi.objects.filter(
         toko=user.toko,
-        transaction_type="pengeluaran",
-        status="Belum Lunas",
+        transaction_type=TRANSACTION_TYPE_PENGELUARAN,
+        status=STATUS_BELUM_LUNAS,
         is_deleted=False
     )
     
     # Piutang: transaksi pemasukan yang belum lunas
     piutang_transaksi = Transaksi.objects.filter(
         toko=user.toko,
-        transaction_type="pemasukan",
-        status="Belum Lunas",
+        transaction_type=TRANSACTION_TYPE_PEMASUKAN,
+        status=STATUS_BELUM_LUNAS,
         is_deleted=False
     )
     
@@ -76,15 +81,15 @@ def get_hutang_piutang_detail(request, start_date: date = None, end_date: date =
     
     query_hutang = Q(
         toko=user.toko,
-        transaction_type="pengeluaran",
-        status="Belum Lunas",
+        transaction_type=TRANSACTION_TYPE_PENGELUARAN,
+        status=STATUS_BELUM_LUNAS,
         is_deleted=False
     )
     
     query_piutang = Q(
         toko=user.toko,
-        transaction_type="pemasukan",
-        status="Belum Lunas",
+        transaction_type=TRANSACTION_TYPE_PEMASUKAN,
+        status=STATUS_BELUM_LUNAS,
         is_deleted=False
     )
     
@@ -140,8 +145,8 @@ def generate_hutang_piutang_report(request, payload: DateRangeRequest):
         # Hitung hutang (pengeluaran yang belum lunas) untuk tanggal ini
         hutang_transaksi = Transaksi.objects.filter(
             toko=user.toko,
-            transaction_type="pengeluaran",
-            status="Belum Lunas",
+            transaction_type=TRANSACTION_TYPE_PENGELUARAN,
+            status=STATUS_BELUM_LUNAS,
             is_deleted=False,
             created_at__date=current_date
         )
@@ -152,8 +157,8 @@ def generate_hutang_piutang_report(request, payload: DateRangeRequest):
         # Hitung piutang (pemasukan yang belum lunas) untuk tanggal ini
         piutang_transaksi = Transaksi.objects.filter(
             toko=user.toko,
-            transaction_type="pemasukan",
-            status="Belum Lunas",
+            transaction_type=TRANSACTION_TYPE_PEMASUKAN,
+            status=STATUS_BELUM_LUNAS,
             is_deleted=False,
             created_at__date=current_date
         )
