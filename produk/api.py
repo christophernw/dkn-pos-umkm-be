@@ -265,7 +265,7 @@ def update_produk(request, id: int, payload: UpdateProdukSchema, foto: UploadedF
 
         return 200, ProdukResponseSchema.from_orm(produk)
 
-    except Exception as e:
+    except Exception:
         return 422, {"message": "Gagal memperbarui produk. Pastikan data valid dan produk tersedia."}
 
 
