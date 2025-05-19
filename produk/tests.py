@@ -23,6 +23,7 @@ from backend import settings
 from unittest.mock import patch, MagicMock
 from pydantic import ValidationError
 
+NO_TOKO_MESSAGE = "User doesn't have a toko"
 
 class MockRequest:
     def __init__(self, user_id, get_params=None):
@@ -95,7 +96,7 @@ class TestProductAPI(TestCase):
         request = MockRequest(user_id=self.user_no_toko.id)
         status, resp = get_units(request)
         self.assertEqual(status, 404)
-        self.assertEqual(resp['message'], "User doesn't have a toko")
+        self.assertEqual(resp['message'], NO_TOKO_MESSAGE)
 
     def test_get_produk_paginated_sort_stok(self):
         request = MockRequest(user_id=self.user1.id, get_params={'per_page': '5'})
@@ -159,7 +160,7 @@ class TestProductAPI(TestCase):
         request = MockRequest(user_id=self.user_no_toko.id)
         status, resp = create_produk(request, payload=payload)
         self.assertEqual(status, 422)
-        self.assertEqual(resp['message'], "User doesn't have a toko")
+        self.assertEqual(resp['message'], NO_TOKO_MESSAGE)
 
     def test_update_produk(self):
         payload = UpdateProdukSchema(
@@ -182,7 +183,7 @@ class TestProductAPI(TestCase):
         request = MockRequest(user_id=self.user_no_toko.id)
         status, resp = update_produk(request, id=self.sample_prod.id, payload=payload)
         self.assertEqual(status, 422)
-        self.assertEqual(resp['message'], "User doesn't have a toko")
+        self.assertEqual(resp['message'], NO_TOKO_MESSAGE)
 
     def test_update_invalid_negative(self):
         with self.assertRaises(ValidationError):
