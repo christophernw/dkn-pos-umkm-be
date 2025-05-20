@@ -26,7 +26,7 @@ from .schemas import (
 
 router = Router()
 
-
+# authentication/api.py
 @router.post("/process-session")
 def process_session(request, session_data: SessionData):
     user_data = session_data.user
@@ -47,13 +47,18 @@ def process_session(request, session_data: SessionData):
             username=user_data.get("name"),
             email=email,
         )
-
+        
+        # Regular user flow - always create a toko for new users
+        # BPR user will have a toko too, but we'll ignore it in the logic
         toko = Toko.objects.create()
         user.toko = toko
         user.save()
 
     refresh = RefreshToken.for_user(user)
     
+    # Check if this is the BPR email without changing the role
+    is_bpr = (email == settings.BPR_EMAIL)
+
     response_data = {
         "message": "Login successful",
         "refresh": str(refresh),
@@ -64,6 +69,7 @@ def process_session(request, session_data: SessionData):
             "name": user.username,
             "role": user.role,
             "toko_id": user.toko.id if user.toko else None,
+            "is_bpr": is_bpr,  # Flag for frontend without changing DB
         },
     }
     
@@ -71,7 +77,6 @@ def process_session(request, session_data: SessionData):
     cache.set(cache_key, response_data, timeout=3600)
     
     return response_data
-
 
 @router.post("/refresh-token", response={200: dict, 401: dict})
 def refresh_token(request, refresh_data: RefreshTokenRequest):
@@ -317,3 +322,67 @@ def delete_invitation(request, invitation_id: int):
         return 200, {"message": "Invitation deleted successfully"}
     except Exception as e:
         return 404, {"message": f"Error deleting invitation: {str(e)}"}
+    
+# Updated BPR shops endpoint to exclude BPR's own toko
+@router.get("/bpr/shops", response={200: list[dict], 403: dict}, auth=AuthBearer())
+def get_all_shops(request):
+    """Get all shops for BPR admin user, excluding the BPR's own toko."""
+    user_id = request.auth
+    
+    try:
+        user = User.objects.get(id=user_id)
+        
+        # Check if the user is a BPR user
+        if user.email != settings.BPR_EMAIL:
+            return 403, {"error": "Only BPR users can access this endpoint"}
+        
+        # Get all shops except BPR's own toko
+        shops = Toko.objects.all()
+        
+        # If BPR user has a toko, exclude it
+        if user.toko:
+            shops = shops.exclude(id=user.toko.id)
+        
+        shops_data = []
+        for shop in shops:
+            owner = shop.users.filter(role="Pemilik").first()
+            if owner:
+                shops_data.append({
+                    "id": shop.id,
+                    "owner": owner.username if owner else "No owner",
+                    "created_at": shop.created_at,
+                    "user_count": shop.users.count(),
+                })
+        
+        return 200, shops_data
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        return 403, {"error": "Access denied"}
+    
+@router.get("/bpr/shop/{shop_id}", response={200: dict, 403: dict, 404: dict}, auth=AuthBearer())
+def get_shop_info(request, shop_id: int):
+    """Get information about a specific shop for BPR users."""
+    user_id = request.auth
+    
+    try:
+        user = User.objects.get(id=user_id)
+        
+        # Check if the user is a BPR user
+        if user.email != settings.BPR_EMAIL:
+            return 403, {"error": "Only BPR users can access this endpoint"}
+        
+        # Get the shop
+        shop = get_object_or_404(Toko, id=shop_id)
+        
+        # Get the shop owner
+        owner = shop.users.filter(role="Pemilik").first()
+        
+        return 200, {
+            "id": shop.id,
+            "owner": owner.username if owner else "No owner",
+            "created_at": shop.created_at,
+            "user_count": shop.users.count(),
+        }
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        return 403, {"error": "Access denied"}
