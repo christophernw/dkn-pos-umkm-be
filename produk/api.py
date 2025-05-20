@@ -103,23 +103,18 @@ def get_produk_paginated(request, page: int, sort: str = None, q: str = ""):
         "total_pages": total_pages,
     }
 
+import sentry_sdk
 
 @router.post("/create", response={201: ProdukResponseSchema, 422: dict})
 def create_produk(request, payload: CreateProdukSchema, foto: UploadedFile = None):
     user_id = request.auth
     user = get_object_or_404(User, id=user_id)
-    
-    # Check if user has a toko
+
     if not user.toko:
+        sentry_sdk.capture_message(f"[Produk] Gagal create: user {user_id} belum punya toko", level="warning")
         return 422, {"message": "User doesn't have a toko"}
 
-    # Get or create category
-    kategori_obj, _ = KategoriProduk.objects.get_or_create(
-    nama=payload.kategori,
-    toko=user.toko
-)
-    
-    # Get or create unit (satuan)
+    kategori_obj, _ = KategoriProduk.objects.get_or_create(nama=payload.kategori, toko=user.toko)
     satuan_obj, _ = Satuan.objects.get_or_create(nama=payload.satuan)
 
     produk = Produk.objects.create(
@@ -128,9 +123,13 @@ def create_produk(request, payload: CreateProdukSchema, foto: UploadedFile = Non
         harga_modal=payload.harga_modal,
         harga_jual=payload.harga_jual,
         stok=payload.stok,
-        satuan=satuan_obj.nama,  # Use the satuan name
+        satuan=satuan_obj.nama,
         kategori=kategori_obj,
-        toko=user.toko,  # Associate with toko instead of user
+        toko=user.toko,
+    )
+
+    sentry_sdk.capture_message(
+        f"[Produk] Produk '{produk.nama}' berhasil dibuat oleh {user.username} (ID: {user_id})", level="info"
     )
 
     return 201, ProdukResponseSchema.from_orm(produk)
@@ -266,6 +265,12 @@ def delete_produk(request, id: int):
     
     produk = get_object_or_404(Produk, id=id, toko=user.toko)
     produk.delete()
+    
+    sentry_sdk.capture_message(
+        f"[Produk] Produk ID {id} dihapus oleh user {user_id}",
+        level="warning"
+    )
+    
     return {"message": "Produk berhasil dihapus"}
 
 
@@ -307,5 +312,10 @@ def get_top_selling_products(request, year: int, month: int):
             "imageUrl": product['product__foto'],
             "sold": product['sold']
         })
+        
+    sentry_sdk.capture_message(
+        f"[Produk] Akses laporan top-selling bulan {month}/{year} oleh user {user_id}",
+        level="info"
+    )
     
     return 200, result
