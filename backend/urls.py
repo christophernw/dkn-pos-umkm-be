@@ -15,7 +15,7 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path
+from django.urls import include, path
 from backend import settings
 from backend.api import api
 from django.conf.urls.static import static
@@ -26,4 +26,10 @@ urlpatterns = [
     path("sentry-test/", lambda request: 1/0),  # Will trigger a ZeroDivisionError
 ]
 
+# Add Silk URL patterns only when DEBUG is True or in specific environments
+if settings.DEBUG or settings.ENV in ['staging']:
+    urlpatterns += [
+        path('silk/', include('silk.urls', namespace='silk')),
+    ]
+    
 urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

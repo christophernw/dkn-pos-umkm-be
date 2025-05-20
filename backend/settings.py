@@ -95,6 +95,7 @@ INSTALLED_APPS = [
     'laporan',
     'corsheaders',
     'rest_framework',
+    'silk', 
 ]
 
 MIDDLEWARE = [
@@ -106,8 +107,31 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'corsheaders.middleware.CorsMiddleware'
+    'corsheaders.middleware.CorsMiddleware',
+    'silk.middleware.SilkyMiddleware',
 ]
+# Silk Configuration
+SILKY_PYTHON_PROFILER = True
+SILKY_PYTHON_PROFILER_BINARY = True
+SILKY_ANALYZE_QUERIES = True
+SILKY_META = True
+SILKY_STORAGE_CLASS = 'silk.storage.ProfilerResultStorage'
+SILKY_INTERCEPT_PERCENT = 100  # Log all requests
+
+# Only enable in development or selectively in production
+if DEBUG:
+    SILKY_AUTHENTICATION = False  # Anyone can see the results
+    SILKY_AUTHORISATION = False   # Anyone can see the results
+else:
+    SILKY_AUTHENTICATION = True  # Only authenticated users can see the results
+    SILKY_AUTHORISATION = True   # Only authorised users can see the results
+
+def silky_permissions(user): 
+    return user.is_superuser
+
+# Prevent Silk from capturing too much data to avoid memory issues
+SILKY_MAX_RECORDED_REQUESTS = 10000
+SILKY_MAX_RECORDED_REQUESTS_CHECK_PERCENT = 10
 
 ROOT_URLCONF = 'backend.urls'
 

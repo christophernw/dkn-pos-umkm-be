@@ -43,3 +43,5 @@ storage==0.0.4.3
 typing_extensions==4.12.2
 tzdata==2025.1
 urllib3==2.4.0
+django-silk==5.0.3
+
