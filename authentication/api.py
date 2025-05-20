@@ -172,3 +172,36 @@ def get_user_by_id(request, user_id: int):
         return 200, UserResponse.from_user(user)
     except Http404:
         return 404, {"error": "User not found"}
+
+
+# NEW FUNCTION 2: Update user profile
+@router.put("/users/{user_id}", response={200: UserResponse, 404: dict, 422: dict})
+def update_user_profile(request, user_id: int, payload: UpdateUserRequest):
+    """Update user profile information"""
+    try:
+        user = get_object_or_404(User, id=user_id)
+        
+        # Check if email is being updated and if it's already taken
+        if payload.email is not None:
+            # Check if another user has this email
+            existing_user = User.objects.filter(email=payload.email).exclude(id=user_id).first()
+            if existing_user:
+                return 422, {"error": "Email already exists for another user"}
+            user.email = payload.email
+        
+        # Check if username is being updated and if it's already taken
+        if payload.name is not None:
+            # Check if another user has this username
+            existing_user = User.objects.filter(username=payload.name).exclude(id=user_id).first()
+            if existing_user:
+                return 422, {"error": "Username already exists for another user"}
+            user.username = payload.name
+        
+        user.save()
+        return 200, UserResponse.from_user(user)
+        
+    except Http404:
+        return 404, {"error": "User not found"}
+    # except Exception as e:
+    #     return 422, {"error": f"Failed to update user: {str(e)}"}
+
