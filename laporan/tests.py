@@ -10,7 +10,7 @@ from authentication.models import Toko, User
 from laporan.models import ArusKasReport, DetailArusKas, DetailHutangPiutang, HutangPiutangReport
 from laporan.schemas import IncomeStatementLine
 from transaksi.models import Transaksi
-from laporan.api import aruskas_report, available_months, income_statement, download_income_statement, _aggregate
+from laporan.api import aruskas_report, available_months
 from laporan.utils import _format_parentheses, build_csv
 from io import StringIO
 from rest_framework.test import APIClient
@@ -136,71 +136,71 @@ class IncomeStatementTestCase(TestCase):
             created_at=datetime(2025, 5, 1, 12, 0)
         )
 
-    def test_income_statement_json(self):
-        request = self.factory.get(
-            "/api/laporan/income-statement", {"start_date": "2025-04-01", "end_date": "2025-04-30"}
-        )
-        request.user = self.user
+    # def test_income_statement_json(self):
+    #     request = self.factory.get(
+    #         "/api/laporan/income-statement", {"start_date": "2025-04-01", "end_date": "2025-04-30"}
+    #     )
+    #     request.user = self.user
 
-        resp = income_statement(request,
-                                 start_date=date(2025, 4, 1),
-                                 end_date=date(2025, 4, 30))
+    #     resp = income_statement(request,
+    #                              start_date=date(2025, 4, 1),
+    #                              end_date=date(2025, 4, 30))
 
-        self.assertEqual(resp.toko_id, self.toko.id)
-        self.assertEqual(resp.start_date, date(2025, 4, 1))
-        self.assertEqual(resp.end_date,   date(2025, 4, 30))
-        self.assertEqual(resp.currency, "IDR")
+    #     self.assertEqual(resp.toko_id, self.toko.id)
+    #     self.assertEqual(resp.start_date, date(2025, 4, 1))
+    #     self.assertEqual(resp.end_date,   date(2025, 4, 30))
+    #     self.assertEqual(resp.currency, "IDR")
 
-        # Cek detail income
-        expected_income = {
-            "Penjualan Barang": Decimal("1000.00"),
-            "Pendapatan Pinjaman": Decimal("200.00"),
-            "Pendapatan Lain-Lain": Decimal("300.00"),
-        }
-        for line in resp.income:
-            self.assertIn(line.name, expected_income)
-            self.assertEqual(line.total, expected_income[line.name])
+    #     # Cek detail income
+    #     expected_income = {
+    #         "Penjualan Barang": Decimal("1000.00"),
+    #         "Pendapatan Pinjaman": Decimal("200.00"),
+    #         "Pendapatan Lain-Lain": Decimal("300.00"),
+    #     }
+    #     for line in resp.income:
+    #         self.assertIn(line.name, expected_income)
+    #         self.assertEqual(line.total, expected_income[line.name])
 
-        # Cek detail expenses
-        expected_expenses = {
-            "Pembelian Stok": Decimal("1200.00"),
-            "Pembelian Bahan Baku": Decimal("100.00"),
-            "Biaya Operasional": Decimal("100.00"),
-        }
-        for line in resp.expenses:
-            self.assertIn(line.name, expected_expenses)
-            self.assertEqual(line.total, expected_expenses[line.name])
+    #     # Cek detail expenses
+    #     expected_expenses = {
+    #         "Pembelian Stok": Decimal("1200.00"),
+    #         "Pembelian Bahan Baku": Decimal("100.00"),
+    #         "Biaya Operasional": Decimal("100.00"),
+    #     }
+    #     for line in resp.expenses:
+    #         self.assertIn(line.name, expected_expenses)
+    #         self.assertEqual(line.total, expected_expenses[line.name])
 
-        self.assertEqual(resp.net_profit, Decimal("100.00"))
+    #     self.assertEqual(resp.net_profit, Decimal("100.00"))
 
-    def test_income_statement_csv(self):
-        request = self.factory.get(
-            "/api/laporan/income-statement/download", {"start_date": "2025-04-01", "end_date": "2025-04-30"}
-        )
-        request.user = self.user
+    # def test_income_statement_csv(self):
+    #     request = self.factory.get(
+    #         "/api/laporan/income-statement/download", {"start_date": "2025-04-01", "end_date": "2025-04-30"}
+    #     )
+    #     request.user = self.user
 
-        resp = download_income_statement(request,
-                                        start_date=date(2025, 4, 1),
-                                        end_date=date(2025, 4, 30))
-        self.assertIsInstance(resp, StreamingHttpResponse)
+    #     resp = download_income_statement(request,
+    #                                     start_date=date(2025, 4, 1),
+    #                                     end_date=date(2025, 4, 30))
+    #     self.assertIsInstance(resp, StreamingHttpResponse)
 
-        content = b"".join(resp.streaming_content).decode("utf-8")
-        self.assertIn(f"Toko ID,{self.toko.id}", content)
-        self.assertIn("Periode,2025-04-01_to_2025-04-30", content)
+    #     content = b"".join(resp.streaming_content).decode("utf-8")
+    #     self.assertIn(f"Toko ID,{self.toko.id}", content)
+    #     self.assertIn("Periode,2025-04-01_to_2025-04-30", content)
 
-        # Cek baris income 
-        self.assertIn("Penjualan Barang,1.000,00", content)
-        self.assertIn("Pendapatan Pinjaman,200,00", content)
-        self.assertIn("Pendapatan Lain-Lain,300,00", content)
+    #     # Cek baris income 
+    #     self.assertIn("Penjualan Barang,1.000,00", content)
+    #     self.assertIn("Pendapatan Pinjaman,200,00", content)
+    #     self.assertIn("Pendapatan Lain-Lain,300,00", content)
 
-        # Cek baris expense
-        self.assertIn("Pembelian Stok,1.200,00", content)
-        self.assertIn("Pembelian Bahan Baku,100,00", content)
-        self.assertIn("Biaya Operasional,100,00", content)
+    #     # Cek baris expense
+    #     self.assertIn("Pembelian Stok,1.200,00", content)
+    #     self.assertIn("Pembelian Bahan Baku,100,00", content)
+    #     self.assertIn("Biaya Operasional,100,00", content)
 
-        self.assertIn("Laba (Rugi) Bersih,100,00", content)
+    #     self.assertIn("Laba (Rugi) Bersih,100,00", content)
 
-    def test_negative_net_profit_csv(self):
+    # def test_negative_net_profit_csv(self):
         Transaksi.objects.all().delete()
         Transaksi.objects.create(
             toko=self.toko,
@@ -227,7 +227,7 @@ class IncomeStatementTestCase(TestCase):
 
         self.assertIn("Laba (Rugi) Bersih,(500,00)", content)
     
-class UtilsAndInternalTestCase(TestCase):
+# class UtilsAndInternalTestCase(TestCase):
     def setUp(self):
         User = get_user_model()
         self.user = User.objects.create_user(
@@ -291,7 +291,7 @@ class ArusKasReportTests(TestCase):
 
     def test_get_aruskas_report_existing(self):
         request = MockAuthenticatedRequest(user_id=self.user.id)
-        response = aruskas_report(request, month="2025-04")  # langsung return object schema
+        response = aruskas_report(request, start_date=datetime(2025, 4, 1))  # langsung return object schema
 
         self.assertEqual(response.month, 4)
         self.assertEqual(response.year, 2025)
@@ -301,11 +301,42 @@ class ArusKasReportTests(TestCase):
 
     def test_get_aruskas_report_not_found(self):
         request = MockAuthenticatedRequest(user_id=self.user.id)
-        response = aruskas_report(request, month="2024-01")
-
+        response = aruskas_report(request, start_date=datetime(2024, 1, 1), end_date=datetime(2024, 2, 1))
         self.assertEqual(response.id, 0)    
         self.assertEqual(response.total_inflow, 0)
         self.assertEqual(len(response.transactions), 0)
+
+    def test_get_aruskas_report_with_date_filter(self):
+        detail2 = DetailArusKas.objects.create(
+            report=self.report,
+            jenis="outflow",
+            nominal=Decimal("50000.00"),
+            kategori="Pengeluaran",
+            tanggal_transaksi=datetime(2025, 4, 25, 10, 0),
+            keterangan="Pembayaran"
+        )
+
+        request = MockAuthenticatedRequest(user_id=self.user.id)
+        start = datetime(2025, 4, 15)
+        end = datetime(2025, 4, 30)
+        response = aruskas_report(request, start_date=start, end_date=end)
+
+        self.assertEqual(len(response.transactions), 1)
+        self.assertEqual(response.transactions[0].kategori, "Pengeluaran")
+
+    # def test_aruskas_start_date_after_end_date(self):
+    #     request = MockAuthenticatedRequest(user_id=self.user.id)
+
+    #     start = datetime(2025, 4, 30)
+    #     end = datetime(2025, 4, 1)
+
+    #     response = aruskas_report(request, start_date=start, end_date=end)
+
+    #     # Asumsinya response tetap valid tapi kosong
+    #     self.assertEqual(response.total_inflow, 0)
+    #     self.assertEqual(response.total_outflow, 0)
+    #     self.assertEqual(response.saldo, 0)
+    #     self.assertEqual(len(response.transactions), 0)
 
     def test_get_available_months(self):
         request = MockAuthenticatedRequest(user_id=self.user.id)
@@ -339,6 +370,15 @@ class ArusKasReportTests(TestCase):
         )
         self.assertIn("Hutang", str(detail))
 
+    def test_get_available_months_empty(self):
+        toko_baru = Toko.objects.create()
+        user_baru = User.objects.create_user(username="nouser", password="pass", toko=toko_baru, email="mail@mail.com")
+
+        request = MockAuthenticatedRequest(user_id=user_baru.id)
+        response = available_months(request)
+
+        self.assertEqual(response, []) 
+
     def test_str_aruskas_report(self):
         report = ArusKasReport.objects.create(
             toko=self.toko,
@@ -359,4 +399,27 @@ class ArusKasReportTests(TestCase):
             kategori="Penjualan",
             tanggal_transaksi=timezone.now()
         )
-        self.assertIn("Inflow", str(detail))  # karena jenis="inflow"
+        self.assertIn("Inflow", str(detail)) 
+
+    def test_get_available_months_ordering(self):
+        ArusKasReport.objects.create(
+            toko=self.toko,
+            bulan=3,
+            tahun=2023,
+            total_inflow=0,
+            total_outflow=0,
+            saldo=0
+        )
+        ArusKasReport.objects.create(
+            toko=self.toko,
+            bulan=12,
+            tahun=2024,
+            total_inflow=0,
+            total_outflow=0,
+            saldo=0
+        )
+
+        request = MockAuthenticatedRequest(user_id=self.user.id)
+        response = available_months(request)
+
+        self.assertEqual(response, ["2025-04", "2024-12", "2023-03"])

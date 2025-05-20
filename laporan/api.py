@@ -1,250 +1,425 @@
-from calendar import monthrange
+from django.test import TestCase, RequestFactory
+from django.contrib.auth import get_user_model
 from datetime import date, datetime
+from django.utils import timezone
 from decimal import Decimal
-from typing import List, Optional
+from django.http import StreamingHttpResponse
+import json
 
-from django.db.models import Sum
-from django.shortcuts import get_object_or_404
-from ninja import Router
-from ninja.security import django_auth
-from ninja.errors import HttpError
-from ninja.security import HttpBearer
-import jwt
-from backend import settings
-
-from laporan.models import ArusKasReport, DetailArusKas
+from authentication.models import Toko, User 
+from laporan.models import ArusKasReport, DetailArusKas, DetailHutangPiutang, HutangPiutangReport
+from laporan.schemas import IncomeStatementLine
 from transaksi.models import Transaksi
-from authentication.models import Toko, User
-from .schemas import ArusKasReportWithDetailsSchema, DateRangeRequest, IncomeStatementResponse, IncomeStatementLine, ArusKasDetailSchema
-from .utils import INCOME_CATEGORIES, EXPENSE_CATEGORIES, build_csv
-
-router = Router(tags=["Income Statement"])
-
-def _aggregate(toko: Toko, start: date, end: date):
-    qs = Transaksi.objects.filter(
-        toko=toko,
-        is_deleted=False,
-        status="Selesai",
-        created_at__date__gte=start,
-        created_at__date__lte=end,
-    )
-
-    def sum_by(cats: dict) -> List[IncomeStatementLine]:
-        out = []
-        for label in cats.values():
-            amt = qs.filter(category=label).aggregate(total=Sum("total_amount"))["total"] or Decimal("0")
-            out.append(IncomeStatementLine(name=label, total=amt))
-        return out
-
-    inc = sum_by(INCOME_CATEGORIES)
-    exp = sum_by(EXPENSE_CATEGORIES)
-    net = sum((l.total for l in inc), Decimal("0")) - sum((l.total for l in exp), Decimal("0"))
-    return inc, exp, net
-
-@router.get("/income-statement", response=IncomeStatementResponse, auth=django_auth)
-def income_statement(request,
-                     start_date: date,
-                     end_date: date):
-    if start_date > end_date:
-        start_date, end_date = end_date, start_date
-
-    if (end_date - start_date).days < 28:
-        raise HttpError(400, "Date range must be at least 28 days")
-
-    toko = request.user.toko
-    inc, exp, net = _aggregate(toko, start_date, end_date)
-    return IncomeStatementResponse(
-        toko_id=toko.id,
-        start_date=start_date,
-        end_date=end_date,
-        income=inc,
-        expenses=exp,
-        net_profit=net,
-    )
-
-@router.get("/income-statement/download", auth=django_auth)
-def download_income_statement(request,
-                             start_date: date,
-                             end_date: date):
-    if start_date > end_date:
-        start_date, end_date = end_date, start_date
-    if (end_date - start_date).days < 28:
-        raise HttpError(400, "Date range must be at least 28 days")
-
-    toko = request.user.toko
-    inc, exp, net = _aggregate(toko, start_date, end_date)
-    period = f"{start_date.isoformat()}_to_{end_date.isoformat()}"
-    return build_csv(period, toko.id, inc, exp, net)
+from laporan.api import aruskas_report, available_months
+from laporan.utils import _format_parentheses, build_csv
+from io import StringIO
+from rest_framework.test import APIClient
 
 
-router = Router(tags=["Income Statement"])
-def _month_bounds(year: int, month: int):
-    first = date(year, month, 1)
-    last = date(year, month, monthrange(year, month)[1])
-    return first, last
-
-def _aggregate(toko: Toko, first: date, last: date):
-    base_qs = Transaksi.objects.filter(
-        toko=toko,
-        is_deleted=False,
-        status="Selesai",
-        created_at__date__range=(first, last)
-    )
-
-    def sum_by(categories: dict) -> List[IncomeStatementLine]:
-        lines = []
-        for label in categories.values():
-            total = base_qs.filter(category=label).aggregate(
-                total=Sum("total_amount")
-            )["total"] or Decimal("0")
-            lines.append(IncomeStatementLine(name=label, total=total))
-        return lines
-
-    income_lines = sum_by(INCOME_CATEGORIES)
-    expense_lines = sum_by(EXPENSE_CATEGORIES)
-
-    net_profit = sum(
-        (line.total for line in income_lines), Decimal("0")
-    ) - sum((line.total for line in expense_lines), Decimal("0"))
-
-    return income_lines, expense_lines, net_profit
-
-@router.get(
-    "/income-statement",
-    response=IncomeStatementResponse,
-    auth=django_auth
-)
-def income_statement(request, month: str):
-    year, mm = map(int, month.split("-"))
-    first, last = _month_bounds(year, mm)
-
-    toko = request.user.toko  
-
-    income_lines, expense_lines, net = _aggregate(toko, first, last)
-
-    return IncomeStatementResponse(
-        toko_id=toko.id,
-        period=month,
-        income=income_lines,
-        expenses=expense_lines,
-        net_profit=net
-    )
-
-@router.get(
-    "/income-statement/download",
-    auth=django_auth
-)
-def download_income_statement(request, month: str):
-    year, mm = map(int, month.split("-"))
-    first, last = _month_bounds(year, mm)
-    toko = request.user.toko
-
-    income_lines, expense_lines, net = _aggregate(toko, first, last)
-    return build_csv(month, toko.id, income_lines, expense_lines, net)
-
-class AuthBearer(HttpBearer):
-    def authenticate(self, request, token):
-        try:
-            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
-            user_id = payload.get("user_id")
-            if user_id:
-                return user_id
-        except jwt.PyJWTError:
-            return None
-        return None
-    
-router = Router(auth=AuthBearer())
-
-def _month_bounds(year: int, month: int):
-    first = date(year, month, 1)
-    last = date(year, month, monthrange(year, month)[1])
-    return first, last
-
-@router.get("/aruskas-report", response=ArusKasReportWithDetailsSchema)
-def aruskas_report(request, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None):
-    """
-    Get a cash flow report with optional date filters for transactions.
-    """
-    if hasattr(request, 'auth') and request.auth:
-        user_id = request.auth
-        user = User.objects.get(id=user_id)
-        toko = user.toko
-    else:
-        toko = request.user.toko
-
-    report = ArusKasReport.objects.filter(toko=toko).first()
-
-    if not report:
-        return ArusKasReportWithDetailsSchema(
-            id=0,
-            month=0,
-            year=0,
-            total_inflow=Decimal("0"),
-            total_outflow=Decimal("0"),
-            balance=Decimal("0"),
-            transactions=[]
+class IncomeStatementTestCase(TestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+        self.toko = Toko.objects.create()
+        self.user = User.objects.create_user(
+            username="testuser",
+            email="test@example.com",
+            password="testpassword",
+            toko=self.toko,
+            role="Pemilik"
         )
 
-    transactions = DetailArusKas.objects.filter(report=report)
+        # Income
+        Transaksi.objects.create(
+            toko=self.toko,
+            created_by=self.user,
+            transaction_type="Pemasukan",
+            category="Penjualan Barang",
+            total_amount=Decimal("1000.00"),
+            total_modal=Decimal("0.00"),
+            amount=Decimal("1000.00"),
+            status="Selesai",
+            created_at=datetime(2025, 4, 15, 10, 0),
+        )
+        Transaksi.objects.create(
+            toko=self.toko,
+            created_by=self.user,
+            transaction_type="Pemasukan",
+            category="Pendapatan Pinjaman",
+            total_amount=Decimal("200.00"),
+            total_modal=Decimal("0.00"),
+            amount=Decimal("200.00"),
+            status="Selesai",
+            created_at=datetime(2025, 4, 16, 11, 0),
+        )
+        Transaksi.objects.create(
+            toko=self.toko,
+            created_by=self.user,
+            transaction_type="Pemasukan",
+            category="Pendapatan Lain-Lain",
+            total_amount=Decimal("300.00"),
+            total_modal=Decimal("0.00"),
+            amount=Decimal("300.00"),
+            status="Selesai",
+            created_at=datetime(2025, 4, 17, 12, 0),
+        )
 
-    if start_date:
-        transactions = transactions.filter(tanggal_transaksi__gte=start_date)
-    if end_date:
-        transactions = transactions.filter(tanggal_transaksi__lte=end_date)
+        # Expenses
+        Transaksi.objects.create(
+            toko=self.toko,
+            created_by=self.user,
+            transaction_type="Pengeluaran",
+            category="Pembelian Stok",
+            total_amount=Decimal("1200.00"),
+            total_modal=Decimal("0.00"),
+            amount=Decimal("1200.00"),
+            status="Selesai",
+            created_at=datetime(2025, 4, 18, 13, 0),
+        )
+        Transaksi.objects.create(
+            toko=self.toko,
+            created_by=self.user,
+            transaction_type="Pengeluaran",
+            category="Pembelian Bahan Baku",
+            total_amount=Decimal("100.00"),
+            total_modal=Decimal("0.00"),
+            amount=Decimal("100.00"),
+            status="Selesai",
+            created_at=datetime(2025, 4, 19, 14, 0),
+        )
+        Transaksi.objects.create(
+            toko=self.toko,
+            created_by=self.user,
+            transaction_type="Pengeluaran",
+            category="Biaya Operasional",
+            total_amount=Decimal("100.00"),
+            total_modal=Decimal("0.00"),
+            amount=Decimal("100.00"),
+            status="Selesai",
+            created_at=datetime(2025, 4, 20, 15, 0),
+        )
 
-    return ArusKasReportWithDetailsSchema.from_report(report, transactions)
+        Transaksi.objects.create(  # status bukan "Selesai"
+            toko=self.toko,
+            created_by=self.user,
+            transaction_type="Pemasukan",
+            category="Penjualan Barang",
+            total_amount=Decimal("500.00"),
+            total_modal=Decimal("0.00"),
+            amount=Decimal("500.00"),
+            status="Draft",
+            created_at=datetime(2025, 4, 21, 10, 0),
+        )
+        Transaksi.objects.create(  # is_deleted=True
+            toko=self.toko,
+            created_by=self.user,
+            transaction_type="Pengeluaran",
+            category="Pembelian Stok",
+            total_amount=Decimal("300.00"),
+            total_modal=Decimal("0.00"),
+            amount=Decimal("300.00"),
+            status="Selesai",
+            created_at=datetime(2025, 4, 22, 11, 0),
+            is_deleted=True,
+        )
+        # beda bulan
+        t_may = Transaksi.objects.create(
+            toko=self.toko,
+            created_by=self.user,
+            transaction_type="Pemasukan",
+            category="Penjualan Barang",
+            total_amount=Decimal("400.00"),
+            total_modal=Decimal("0.00"),
+            amount=Decimal("400.00"),
+            status="Selesai",
+        )
+        Transaksi.objects.filter(pk=t_may.pk).update(
+            created_at=datetime(2025, 5, 1, 12, 0)
+        )
 
-# laporan/api.py
-@router.get("/bpr/shop/{shop_id}/aruskas", response={200: ArusKasReportWithDetailsSchema, 403: dict, 404: dict}, auth=AuthBearer())
-def get_shop_aruskas_for_bpr(request, shop_id: int):
-    """Get cash flow report for a specific shop for BPR users."""
-    user_id = request.auth
+    # def test_income_statement_json(self):
+    #     request = self.factory.get(
+    #         "/api/laporan/income-statement", {"start_date": "2025-04-01", "end_date": "2025-04-30"}
+    #     )
+    #     request.user = self.user
+
+    #     resp = income_statement(request,
+    #                              start_date=date(2025, 4, 1),
+    #                              end_date=date(2025, 4, 30))
+
+    #     self.assertEqual(resp.toko_id, self.toko.id)
+    #     self.assertEqual(resp.start_date, date(2025, 4, 1))
+    #     self.assertEqual(resp.end_date,   date(2025, 4, 30))
+    #     self.assertEqual(resp.currency, "IDR")
+
+    #     # Cek detail income
+    #     expected_income = {
+    #         "Penjualan Barang": Decimal("1000.00"),
+    #         "Pendapatan Pinjaman": Decimal("200.00"),
+    #         "Pendapatan Lain-Lain": Decimal("300.00"),
+    #     }
+    #     for line in resp.income:
+    #         self.assertIn(line.name, expected_income)
+    #         self.assertEqual(line.total, expected_income[line.name])
+
+    #     # Cek detail expenses
+    #     expected_expenses = {
+    #         "Pembelian Stok": Decimal("1200.00"),
+    #         "Pembelian Bahan Baku": Decimal("100.00"),
+    #         "Biaya Operasional": Decimal("100.00"),
+    #     }
+    #     for line in resp.expenses:
+    #         self.assertIn(line.name, expected_expenses)
+    #         self.assertEqual(line.total, expected_expenses[line.name])
+
+    #     self.assertEqual(resp.net_profit, Decimal("100.00"))
+
+    # def test_income_statement_csv(self):
+    #     request = self.factory.get(
+    #         "/api/laporan/income-statement/download", {"start_date": "2025-04-01", "end_date": "2025-04-30"}
+    #     )
+    #     request.user = self.user
+
+    #     resp = download_income_statement(request,
+    #                                     start_date=date(2025, 4, 1),
+    #                                     end_date=date(2025, 4, 30))
+    #     self.assertIsInstance(resp, StreamingHttpResponse)
+
+    #     content = b"".join(resp.streaming_content).decode("utf-8")
+    #     self.assertIn(f"Toko ID,{self.toko.id}", content)
+    #     self.assertIn("Periode,2025-04-01_to_2025-04-30", content)
+
+    #     # Cek baris income 
+    #     self.assertIn("Penjualan Barang,1.000,00", content)
+    #     self.assertIn("Pendapatan Pinjaman,200,00", content)
+    #     self.assertIn("Pendapatan Lain-Lain,300,00", content)
+
+    #     # Cek baris expense
+    #     self.assertIn("Pembelian Stok,1.200,00", content)
+    #     self.assertIn("Pembelian Bahan Baku,100,00", content)
+    #     self.assertIn("Biaya Operasional,100,00", content)
+
+    #     self.assertIn("Laba (Rugi) Bersih,100,00", content)
+
+    # def test_negative_net_profit_csv(self):
+        Transaksi.objects.all().delete()
+        Transaksi.objects.create(
+            toko=self.toko,
+            created_by=self.user,
+            transaction_type="Pengeluaran",
+            category="Pembelian Stok",
+            total_amount=Decimal("500.00"),
+            total_modal=Decimal("0.00"),
+            amount=Decimal("500.00"),
+            status="Selesai",
+            created_at=datetime(2025, 4, 10, 10, 0),
+        )
+
+        request = self.factory.get(
+            "/api/laporan/income-statement/download",
+            {"start_date": "2025-04-01", "end_date": "2025-04-30"}
+        )
+        request.user = self.user
+
+        resp = download_income_statement(request,
+                                        start_date=date(2025, 4, 1),
+                                        end_date=date(2025, 4, 30))
+        content = b"".join(resp.streaming_content).decode("utf-8")
+
+        self.assertIn("Laba (Rugi) Bersih,(500,00)", content)
     
-    try:
-        user = User.objects.get(id=user_id)
-        
-        # Check ONLY the email, not the role
-        if user.email != settings.BPR_EMAIL:
-            return 403, {"error": "Only BPR users can access this endpoint"}
-        
-        # Get the shop
-        shop = get_object_or_404(Toko, id=shop_id)
-        
-        # Get report for the shop
-        report = ArusKasReport.objects.filter(toko=shop).first()
-        
-        if not report:
-            return ArusKasReportWithDetailsSchema(
-                id=0,
-                month=0,
-                year=0,
-                total_inflow=Decimal("0"),
-                total_outflow=Decimal("0"),
-                balance=Decimal("0"),
-                transactions=[]
-            )
-        
-        transactions = DetailArusKas.objects.filter(report=report)
-        
-        return ArusKasReportWithDetailsSchema.from_report(report, transactions)
-    except Exception as e:
-        print(f"Error: {str(e)}")
-        return 403, {"error": "Access denied"}
+# class UtilsAndInternalTestCase(TestCase):
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            username="dummy",
+            email="dummy@example.com",
+            password="pwd"
+        )
 
-# @router.get("/aruskas-available-months", response=List[str])
-# def available_months(request):
-#     user_id = request.auth
-#     user = User.objects.get(id=user_id)
-#     toko = user.toko
+    def test_format_parentheses_positive_and_negative(self):
+        self.assertEqual(_format_parentheses(Decimal("1234.5")), "1.234,50")
+        self.assertEqual(_format_parentheses(Decimal("-1234.567")), "(1.234,57)")
+        self.assertEqual(_format_parentheses(Decimal("0")), "0,00")
 
-#     reports = ArusKasReport.objects.filter(toko=toko).order_by('-tahun', '-bulan')
+    def test_build_csv_headers_and_filename(self):
+        income = [IncomeStatementLine(name="A", total=Decimal("10"))]
+        expense = [IncomeStatementLine(name="B", total=Decimal("5"))]
+        resp = build_csv("2025-04", 7, income, expense, Decimal("5"))
+        self.assertEqual(resp["Content-Type"], "text/csv")
+        cd = resp["Content-Disposition"]
+        self.assertIn('income_statement_2025-04.csv', cd)
+        content = b"".join(resp.streaming_content).decode("utf-8")
+        self.assertIn("Toko ID,7", content)
+        self.assertIn("Laba (Rugi) Bersih,5,00", content)
 
-#     months = [
-#         f"{report.tahun}-{report.bulan:02d}"
-#         for report in reports
-#     ]
+class MockAuthenticatedRequest:
+    """Mock request with authentication for testing"""
+    def __init__(self, user_id=1, method="get_params", body=None, get_params=None):
+        self.auth = user_id  # Simulating authenticated user
+        self.method = method
+        self._body = json.dumps(body).encode() if body else None
+        self.GET = get_params or {}
 
-#     return months
+User = get_user_model()
+
+class ArusKasReportTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+
+        self.toko = Toko.objects.create()
+        self.user = User.objects.create_user(username="testuser", password="password", toko=self.toko, email="test@gmail.com")
+
+        self.client.login(user=self.user)
+
+        self.report = ArusKasReport.objects.create(
+            toko=self.toko,
+            bulan=4,
+            tahun=2025,
+            total_inflow=Decimal("100000.00"),
+            total_outflow=Decimal("50000.00"),
+            saldo=Decimal("50000.00")
+        )
+
+        self.detail1 = DetailArusKas.objects.create(
+            report=self.report,
+            jenis="inflow",
+            nominal=Decimal("100000.00"),
+            kategori="Penjualan",
+            tanggal_transaksi=datetime(2025, 4, 10, 10, 0),
+            keterangan="Penjualan produk"
+        )
+
+    def test_get_aruskas_report_existing(self):
+        request = MockAuthenticatedRequest(user_id=self.user.id)
+        response = aruskas_report(request, start_date=datetime(2025, 4, 1))  # langsung return object schema
+
+        self.assertEqual(response.month, 4)
+        self.assertEqual(response.year, 2025)
+        self.assertEqual(response.total_inflow, Decimal("100000.00"))
+        self.assertEqual(len(response.transactions), 1)
+        self.assertEqual(response.transactions[0].kategori, "Penjualan")
+
+    def test_get_aruskas_report_not_found(self):
+        request = MockAuthenticatedRequest(user_id=self.user.id)
+        response = aruskas_report(request, start_date=datetime(2024, 1, 1), end_date=datetime(2024, 2, 1))
+        self.assertEqual(response.id, 0)    
+        self.assertEqual(response.total_inflow, 0)
+        self.assertEqual(len(response.transactions), 0)
+
+    def test_get_aruskas_report_with_date_filter(self):
+        detail2 = DetailArusKas.objects.create(
+            report=self.report,
+            jenis="outflow",
+            nominal=Decimal("50000.00"),
+            kategori="Pengeluaran",
+            tanggal_transaksi=datetime(2025, 4, 25, 10, 0),
+            keterangan="Pembayaran"
+        )
+
+        request = MockAuthenticatedRequest(user_id=self.user.id)
+        start = datetime(2025, 4, 15)
+        end = datetime(2025, 4, 30)
+        response = aruskas_report(request, start_date=start, end_date=end)
+
+        self.assertEqual(len(response.transactions), 1)
+        self.assertEqual(response.transactions[0].kategori, "Pengeluaran")
+
+    # def test_aruskas_start_date_after_end_date(self):
+    #     request = MockAuthenticatedRequest(user_id=self.user.id)
+
+    #     start = datetime(2025, 4, 30)
+    #     end = datetime(2025, 4, 1)
+
+    #     response = aruskas_report(request, start_date=start, end_date=end)
+
+    #     # Asumsinya response tetap valid tapi kosong
+    #     self.assertEqual(response.total_inflow, 0)
+    #     self.assertEqual(response.total_outflow, 0)
+    #     self.assertEqual(response.saldo, 0)
+    #     self.assertEqual(len(response.transactions), 0)
+
+    def test_get_available_months(self):
+        request = MockAuthenticatedRequest(user_id=self.user.id)
+
+        response = available_months(request)
+
+        self.assertIsInstance(response, list)
+        self.assertIn("2025-04", response)
 
 
+    def test_str_hutang_piutang_report(self):
+        report = HutangPiutangReport.objects.create(
+            toko=self.toko,
+            total_hutang=10000,
+            total_piutang=5000,
+            jumlah_transaksi_hutang=2,
+            jumlah_transaksi_piutang=1,
+            tanggal=timezone.now().date()
+        )
+        self.assertIn("Laporan Hutang Piutang", str(report))
 
+    def test_str_detail_hutang_piutang(self):
+        report = HutangPiutangReport.objects.create(toko=self.toko)
+        detail = DetailHutangPiutang.objects.create(
+            report=report,
+            transaksi_id="T123",
+            jenis="hutang",
+            jumlah=20000,
+            tanggal_transaksi=timezone.now(),
+            keterangan="Test"
+        )
+        self.assertIn("Hutang", str(detail))
+
+    def test_get_available_months_empty(self):
+        toko_baru = Toko.objects.create()
+        user_baru = User.objects.create_user(username="nouser", password="pass", toko=toko_baru, email="mail@mail.com")
+
+        request = MockAuthenticatedRequest(user_id=user_baru.id)
+        response = available_months(request)
+
+        self.assertEqual(response, []) 
+
+    def test_str_aruskas_report(self):
+        report = ArusKasReport.objects.create(
+            toko=self.toko,
+            bulan=5,
+            tahun=2025,
+            total_inflow=100000,
+            total_outflow=40000,
+            saldo=60000
+        )
+        self.assertIn("Laporan Arus Kas", str(report))
+
+    def test_str_detail_aruskas(self):
+        report = ArusKasReport.objects.create(toko=self.toko)
+        detail = DetailArusKas.objects.create(
+            report=report,
+            jenis="inflow",
+            nominal=50000,
+            kategori="Penjualan",
+            tanggal_transaksi=timezone.now()
+        )
+        self.assertIn("Inflow", str(detail)) 
+
+    def test_get_available_months_ordering(self):
+        ArusKasReport.objects.create(
+            toko=self.toko,
+            bulan=3,
+            tahun=2023,
+            total_inflow=0,
+            total_outflow=0,
+            saldo=0
+        )
+        ArusKasReport.objects.create(
+            toko=self.toko,
+            bulan=12,
+            tahun=2024,
+            total_inflow=0,
+            total_outflow=0,
+            saldo=0
+        )
+
+        request = MockAuthenticatedRequest(user_id=self.user.id)
+        response = available_months(request)
+
+        self.assertEqual(response, ["2025-04", "2024-12", "2023-03"])
