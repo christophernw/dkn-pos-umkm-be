@@ -1,3 +1,4 @@
+from decimal import Decimal, InvalidOperation
 from ninja import Router, UploadedFile
 from django.shortcuts import get_object_or_404
 from django.http import HttpResponseBadRequest
@@ -20,6 +21,7 @@ from transaksi.models import TransaksiItem
 from typing import Optional
 
 NO_TOKO_MESSAGE = "User doesn't have a toko"
+MAX_DECIMAL = Decimal("99999999.99")
 
 class AuthBearer(HttpBearer):
     def authenticate(self, request, token):
@@ -119,6 +121,12 @@ def create_produk(request, payload: CreateProdukSchema, foto: UploadedFile = Non
     # Check if user has a toko
     if not user.toko:
         return 422, {"message": NO_TOKO_MESSAGE}
+    
+    try:
+        if Decimal(payload.harga_modal) > MAX_DECIMAL or Decimal(payload.harga_jual) > MAX_DECIMAL:
+            return 422, {"message": "Harga terlalu besar. Maksimum adalah 99.999.999,99"}
+    except InvalidOperation:
+        return 422, {"message": "Format harga tidak valid."}
 
     # Get or create category
     kategori_obj, _ = KategoriProduk.objects.get_or_create(
@@ -234,6 +242,14 @@ def update_produk(request, id: int, payload: UpdateProdukSchema, foto: UploadedF
 
         # Convert payload to dict and filter out None values
         update_data = {k: v for k, v in payload.dict().items() if v is not None}
+
+        try:
+                if 'harga_modal' in update_data and Decimal(update_data['harga_modal']) > MAX_DECIMAL:
+                    return 422, {"message": "Harga modal terlalu besar. Maksimum adalah 99.999.999,99"}
+                if 'harga_jual' in update_data and Decimal(update_data['harga_jual']) > MAX_DECIMAL:
+                    return 422, {"message": "Harga jual terlalu besar. Maksimum adalah 99.999.999,99"}
+        except InvalidOperation:
+            return 422, {"message": "Format harga tidak valid."}
         
         # Handle kategori separately as it needs special processing
         if 'kategori' in update_data:
