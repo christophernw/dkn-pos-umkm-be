@@ -1,5 +1,5 @@
 from datetime import datetime
-from pydantic import BaseModel, EmailStr, constr
+from pydantic import BaseModel
 
 class SessionData(BaseModel):
     user: dict
@@ -45,10 +45,4 @@ class DeleteInvitationResponse(BaseModel):
     message: str
 
 class DeleteInvitationErrorResponse(BaseModel):
-    message: str
-
-class LogoutRequest(BaseModel):
-    refresh: str
-
-class LogoutResponse(BaseModel):
     message: str
