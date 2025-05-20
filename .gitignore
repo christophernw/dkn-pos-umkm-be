@@ -164,3 +164,4 @@ pplbackend/config/local.py
 
 # Images
 media/*
+staticfiles/*
