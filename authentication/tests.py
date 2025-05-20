@@ -432,4 +432,167 @@ class AuthAPITests(TestCase):
         self.assertEqual(data["id"], inactive_user.id)
         self.assertFalse(data["is_active"])
 
-   
+    # NEW TESTS FOR update_user_profile
+    def test_update_user_profile_email_only(self):
+        """Test updating only email (positive case)"""
+        update_data = {"email": "newemail@example.com"}
+        response = self.client.put(f"/users/{self.user.id}", json=update_data)
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["email"], "newemail@example.com")
+        self.assertEqual(data["name"], "testuser")  # Should remain unchanged
+        
+        # Verify in database
+        updated_user = User.objects.get(id=self.user.id)
+        self.assertEqual(updated_user.email, "newemail@example.com")
+
+    def test_update_user_profile_name_only(self):
+        """Test updating only username (positive case)"""
+        update_data = {"name": "newusername"}
+        response = self.client.put(f"/users/{self.user.id}", json=update_data)
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["name"], "newusername")
+        self.assertEqual(data["email"], "test@example.com")  # Should remain unchanged
+        
+        # Verify in database
+        updated_user = User.objects.get(id=self.user.id)
+        self.assertEqual(updated_user.username, "newusername")
+
+    def test_update_user_profile_both_fields(self):
+        """Test updating both email and username (positive case)"""
+        update_data = {
+            "email": "updated@example.com",
+            "name": "updateduser"
+        }
+        response = self.client.put(f"/users/{self.user.id}", json=update_data)
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["email"], "updated@example.com")
+        self.assertEqual(data["name"], "updateduser")
+        
+        # Verify in database
+        updated_user = User.objects.get(id=self.user.id)
+        self.assertEqual(updated_user.email, "updated@example.com")
+        self.assertEqual(updated_user.username, "updateduser")
+
+    def test_update_user_profile_empty_payload(self):
+        """Test updating with empty payload (edge case)"""
+        response = self.client.put(f"/users/{self.user.id}", json={})
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        # Values should remain unchanged
+        self.assertEqual(data["email"], "test@example.com")
+        self.assertEqual(data["name"], "testuser")
+
+    def test_update_user_profile_user_not_found(self):
+        """Test updating non-existent user (negative case)"""
+        update_data = {"email": "new@example.com"}
+        response = self.client.put("/users/9999", json=update_data)
+        
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()["error"], "User not found")
+
+    def test_update_user_profile_duplicate_email(self):
+        """Test updating with email that already exists (negative case)"""
+        # Create another user
+        other_user = User.objects.create_user(
+            username="otheruser", 
+            email="other@example.com"
+        )
+        
+        # Try to update self.user with other_user's email
+        update_data = {"email": "other@example.com"}
+        response = self.client.put(f"/users/{self.user.id}", json=update_data)
+        
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json()["error"], "Email already exists for another user")
+
+    def test_update_user_profile_duplicate_username(self):
+        """Test updating with username that already exists (negative case)"""
+        # Create another user
+        other_user = User.objects.create_user(
+            username="otheruser", 
+            email="other@example.com"
+        )
+        
+        # Try to update self.user with other_user's username
+        update_data = {"name": "otheruser"}
+        response = self.client.put(f"/users/{self.user.id}", json=update_data)
+        
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json()["error"], "Username already exists for another user")
+
+    def test_update_user_profile_same_email(self):
+        """Test updating with same email (should work - edge case)"""
+        update_data = {"email": "test@example.com"}  # Same as current
+        response = self.client.put(f"/users/{self.user.id}", json=update_data)
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["email"], "test@example.com")
+
+    def test_update_user_profile_same_username(self):
+        """Test updating with same username (should work - edge case)"""
+        update_data = {"name": "testuser"}  # Same as current
+        response = self.client.put(f"/users/{self.user.id}", json=update_data)
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["name"], "testuser")
+
+    def test_update_user_request_validation(self):
+        """Test UpdateUserRequest schema validation"""
+        # Test with invalid email format
+        with self.assertRaises(ValidationError):
+            UpdateUserRequest(email="invalid-email-format")
+        
+        # Test with empty name
+        with self.assertRaises(ValidationError):
+            UpdateUserRequest(name="")
+        
+        # Test with valid data
+        valid_request = UpdateUserRequest(email="valid@example.com", name="validname")
+        self.assertEqual(valid_request.email, "valid@example.com")
+        self.assertEqual(valid_request.name, "validname")
+        
+        # Test with None values (should be valid)
+        none_request = UpdateUserRequest(email=None, name=None)
+        self.assertIsNone(none_request.email)
+        self.assertIsNone(none_request.name)
+
+    def test_update_user_request_invalid_email_validation(self):
+        """Test UpdateUserRequest with various invalid email formats"""
+        invalid_emails = [
+            "plainaddress",
+            "@missingdomain.com",
+            "missing@.com",
+            "missing@domain",
+            "spaces @domain.com",
+            "double@@domain.com",
+            "trailingdot@domain.com.",
+        ]
+        
+        for invalid_email in invalid_emails:
+            with self.assertRaises(ValidationError):
+                UpdateUserRequest(email=invalid_email)
+
+    def test_update_user_request_valid_email_validation(self):
+        """Test UpdateUserRequest with valid email formats"""
+        valid_emails = [
+            "test@example.com",
+            "user.name@domain.co.uk",
+            "first+last@subdomain.example.org",
+            "test123@test-domain.com",
+        ]
+        
+        for valid_email in valid_emails:
+            # Should not raise ValidationError
+            request = UpdateUserRequest(email=valid_email)
+            self.assertEqual(request.email, valid_email)
+
+    
