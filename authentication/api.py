@@ -16,7 +16,7 @@ from .services import AuthService, BPRService, UserService, InvitationService
 
 router = Router()
 
-
+# authentication/api.py
 @router.post("/process-session")
 def process_session(request, session_data: SessionData):
     return AuthService.process_user_session(session_data.user)
