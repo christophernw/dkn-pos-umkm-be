@@ -98,6 +98,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'rest_framework',
     'silk',
+    'core',
 ]
 
 MIDDLEWARE = [
@@ -246,3 +247,12 @@ SECURE_BROWSER_XSS_FILTER = True
 X_FRAME_OPTIONS = 'DENY'
 SECURE_CONTENT_TYPE_NOSNIFF = True
 
+# Add a setting for seeding logs
+SEED_LOGS_DIR = os.path.join(BASE_DIR, 'seed_logs')
+os.makedirs(SEED_LOGS_DIR, exist_ok=True)
+
+# Add a setting for controlling seeding behavior
+# This can be overridden in environment variables
+SEEDING_ENABLED = os.environ.get('SEEDING_ENABLED', 'False').lower() == 'true'
+SEEDING_MODE = os.environ.get('SEEDING_MODE', 'local')  # local, server, or production
+SEEDING_EMAIL = os.environ.get('SEEDING_EMAIL', 'demo@example.com')

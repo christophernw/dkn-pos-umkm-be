@@ -50,16 +50,19 @@ jobs:
           echo "PORT=8000" >> $GITHUB_ENV
           echo "DB_PORT_HOST=5432" >> $GITHUB_ENV
           echo "SENTRY_DSN_VAR=SENTRY_DSN_PROD" >> $GITHUB_ENV
+          echo "SEEDING_MODE=production" >> $GITHUB_ENV
         elif [ "${{ github.ref }}" == "refs/heads/staging" ] || [ "${{ github.base_ref }}" == "staging" ]; then
           echo "BRANCH=staging" >> $GITHUB_ENV
           echo "PORT=8001" >> $GITHUB_ENV
           echo "DB_PORT_HOST=5433" >> $GITHUB_ENV
           echo "SENTRY_DSN_VAR=SENTRY_DSN_STAGING" >> $GITHUB_ENV
+          echo "SEEDING_MODE=server" >> $GITHUB_ENV
         else
           echo "BRANCH=dev" >> $GITHUB_ENV
           echo "PORT=8002" >> $GITHUB_ENV
           echo "DB_PORT_HOST=5434" >> $GITHUB_ENV
           echo "SENTRY_DSN_VAR=SENTRY_DSN_DEV" >> $GITHUB_ENV
+          echo "SEEDING_MODE=local" >> $GITHUB_ENV
         fi
 
     # Update this step to tag with version
@@ -90,7 +93,7 @@ jobs:
         sshpass -p "${{ secrets.SERVER_PASSWORD }}" scp -o StrictHostKeyChecking=no docker-compose.prod.${{ env.BRANCH }}.yml ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }}:~/django-be-${{ env.BRANCH }}/docker-compose.yml
         sshpass -p "${{ secrets.SERVER_PASSWORD }}" scp -o StrictHostKeyChecking=no docker-compose.db.${{ env.BRANCH }}.yml ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }}:~/postgres-db-${{ env.BRANCH }}/docker-compose.yml
 
-    # Update the deploy step to pass VERSION to the environment
+    # Update the deploy step to pass VERSION to the environment and run database seeding
     - name: Deploy database and web application
       run: |
         sshpass -p "${{ secrets.SERVER_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << EOF
@@ -114,4 +117,14 @@ jobs:
           docker-compose --env-file .env pull
           docker-compose --env-file .env down --remove-orphans
           docker-compose --env-file .env up -d
+          
+          # Wait for the database and application to be ready
+          sleep 10
+          
+          # Run database migrations and seeding
+          docker-compose --env-file .env exec -T web python manage.py migrate
+          
+          # Run database seeding with appropriate mode based on environment
+          # Use demo@example.com as the default user for seeding
+          docker-compose --env-file .env exec -T web python manage.py seed_database --mode=${{ env.SEEDING_MODE }} --email=demo@example.com
         EOF
