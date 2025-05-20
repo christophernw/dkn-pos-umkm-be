@@ -3,10 +3,12 @@ name: Deploy Django App
 on:
   push:
     branches:
-      - "**"
+      - main
+      - staging
   pull_request:
     branches:
-      - "**"
+      - main
+      - staging
 
 jobs:
   deploy:
@@ -50,5 +52,5 @@ jobs:
           docker pull christophernw/dkn-pos-umkm-be:${{ env.BRANCH }}
           docker stop ${{ env.CONTAINER_NAME }} || true
           docker rm ${{ env.CONTAINER_NAME }} || true
-          docker run -d --name ${{ env.CONTAINER_NAME }} -p ${{ env.PORT }}:8000 christophernw/dkn-pos-umkm-be:${{ env.BRANCH }}
+          docker run -d --name ${{ env.CONTAINER_NAME }} -p ${{ env.PORT }}:8000 christophernw/dkn-pos-umkm-be:${{ env.BRANCH }} bash -c "python manage.py migrate && gunicorn backend.wsgi:application --bind 0.0.0.0:8000"
         EOF
