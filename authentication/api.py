@@ -1,16 +1,7 @@
-from datetime import timedelta
-from django.shortcuts import get_object_or_404
-from django.utils.timezone import now
-from django.conf import settings
-from django.db.utils import IntegrityError
 from silk.profiling.profiler import silk_profile
 
-import jwt
 from ninja import Router
-from ninja_jwt.tokens import RefreshToken, AccessToken
-from ninja_jwt.exceptions import TokenError
 
-from authentication.models import Invitation, Toko, User
 from produk.api import AuthBearer
 from .schemas import (
     RemoveUserRequest,
@@ -18,240 +9,103 @@ from .schemas import (
     RefreshTokenRequest,
     TokenValidationRequest,
     InvitationRequest,
+    LogoutRequest,
+    LogoutResponse,
 )
+from .services import AuthService, BPRService, UserService, InvitationService
 
 router = Router()
 
 
 @router.post("/process-session")
 def process_session(request, session_data: SessionData):
-    user_data = session_data.user
-    email = user_data.get("email")
-
-    user, created = User.objects.get_or_create(
-        email=email,
-        defaults={
-            "username": user_data.get("name"),
-            "is_active": True,
-        },
-    )
-
-    if created:
-        toko = Toko.objects.create()
-        user.toko = toko
-        user.save()
-
-    refresh = RefreshToken.for_user(user)
-
-    return {
-        "message": "Login successful",
-        "refresh": str(refresh),
-        "access": str(refresh.access_token),
-        "user": {
-            "id": user.id,
-            "email": user.email,
-            "name": user.username,
-            "role": user.role,
-            "toko_id": user.toko.id if user.toko else None,
-        },
-    }
+    return AuthService.process_user_session(session_data.user)
 
 
 @router.post("/refresh-token", response={200: dict, 401: dict})
 def refresh_token(request, refresh_data: RefreshTokenRequest):
-    try:
-        refresh = RefreshToken(refresh_data.refresh)
-        return {"access": str(refresh.access_token), "refresh": str(refresh)}
-    except TokenError as e:
-        return 401, {"error": f"Invalid refresh token: {str(e)}"}
+    result, error = AuthService.refresh_token(refresh_data.refresh)
+    if error:
+        return 401, {"error": error}
+    return result
 
 
 @router.post("/validate-token")
 def validate_token(request, token_data: TokenValidationRequest):
-    try:
-        AccessToken(token_data.token)
-        return {"valid": True}
-    except TokenError:
-        return {"valid": False}
+    return AuthService.validate_token(token_data.token)
 
 
 @router.get("/get-users", response={200: list[dict], 401: dict}, auth=AuthBearer())
 @silk_profile(name='Get Users Profilling')
 def get_users(request):
-    user = get_object_or_404(User, id=request.auth)
+    return UserService.get_users_for_toko(request.auth)
 
-    users_qs = (
-        User.objects.select_related("toko").filter(toko=user.toko)
-        if user.toko
-        else User.objects.select_related("toko").filter(id=user.id)
-    )
-
-    role_priority = {"Pemilik": 0, "Pengelola": 1, "Karyawan": 2}
-
-    users_data = sorted(
-        [
-            {
-                "id": u.id,
-                "name": u.username,
-                "email": u.email,
-                "role": u.role,
-                "toko_id": u.toko.id if u.toko else None,
-            }
-            for u in users_qs
-        ],
-        key=lambda u: role_priority.get(u["role"], 3),
-    )
-
-    return users_data
 
 @router.post("/send-invitation", response={200: dict, 400: dict}, auth=AuthBearer())
 def send_invitation(request, payload: InvitationRequest):
-    user = get_object_or_404(User, id=request.auth)
-
-    if user.role not in ["Pemilik", "Pengelola"]:
-        return 400, {"error": "Hanya Pemilik atau Pengelola yang dapat mengirim undangan."}
-    if not user.toko:
-        return 400, {"error": "User doesn't have a toko."}
-
-    email = payload.email.strip().lower()
-    name = payload.name.strip()
-    role = payload.role.strip()
-
-    if User.objects.filter(email=email, toko=user.toko).exists():
-        return 400, {"error": "User sudah ada di toko ini."}
-    if Invitation.objects.filter(email=email, toko=user.toko).exists():
-        return 400, {"error": "Undangan sudah dikirim ke email ini."}
-
-    expiration = now() + timedelta(days=1)
-    token_payload = {
-        "email": email,
-        "name": name,
-        "role": role,
-        "toko_id": user.toko.id,
-        "exp": expiration,
-    }
-    token = jwt.encode(token_payload, settings.SECRET_KEY, algorithm="HS256")
-
-    try:
-        Invitation.objects.create(
-            email=email,
-            name=name,
-            role=role,
-            toko=user.toko,
-            created_by=user,
-            token=token,
-            expires_at=expiration,
-        )
-        return 200, {"message": "Invitation sent", "token": token}
-    except IntegrityError:
-        return 400, {"error": "Invitation already exists."}
+    result, error = InvitationService.send_invitation(
+        request.auth, 
+        payload.email, 
+        payload.name, 
+        payload.role
+    )
+    if error:
+        return 400, {"error": error}
+    return 200, result
 
 
 @router.post("/validate-invitation")
 def validate_invitation(request, payload: TokenValidationRequest):
-    try:
-        decoded = jwt.decode(payload.token, settings.SECRET_KEY, algorithms=["HS256"])
-        email = decoded.get("email")
-        name = decoded.get("name")
-        role = decoded.get("role")
-        toko_id = decoded.get("toko_id")
-
-        invitation = Invitation.objects.filter(email=email, token=payload.token).first()
-        if not invitation:
-            return {"valid": False, "error": "Invalid invitation"}
-
-        toko = get_object_or_404(Toko, id=toko_id)
-
-        user, created = User.objects.get_or_create(
-            email=email, 
-            defaults={
-                "username": name, 
-                "role": role,
-                "is_active": True  
-            }
-        )
-        
-        if not created and not user.is_active:
-            return {"valid": False, "error": "User account is inactive. Please contact administrator."}
-            
-        user.role = role
-        user.username = name
-        user.toko = toko
-        user.save()
-
-        invitation.delete()
-
-        return {"valid": True, "message": "User successfully registered"}
-    except jwt.ExpiredSignatureError:
-        return {"valid": False, "error": "Token expired"}
-    except jwt.DecodeError:
-        return {"valid": False, "error": "Invalid token"}
+    return InvitationService.validate_invitation(payload.token)
 
 
 @router.post("/remove-user-from-toko", response={200: dict, 400: dict, 403: dict}, auth=AuthBearer())
 def remove_user_from_toko(request, payload: RemoveUserRequest):
-    requester = get_object_or_404(User, id=request.auth)
-
-    if requester.role != "Pemilik":
-        return 403, {"error": "Only Pemilik can remove users from toko"}
-
-    user_to_remove = get_object_or_404(User, id=payload.user_id)
-
-    if not requester.toko or requester.toko != user_to_remove.toko:
-        return 400, {"error": "User is not in your toko"}
-    if requester.id == user_to_remove.id:
-        return 400, {"error": "Cannot remove yourself from your own toko"}
-
-    user_to_remove.toko = Toko.objects.create()
-    user_to_remove.role = "Pemilik"
-    user_to_remove.save()
-
-    return {
-        "message": f"User {user_to_remove.username} removed from toko",
-        "user": {
-            "id": user_to_remove.id,
-            "name": user_to_remove.username,
-            "email": user_to_remove.email,
-            "role": user_to_remove.role,
-        },
-    }
+    result, error = UserService.remove_user_from_toko(request.auth, payload.user_id)
+    if not result:
+        status_code = 403 if "Only Pemilik" in error else 400
+        return status_code, {"error": error}
+    return result
 
 
 @router.get("/pending-invitations", response={200: list[dict], 404: dict}, auth=AuthBearer())
 @silk_profile(name='Get Pending Invitatoin Users Profilling')
 def get_pending_invitations(request):
-    user = get_object_or_404(User, id=request.auth)
-
-    if not user.toko:
-        return 404, {"message": "User doesn't have a toko"}
-
-    invitations = Invitation.objects.select_related("created_by").filter(toko=user.toko)
-
-    return 200, [
-        {
-            "id": invitation.id,
-            "email": invitation.email,
-            "name": invitation.name,
-            "role": invitation.role,
-            "created_by": invitation.created_by.username,
-            "created_at": invitation.expires_at - timedelta(days=1),
-            "expires_at": invitation.expires_at,
-        }
-        for invitation in invitations
-    ]
+    result, error = InvitationService.get_pending_invitations(request.auth)
+    if error:
+        return 404, {"message": error}
+    return 200, result
 
 
 @router.delete("/delete-invitation/{invitation_id}", response={200: dict, 404: dict, 403: dict}, auth=AuthBearer())
 def delete_invitation(request, invitation_id: int):
-    user = get_object_or_404(User, id=request.auth)
+    result, error = InvitationService.delete_invitation(request.auth, invitation_id)
+    if not result:
+        status_code = 403 if "permission" in error else 404
+        return status_code, {"message": error}
+    return 200, result
 
-    if not user.toko:
-        return 404, {"message": "User doesn't have a toko"}
+@router.post("/logout", response={200: LogoutResponse, 401: dict})
+def logout(request, logout_data: LogoutRequest):
+    """Logout a user by blacklisting their refresh token."""
+    result, error = AuthService.logout(logout_data.refresh)
+    if error:
+        return 401, {"error": error}
+    return 200, result
 
-    invitation = get_object_or_404(Invitation, id=invitation_id)
+@router.get("/bpr/shops", response={200: list[dict], 403: dict}, auth=AuthBearer())
+def get_all_shops_for_bpr(request):
+    shops, error = BPRService.get_all_shops(request.auth)
+    if error:
+        return 403, {"error": error}
+    return 200, shops
 
-    if invitation.toko != user.toko:
-        return 403, {"message": "You don't have permission to delete this invitation"}
 
-    invitation.delete()
-    return 200, {"message": "Invitation deleted successfully"}
+@router.get("/bpr/shop/{shop_id}", response={200: dict, 403: dict, 404: dict}, auth=AuthBearer())
+def get_shop_info_for_bpr(request, shop_id: int):
+    shop_info, error = BPRService.get_shop_info(request.auth, shop_id)
+    if error == "Only BPR users can access this endpoint":
+        return 403, {"error": error}
+    elif error == "Shop not found":
+        return 404, {"error": error}
+    return 200, shop_info

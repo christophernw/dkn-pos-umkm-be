@@ -46,3 +46,9 @@ class DeleteInvitationResponse(BaseModel):
 
 class DeleteInvitationErrorResponse(BaseModel):
     message: str
+
+class LogoutRequest(BaseModel):
+    refresh: str
+
+class LogoutResponse(BaseModel):
+    message: str

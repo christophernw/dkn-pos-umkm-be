@@ -27,6 +27,13 @@ class UserRepository:
         user.save()
         return user
 
+    @staticmethod
+    def get_owner_of_toko(toko):
+        return User.objects.filter(toko=toko, role="Pemilik").first()
+
+    @staticmethod
+    def count_users_in_toko(toko):
+        return User.objects.filter(toko=toko).count()
 
 class TokoRepository:
     @staticmethod
@@ -36,6 +43,10 @@ class TokoRepository:
     @staticmethod
     def create_toko():
         return Toko.objects.create()
+    
+    @staticmethod
+    def get_all_toko():
+        return Toko.objects.all()
 
 
 class InvitationRepository:
