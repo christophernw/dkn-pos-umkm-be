@@ -1,6 +1,4 @@
 from silk.profiling.profiler import silk_profile
-from django.views.decorators.csrf import csrf_exempt
-from ninja.decorators import http_exempt
 from ninja import Router
 
 from produk.api import AuthBearer
