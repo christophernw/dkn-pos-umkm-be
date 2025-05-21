@@ -132,9 +132,6 @@ class UserService:
             return None, "Only Pemilik can remove users from toko"
 
         user_to_remove = UserRepository.get_user_by_id(user_id_to_remove)
-        # Tambahkan ini
-        TokenRepository.blacklist_all_tokens_for_user(user_to_remove)
-
 
         if not requester.toko or requester.toko != user_to_remove.toko:
             return None, "User is not in your toko"
