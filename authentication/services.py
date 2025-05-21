@@ -12,11 +12,6 @@ class AuthService:
     @staticmethod
     def process_user_session(user_data):
         email = user_data.get("email")
-        cache_key = f"user_session_{email}"
-
-        cached_user = cache.get(cache_key)
-        if cached_user:
-            return cached_user
 
         user, created = UserRepository.get_or_create_user(
             email=email,
@@ -48,8 +43,6 @@ class AuthService:
                 "is_bpr": is_bpr,
             },
         }
-
-        cache.set(cache_key, response_data, timeout=3600)
 
         return response_data
 
