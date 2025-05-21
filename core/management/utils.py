@@ -308,24 +308,46 @@ def generate_transaction_data(
 
 
 def save_rollback_info(seed_id, file_path, data):
-    """Save rollback information to a file"""
-    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+    """Save rollback information to a file with enhanced entity tracking"""
+    try:
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
-    # Convert any non-serializable objects to strings
-    serializable_data = {}
-    for key, value in data.items():
-        if isinstance(value, (datetime, Decimal)):
-            serializable_data[key] = str(value)
-        else:
-            serializable_data[key] = value
+        # Convert any non-serializable objects to strings
+        serializable_data = {}
+        for key, value in data.items():
+            if isinstance(value, (datetime, Decimal)):
+                serializable_data[key] = str(value)
+            else:
+                serializable_data[key] = value
+        
+        # Enhanced structure for tracking created entities
+        entity_data = {
+            "created_entities": {
+                "transactions": [],
+                "transaction_items": [],
+                "products": [],
+                "categories": [],
+                "units": [],
+            }
+        }
+        
+        # If entity tracking data is provided, include it
+        if "created_entities" in data:
+            entity_data["created_entities"] = data["created_entities"]
+        
+        # Merge the regular data with entity tracking data
+        serializable_data.update(entity_data)
 
-    with open(file_path, "w") as f:
-        json.dump(
-            {
-                "seed_id": seed_id,
-                "timestamp": timezone.now().isoformat(),
-                "data": serializable_data,
-            },
-            f,
-            indent=2,
-        )
+        with open(file_path, "w") as f:
+            json.dump(
+                {
+                    "seed_id": seed_id,
+                    "timestamp": timezone.now().isoformat(),
+                    "data": serializable_data,
+                },
+                f,
+                indent=2,
+            )
+        return True, None
+    except Exception as e:
+        return False, str(e)

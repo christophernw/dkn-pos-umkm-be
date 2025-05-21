@@ -48,8 +48,9 @@ class Command(BaseCommand):
         rollback_id = options.get("rollback_id")
 
         if mode == "production" and rollback_id:
-            self.rollback_seeding(rollback_id)
-            return
+            return self.rollback_seeding(rollback_id)
+        
+        # Rest of the handle method continues as before
 
         if not email:
             if mode == "production":
@@ -58,6 +59,9 @@ class Command(BaseCommand):
 
         # Generate a unique seed ID for tracking and potential rollback
         seed_id = f"seed_{timezone.now().strftime('%Y%m%d%H%M%S')}"
+        
+        # Print the seed ID for easy reference
+        self.stdout.write(self.style.SUCCESS(f"Generated seed ID: {seed_id}"))
 
         if clean:
             self.stdout.write(self.style.WARNING("Cleaning existing data..."))
@@ -815,20 +819,30 @@ class Command(BaseCommand):
             )
 
     def seed_production_data(self, user, toko, seed_id):
-        """Seed production data with rollback capability"""
+        """Seed production data with enhanced rollback capability"""
         self.stdout.write(
             self.style.WARNING("Seeding production data with rollback capability...")
         )
 
-        # This method is similar to seed_defined_data but with more
-        # careful transaction handling and logging for rollback
-
         # Create rollback log file
-        log_dir = os.path.join(settings.BASE_DIR, "seed_logs")
+        log_dir = settings.SEED_LOGS_DIR
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, f"rollback_{seed_id}.log")
+        json_path = os.path.join(log_dir, f"rollback_{seed_id}.json")
+        
+        # Debug log creation
+        self.stdout.write(self.style.SUCCESS(f"Creating log file at: {log_path}"))
+        self.stdout.write(self.style.SUCCESS(f"Creating JSON file at: {json_path}"))
+
+        # Initialize entity tracking containers
+        created_categories = []
+        created_products = []
+        created_transactions = []
+        created_transaction_items = []
+        created_units = []
 
         with open(log_path, "w") as log_file:
+            # Write metadata
             log_file.write(f"SEED_ID: {seed_id}\n")
             log_file.write(f"USER_EMAIL: {user.email}\n")
             log_file.write(f"TOKO_ID: {toko.id}\n")
@@ -860,12 +874,16 @@ class Command(BaseCommand):
             ]:
                 cat = KategoriProduk.objects.create(nama=cat_name, toko=toko)
                 categories[cat_name] = cat
+                # Track this category
+                created_categories.append({"id": cat.id, "name": cat_name})
                 log_file.write(f"CREATED_CATEGORY: {cat.id} {cat_name}\n")
 
             # Create units
             for unit in ["Pcs", "Box", "Kg", "Lusin", "Pack", "Botol", "Karton"]:
                 obj, created = Satuan.objects.get_or_create(nama=unit)
                 if created:
+                    # Track only newly created units
+                    created_units.append({"id": obj.id, "name": unit})
                     log_file.write(f"CREATED_UNIT: {obj.id} {unit}\n")
 
             # Create products
@@ -1005,6 +1023,12 @@ class Command(BaseCommand):
                     toko=toko,
                 )
                 products.append(product)
+                # Track created product
+                created_products.append({
+                    "id": product.id,
+                    "name": product.nama,
+                    "category_id": product.kategori.id
+                })
                 log_file.write(f"CREATED_PRODUCT: {product.id} {product.nama}\n")
 
             # Create transactions with similar patterns to defined_data
@@ -1028,6 +1052,13 @@ class Command(BaseCommand):
                     created_at=timezone.now()
                     - timedelta(days=i % 15, hours=random.randint(1, 12)),
                 )
+                
+                # Track transaction
+                created_transactions.append({
+                    "id": transaksi.id,
+                    "type": "Pemasukan",
+                    "category": "Penjualan Barang"
+                })
 
                 log_file.write(
                     f"CREATED_TRANSACTION: {transaksi.id} Pemasukan Penjualan_Barang\n"
@@ -1043,6 +1074,14 @@ class Command(BaseCommand):
                         harga_jual_saat_transaksi=product.harga_jual,
                         harga_modal_saat_transaksi=product.harga_modal,
                     )
+                    
+                    # Track transaction item
+                    created_transaction_items.append({
+                        "id": item.id,
+                        "transaction_id": transaksi.id,
+                        "product_id": product.id,
+                        "quantity": quantity
+                    })
 
                     log_file.write(
                         f"CREATED_TRANSACTION_ITEM: {item.id} {transaksi.id} {product.id} {quantity}\n"
@@ -1086,6 +1125,13 @@ class Command(BaseCommand):
                     created_at=timezone.now()
                     - timedelta(days=i % 15, hours=random.randint(1, 12)),
                 )
+                
+                # Track transaction
+                created_transactions.append({
+                    "id": transaksi.id,
+                    "type": "Pengeluaran",
+                    "category": "Pembelian Stok"
+                })
 
                 log_file.write(
                     f"CREATED_TRANSACTION: {transaksi.id} Pengeluaran Pembelian_Stok\n"
@@ -1098,6 +1144,14 @@ class Command(BaseCommand):
                     harga_jual_saat_transaksi=0,
                     harga_modal_saat_transaksi=product.harga_modal,
                 )
+                
+                # Track transaction item
+                created_transaction_items.append({
+                    "id": item.id,
+                    "transaction_id": transaksi.id,
+                    "product_id": product.id,
+                    "quantity": quantity
+                })
 
                 log_file.write(
                     f"CREATED_TRANSACTION_ITEM: {item.id} {transaksi.id} {product.id} {quantity}\n"
@@ -1142,6 +1196,13 @@ class Command(BaseCommand):
                         days=random.randint(1, 15), hours=random.randint(1, 12)
                     ),
                 )
+                
+                # Track transaction
+                created_transactions.append({
+                    "id": transaksi.id,
+                    "type": transaction_type,
+                    "category": category
+                })
 
                 log_file.write(
                     f"CREATED_TRANSACTION: {transaksi.id} {transaction_type} {category}\n"
@@ -1158,22 +1219,73 @@ class Command(BaseCommand):
                 f"AFTER_TRANSACTIONS: {Transaksi.objects.filter(toko=toko).count()}\n"
             )
 
-        self.stdout.write(
-            self.style.SUCCESS(
-                f"Production data seeded with rollback log at: {log_path}"
+        # Create detailed rollback file
+        try:
+            with open(log_path, "w") as log_file:
+                # Write metadata
+                log_file.write(f"SEED_ID: {seed_id}\n")
+                log_file.write(f"USER_EMAIL: {user.email}\n")
+                log_file.write(f"TOKO_ID: {toko.id}\n")
+                log_file.write(f"TIMESTAMP: {timezone.now().isoformat()}\n")
+                log_file.write("---\n")
+                
+                # Rest of the log writing code...
+            
+            # Save detailed rollback info to JSON file
+            try:
+                from core.management.utils import save_rollback_info
+                rollback_data = {
+                    "user_email": user.email,
+                    "toko_id": toko.id,
+                    "created_entities": {
+                        "categories": created_categories,
+                        "products": created_products,
+                        "transactions": created_transactions,
+                        "transaction_items": created_transaction_items,
+                        "units": created_units,
+                    }
+                }
+                save_result, save_error = save_rollback_info(seed_id, json_path, rollback_data)
+                if save_result:
+                    self.stdout.write(self.style.SUCCESS(f"JSON rollback data saved to: {json_path}"))
+                else:
+                    self.stdout.write(self.style.ERROR(f"Error saving JSON rollback data: {save_error}"))
+            except Exception as e:
+                self.stdout.write(self.style.ERROR(f"Error saving JSON rollback data: {str(e)}"))
+                
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f"Production data seeded with rollback log at: {log_path}"
+                )
             )
-        )
+            
+        except IOError as e:
+            self.stdout.write(
+                self.style.ERROR(
+                    f"Error writing to rollback log: {str(e)}"
+                )
+            )
 
     def rollback_seeding(self, seed_id):
-        """Rollback a previous seeding operation"""
+        """Rollback a previous seeding operation using detailed entity logs"""
         self.stdout.write(self.style.WARNING(f"Rolling back seed operation: {seed_id}"))
 
         # Find the rollback log file
-        log_dir = os.path.join(settings.BASE_DIR, "seed_logs")
+        log_dir = settings.SEED_LOGS_DIR
         log_path = os.path.join(log_dir, f"rollback_{seed_id}.log")
+        
+        self.stdout.write(self.style.SUCCESS(f"Looking for rollback log at: {log_path}"))
 
         if not os.path.exists(log_path):
-            raise CommandError(f"Rollback log not found: {log_path}")
+            # Try checking for alternative log path formats
+            alt_log_path = os.path.join(log_dir, f"rollback_{seed_id.replace('seed_', '')}.log")
+            self.stdout.write(self.style.WARNING(f"Log not found. Checking alternative path: {alt_log_path}"))
+            
+            if os.path.exists(alt_log_path):
+                self.stdout.write(self.style.SUCCESS(f"Found alternative log at: {alt_log_path}"))
+                log_path = alt_log_path
+            else:
+                raise CommandError(f"Rollback log not found: {log_path} or {alt_log_path}")
 
         with transaction.atomic():
             # Parse the log file
@@ -1182,10 +1294,33 @@ class Command(BaseCommand):
 
                 # Extract basic info
                 metadata = {}
-                for line in lines[:6]:  # First few lines are metadata
-                    if ": " in line:
+                created_entities = {
+                    "CREATED_TRANSACTION": [],
+                    "CREATED_TRANSACTION_ITEM": [],
+                    "CREATED_PRODUCT": [],
+                    "CREATED_CATEGORY": [],
+                    "CREATED_UNIT": [],
+                }
+                
+                # Parse each line of the log file
+                for line in lines:
+                    line = line.strip()
+                    
+                    # Extract metadata
+                    if ": " in line and not any(prefix in line for prefix in created_entities.keys()):
                         key, value = line.strip().split(": ", 1)
                         metadata[key] = value
+                        continue
+                        
+                    # Extract created entities
+                    for entity_type in created_entities.keys():
+                        if line.startswith(entity_type):
+                            # Extract the ID from the line
+                            parts = line[len(entity_type) + 1:].strip().split(" ", 1)
+                            if len(parts) > 0:
+                                entity_id = parts[0]
+                                created_entities[entity_type].append(entity_id)
+                            break
 
                 # Check if we have the necessary metadata
                 if "USER_EMAIL" not in metadata or "TOKO_ID" not in metadata:
@@ -1201,25 +1336,104 @@ class Command(BaseCommand):
                 except (User.DoesNotExist, Toko.DoesNotExist):
                     raise CommandError(f"User {user_email} or Toko {toko_id} not found")
 
-                # Delete the created data in reverse order
-                # This is a simplified approach - in a real system you might want more granular rollback
-                # based on the specific IDs in the log file
-
-                # 1. Remove transactions and items
-                TransaksiItem.objects.filter(transaksi__toko=toko).delete()
-                Transaksi.objects.filter(toko=toko).delete()
-
-                # 2. Remove products
-                Produk.objects.filter(toko=toko).delete()
-
-                # 3. Remove categories
-                KategoriProduk.objects.filter(toko=toko).delete()
-
-                # 4. Do not remove units as they are global
-
+                self.stdout.write(self.style.SUCCESS(f"Found toko with ID: {toko_id} for user: {user_email}"))
+                
+                # Delete the created data in reverse order (specific entities)
+                transaction_count = 0
+                transaction_item_count = 0
+                product_count = 0
+                category_count = 0
+                unit_count = 0
+                
+                # Try precise deletion first based on stored IDs
+                if created_entities["CREATED_TRANSACTION_ITEM"]:
+                    for item_id in created_entities["CREATED_TRANSACTION_ITEM"]:
+                        try:
+                            # Try to extract just the ID if there are additional parts
+                            if " " in item_id:
+                                item_id = item_id.split(" ")[0]
+                            TransaksiItem.objects.filter(id=item_id).delete()
+                            transaction_item_count += 1
+                        except Exception as e:
+                            self.stdout.write(self.style.WARNING(f"Error deleting transaction item {item_id}: {str(e)}"))
+                
+                if created_entities["CREATED_TRANSACTION"]:
+                    for transaction_id in created_entities["CREATED_TRANSACTION"]:
+                        try:
+                            # Try to extract just the ID if there are additional parts
+                            if " " in transaction_id:
+                                transaction_id = transaction_id.split(" ")[0]
+                            Transaksi.objects.filter(id=transaction_id).delete()
+                            transaction_count += 1
+                        except Exception as e:
+                            self.stdout.write(self.style.WARNING(f"Error deleting transaction {transaction_id}: {str(e)}"))
+                
+                if created_entities["CREATED_PRODUCT"]:
+                    for product_id in created_entities["CREATED_PRODUCT"]:
+                        try:
+                            # Try to extract just the ID if there are additional parts
+                            if " " in product_id:
+                                product_id = product_id.split(" ")[0]
+                            Produk.objects.filter(id=product_id).delete()
+                            product_count += 1
+                        except Exception as e:
+                            self.stdout.write(self.style.WARNING(f"Error deleting product {product_id}: {str(e)}"))
+                
+                if created_entities["CREATED_CATEGORY"]:
+                    for category_id in created_entities["CREATED_CATEGORY"]:
+                        try:
+                            # Try to extract just the ID if there are additional parts
+                            if " " in category_id:
+                                category_id = category_id.split(" ")[0]
+                            KategoriProduk.objects.filter(id=category_id).delete()
+                            category_count += 1
+                        except Exception as e:
+                            self.stdout.write(self.style.WARNING(f"Error deleting category {category_id}: {str(e)}"))
+                
+                if created_entities["CREATED_UNIT"]:
+                    for unit_id in created_entities["CREATED_UNIT"]:
+                        try:
+                            # Try to extract just the ID if there are additional parts
+                            if " " in unit_id:
+                                unit_id = unit_id.split(" ")[0]
+                            Satuan.objects.filter(id=unit_id).delete()
+                            unit_count += 1
+                        except Exception as e:
+                            self.stdout.write(self.style.WARNING(f"Error deleting unit {unit_id}: {str(e)}"))
+                
+                # If precise deletion didn't delete much, fall back to toko-based deletion
+                if transaction_count == 0 and product_count == 0 and category_count == 0:
+                    self.stdout.write(self.style.WARNING("Precise deletion failed, falling back to toko-based deletion"))
+                    
+                    # Fetch counts before deletion
+                    transaction_items_before = TransaksiItem.objects.filter(transaksi__toko=toko).count()
+                    transactions_before = Transaksi.objects.filter(toko=toko).count()
+                    products_before = Produk.objects.filter(toko=toko).count()
+                    categories_before = KategoriProduk.objects.filter(toko=toko).count()
+                    
+                    # Delete related data
+                    TransaksiItem.objects.filter(transaksi__toko=toko).delete()
+                    Transaksi.objects.filter(toko=toko).delete()
+                    Produk.objects.filter(toko=toko).delete()
+                    KategoriProduk.objects.filter(toko=toko).delete()
+                    
+                    # Update counts for reporting
+                    transaction_item_count = transaction_items_before
+                    transaction_count = transactions_before
+                    product_count = products_before
+                    category_count = categories_before
+                
+                # Do not remove units as they are global (we only delete the specifically created ones)
+                
+                # Report success
                 self.stdout.write(
                     self.style.SUCCESS(
-                        f"Successfully rolled back seed operation: {seed_id}"
+                        f"Successfully rolled back seed operation: {seed_id}\n"
+                        f"Deleted {transaction_item_count} transaction items\n"
+                        f"Deleted {transaction_count} transactions\n"
+                        f"Deleted {product_count} products\n"
+                        f"Deleted {category_count} categories\n"
+                        f"Deleted {unit_count} units"
                     )
                 )
 
