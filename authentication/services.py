@@ -1,6 +1,7 @@
 from django.utils.timezone import now
 from datetime import timedelta
 from ninja_jwt.exceptions import TokenError
+from ninja_jwt.token_blacklist.models import BlacklistedToken, OutstandingToken
 import jwt
 
 from backend import settings
@@ -11,11 +12,6 @@ class AuthService:
     @staticmethod
     def process_user_session(user_data):
         email = user_data.get("email")
-        cache_key = f"user_session_{email}"
-
-        cached_user = cache.get(cache_key)
-        if cached_user:
-            return cached_user
 
         user, created = UserRepository.get_or_create_user(
             email=email,
@@ -48,8 +44,6 @@ class AuthService:
             },
         }
 
-        cache.set(cache_key, response_data, timeout=3600)
-
         return response_data
 
     @staticmethod
@@ -69,16 +63,38 @@ class AuthService:
             return {"valid": False}
 
     @staticmethod
-    def logout(self, refresh_token):
+    def logout(refresh_token_str):
         """Blacklist the refresh token to logout the user."""
         try:
-            refresh_token = TokenRepository.get_refresh_token
-            refresh_token.blacklist()
-            access_token = TokenRepository.get_access_token
-            access_token.blacklist()
+            # Check for None or empty token
+            if not refresh_token_str:
+                return None, "Token is missing or invalid"
+                
+            # Get the refresh token object to validate it
+            refresh = TokenRepository.get_refresh_token(refresh_token_str)
+            
+            # For ninja_jwt, we need to:
+            # 1. Find or create an outstanding token record
+            # 2. Create a blacklist entry for that token
+            
+            # First, try to find if token is already registered
+            try:
+                outstanding = OutstandingToken.objects.get(token=refresh_token_str)
+            except OutstandingToken.DoesNotExist:
+                # Token not found in database, so it can't be blacklisted
+                return {"message": "Token not found or already expired"}, None
+            
+            # Check if already blacklisted
+            if BlacklistedToken.objects.filter(token=outstanding).exists():
+                return {"message": "Token already blacklisted"}, None
+                
+            # Create blacklist entry
+            BlacklistedToken.objects.create(token=outstanding)
+            
             return {"message": "Successfully logged out"}, None
-        except TokenError as e:
-            return None, f"Invalid token: {str(e)}"
+        except Exception as e:
+            # Catch any other exceptions
+            return None, f"Logout failed: {str(e)}"
         
 class UserService:
     @staticmethod
