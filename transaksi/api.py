@@ -809,3 +809,5 @@ def get_shop_financial_for_bpr(request, shop_id: int):
     except Exception as e:
         print(f"Error: {str(e)}")
         return 403, {"error": "Access denied"}
+    
+# asdfasdf
