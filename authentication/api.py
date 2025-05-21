@@ -43,6 +43,7 @@ def get_users(request):
 
 @router.post("/send-invitation", response={200: dict, 400: dict}, auth=AuthBearer())
 def send_invitation(request, payload: InvitationRequest):
+
     result, error = InvitationService.send_invitation(
         request.auth, 
         payload.email, 
@@ -54,8 +55,10 @@ def send_invitation(request, payload: InvitationRequest):
     return 200, result
 
 
+
 @router.post("/validate-invitation")
 def validate_invitation(request, payload: TokenValidationRequest):
+
     return InvitationService.validate_invitation(payload.token)
 
 
@@ -109,3 +112,4 @@ def get_shop_info_for_bpr(request, shop_id: int):
     elif error == "Shop not found":
         return 404, {"error": error}
     return 200, shop_info
+
