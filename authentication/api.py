@@ -1,5 +1,6 @@
 from silk.profiling.profiler import silk_profile
-
+from django.views.decorators.csrf import csrf_exempt
+from ninja.decorators import http_exempt
 from ninja import Router
 
 from produk.api import AuthBearer
@@ -54,7 +55,9 @@ def send_invitation(request, payload: InvitationRequest):
     return 200, result
 
 
-@router.post("/validate-invitation")
+@router.post("/validate-invitation", auth=None)
+@http_exempt
+@csrf_exempt
 def validate_invitation(request, payload: TokenValidationRequest):
     return InvitationService.validate_invitation(payload.token)
 
