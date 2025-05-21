@@ -152,128 +152,434 @@ class Command(BaseCommand):
             self.style.WARNING("Seeding minimal data for local environment...")
         )
 
-        # Create categories
-        kategori_makanan = KategoriProduk.objects.create(nama="Makanan", toko=toko)
-        kategori_minuman = KategoriProduk.objects.create(nama="Minuman", toko=toko)
+        # Create categories with variety
+        categories = {}
+        for cat_name in [
+            "Makanan",
+            "Minuman",
+            "Snack",
+            "Bahan Baku",
+        ]:
+            categories[cat_name] = KategoriProduk.objects.create(
+                nama=cat_name, toko=toko
+            )
 
-        # Create units
-        Satuan.objects.get_or_create(nama="Pcs")
-        Satuan.objects.get_or_create(nama="Box")
-        Satuan.objects.get_or_create(nama="Kg")
+        # Create units with more options
+        for unit in [
+            "Pcs",
+            "Box",
+            "Kg",
+            "Pack",
+            "Botol",
+        ]:
+            Satuan.objects.get_or_create(nama=unit)
 
-        # Create products (5 products is minimal)
-        products = [
-            Produk.objects.create(
-                nama="Nasi Goreng",
-                harga_modal=Decimal("10000"),
-                harga_jual=Decimal("15000"),
-                stok=50,
-                satuan="Pcs",
-                kategori=kategori_makanan,
-                toko=toko,
-            ),
-            Produk.objects.create(
-                nama="Mie Goreng",
-                harga_modal=Decimal("8000"),
-                harga_jual=Decimal("12000"),
-                stok=40,
-                satuan="Pcs",
-                kategori=kategori_makanan,
-                toko=toko,
-            ),
-            Produk.objects.create(
-                nama="Es Teh",
-                harga_modal=Decimal("2000"),
-                harga_jual=Decimal("5000"),
-                stok=100,
-                satuan="Pcs",
-                kategori=kategori_minuman,
-                toko=toko,
-            ),
-            Produk.objects.create(
-                nama="Es Jeruk",
-                harga_modal=Decimal("3000"),
-                harga_jual=Decimal("6000"),
-                stok=80,
-                satuan="Pcs",
-                kategori=kategori_minuman,
-                toko=toko,
-            ),
-            Produk.objects.create(
-                nama="Kerupuk",
-                harga_modal=Decimal("5000"),
-                harga_jual=Decimal("7000"),
-                stok=30,
-                satuan="Box",
-                kategori=kategori_makanan,
-                toko=toko,
-            ),
+        # Create products (10 products for local environment)
+        products = []
+        product_data = [
+            # Makanan
+            {
+                "nama": "Nasi Goreng",
+                "modal": 12000,
+                "jual": 18000,
+                "stok": 50,
+                "satuan": "Pcs",
+                "kategori": "Makanan",
+            },
+            {
+                "nama": "Mie Goreng",
+                "modal": 10000,
+                "jual": 15000,
+                "stok": 45,
+                "satuan": "Pcs",
+                "kategori": "Makanan",
+            },
+            {
+                "nama": "Ayam Goreng",
+                "modal": 15000,
+                "jual": 22000,
+                "stok": 30,
+                "satuan": "Pcs",
+                "kategori": "Makanan",
+            },
+            # Minuman
+            {
+                "nama": "Es Teh Manis",
+                "modal": 2000,
+                "jual": 5000,
+                "stok": 100,
+                "satuan": "Pcs",
+                "kategori": "Minuman",
+            },
+            {
+                "nama": "Es Jeruk",
+                "modal": 3000,
+                "jual": 6000,
+                "stok": 80,
+                "satuan": "Pcs",
+                "kategori": "Minuman",
+            },
+            # Snack
+            {
+                "nama": "Keripik Singkong",
+                "modal": 5000,
+                "jual": 8000,
+                "stok": 40,
+                "satuan": "Pack",
+                "kategori": "Snack",
+            },
+            {
+                "nama": "Kerupuk Udang",
+                "modal": 6000,
+                "jual": 10000,
+                "stok": 35,
+                "satuan": "Pack",
+                "kategori": "Snack",
+            },
+            # Bahan Baku
+            {
+                "nama": "Tepung Terigu",
+                "modal": 8000,
+                "jual": 12000,
+                "stok": 20,
+                "satuan": "Kg",
+                "kategori": "Bahan Baku",
+            },
+            {
+                "nama": "Gula Pasir",
+                "modal": 12000,
+                "jual": 15000,
+                "stok": 25,
+                "satuan": "Kg",
+                "kategori": "Bahan Baku",
+            },
+            {
+                "nama": "Minyak Goreng",
+                "modal": 14000,
+                "jual": 18000,
+                "stok": 30,
+                "satuan": "Kg",
+                "kategori": "Bahan Baku",
+            },
         ]
 
-        # Create transactions (3 sales, 2 purchases)
-        # Sales transaction
-        for i in range(3):
-            product = random.choice(products)
-            quantity = random.randint(1, 5)
-            harga_jual = product.harga_jual
-            harga_modal = product.harga_modal
-            total_amount = quantity * harga_jual
-            total_modal = quantity * harga_modal
+        for data in product_data:
+            product = Produk.objects.create(
+                nama=data["nama"],
+                harga_modal=Decimal(str(data["modal"])),
+                harga_jual=Decimal(str(data["jual"])),
+                stok=data["stok"],
+                satuan=data["satuan"],
+                kategori=categories[data["kategori"]],
+                toko=toko,
+            )
+            products.append(product)
 
+        # Date range for transactions - past 30 days
+        end_date = timezone.now()
+        start_date = end_date - timedelta(days=30)
+
+        # Create different types of transactions with spread-out dates
+        # 1. Completed sales (Pemasukan - Penjualan Barang) - 8 transactions
+        for i in range(8):
+            # Choose 1-2 products for this transaction
+            selected_products = random.sample(products, random.randint(1, 2))
+            total_amount = Decimal("0")
+            total_modal = Decimal("0")
+
+            # Generate a random date within the range
+            days_diff = (end_date - start_date).days
+            random_days = random.randint(0, days_diff)
+            random_hours = random.randint(0, 23)
+            random_minutes = random.randint(0, 59)
+            transaction_date = start_date + timedelta(
+                days=random_days, hours=random_hours, minutes=random_minutes
+            )
+
+            # Create the transaction
             transaksi = Transaksi.objects.create(
                 toko=toko,
                 created_by=user,
-                transaction_type="Pemasukan",
+                transaction_type="pemasukan",  # lowercase
                 category="Penjualan Barang",
-                total_amount=total_amount,
-                total_modal=total_modal,
-                amount=total_amount,
+                total_amount=0,  # Will update after adding items
+                total_modal=0,  # Will update after adding items
+                amount=0,  # Will update after adding items
                 status="Lunas",
-                created_at=timezone.now() - timedelta(days=i),
             )
 
-            TransaksiItem.objects.create(
-                transaksi=transaksi,
-                product=product,
-                quantity=quantity,
-                harga_jual_saat_transaksi=harga_jual,
-                harga_modal_saat_transaksi=harga_modal,
+            # Update the created_at date directly in the database to bypass auto_now_add
+            Transaksi.objects.filter(id=transaksi.id).update(
+                created_at=transaction_date
             )
 
-            # Update stock
-            product.stok -= quantity
-            product.save()
+            # Refresh the object after the update
+            transaksi.refresh_from_db()
 
-        # Purchase transaction
-        for i in range(2):
-            product = random.choice(products)
-            quantity = random.randint(5, 10)
-            harga_modal = product.harga_modal
-            total_amount = quantity * harga_modal
+            # Add items to the transaction
+            for product in selected_products:
+                quantity = random.randint(1, 3)
+
+                # Create transaction item
+                TransaksiItem.objects.create(
+                    transaksi=transaksi,
+                    product=product,
+                    quantity=quantity,
+                    harga_jual_saat_transaksi=product.harga_jual,
+                    harga_modal_saat_transaksi=product.harga_modal,
+                )
+
+                # Update running totals
+                item_total = product.harga_jual * quantity
+                item_modal = product.harga_modal * quantity
+                total_amount += item_total
+                total_modal += item_modal
+
+                # Update stock
+                product.stok -= quantity
+                product.save()
+
+            # Update transaction with calculated totals
+            transaksi.total_amount = total_amount
+            transaksi.total_modal = total_modal
+            transaksi.amount = total_amount
+            transaksi.save()
+
+        # 2. Unpaid sales (status="Belum Lunas") - 4 transactions
+        for i in range(4):
+            selected_products = random.sample(products, random.randint(1, 2))
+            total_amount = Decimal("0")
+            total_modal = Decimal("0")
+
+            # Generate a random date within the range, more recent
+            later_start = start_date + timedelta(days=20)
+            days_diff = (end_date - later_start).days
+            random_days = random.randint(0, days_diff) if days_diff > 0 else 0
+            transaction_date = later_start + timedelta(days=random_days)
 
             transaksi = Transaksi.objects.create(
                 toko=toko,
                 created_by=user,
-                transaction_type="Pengeluaran",
+                transaction_type="pemasukan",  # lowercase
+                category="Penjualan Barang",
+                total_amount=0,
+                total_modal=0,
+                amount=0,
+                status="Belum Lunas",
+            )
+
+            # Update the created_at date
+            Transaksi.objects.filter(id=transaksi.id).update(
+                created_at=transaction_date
+            )
+            transaksi.refresh_from_db()
+
+            for product in selected_products:
+                quantity = random.randint(1, 2)
+
+                TransaksiItem.objects.create(
+                    transaksi=transaksi,
+                    product=product,
+                    quantity=quantity,
+                    harga_jual_saat_transaksi=product.harga_jual,
+                    harga_modal_saat_transaksi=product.harga_modal,
+                )
+
+                item_total = product.harga_jual * quantity
+                item_modal = product.harga_modal * quantity
+                total_amount += item_total
+                total_modal += item_modal
+
+                product.stok -= quantity
+                product.save()
+
+            transaksi.total_amount = total_amount
+            transaksi.total_modal = total_modal
+            transaksi.amount = total_amount
+            transaksi.save()
+
+        # 3. Stock purchases (Pengeluaran - Pembelian Stok) - 6 transactions
+        for i in range(6):
+            product = random.choice(products)
+            quantity = random.randint(5, 15)
+            total_amount = product.harga_modal * quantity
+
+            # Generate a random date within the range
+            days_diff = (end_date - start_date).days
+            random_days = random.randint(0, days_diff)
+            transaction_date = start_date + timedelta(days=random_days)
+
+            transaksi = Transaksi.objects.create(
+                toko=toko,
+                created_by=user,
+                transaction_type="pengeluaran",  # lowercase
                 category="Pembelian Stok",
                 total_amount=total_amount,
                 total_modal=0,
                 amount=total_amount,
                 status="Lunas",
-                created_at=timezone.now() - timedelta(days=i),
             )
+
+            # Update the created_at date
+            Transaksi.objects.filter(id=transaksi.id).update(
+                created_at=transaction_date
+            )
+            transaksi.refresh_from_db()
 
             TransaksiItem.objects.create(
                 transaksi=transaksi,
                 product=product,
                 quantity=quantity,
                 harga_jual_saat_transaksi=0,
-                harga_modal_saat_transaksi=harga_modal,
+                harga_modal_saat_transaksi=product.harga_modal,
             )
 
             # Update stock
             product.stok += quantity
             product.save()
+
+        # 4. Unpaid purchases (Pengeluaran - Pembelian Stok - Belum Lunas) - 3 transactions
+        for i in range(3):
+            product = random.choice(products)
+            quantity = random.randint(10, 20)
+            total_amount = product.harga_modal * quantity
+
+            # Generate a random date within the range, more recent
+            later_start = start_date + timedelta(days=15)
+            days_diff = (end_date - later_start).days
+            random_days = random.randint(0, days_diff) if days_diff > 0 else 0
+            transaction_date = later_start + timedelta(days=random_days)
+
+            transaksi = Transaksi.objects.create(
+                toko=toko,
+                created_by=user,
+                transaction_type="pengeluaran",  # lowercase
+                category="Pembelian Stok",
+                total_amount=total_amount,
+                total_modal=0,
+                amount=total_amount,
+                status="Belum Lunas",
+            )
+
+            # Update the created_at date
+            Transaksi.objects.filter(id=transaksi.id).update(
+                created_at=transaction_date
+            )
+            transaksi.refresh_from_db()
+
+            TransaksiItem.objects.create(
+                transaksi=transaksi,
+                product=product,
+                quantity=quantity,
+                harga_jual_saat_transaksi=0,
+                harga_modal_saat_transaksi=product.harga_modal,
+            )
+
+            # Update stock
+            product.stok += quantity
+            product.save()
+
+        # 5. Other expenses (Pengeluaran - various categories) - 5 transactions
+        expense_categories = [
+            "Biaya Operasional",
+            "Biaya Sewa",
+            "Biaya Gaji",
+        ]
+        for i in range(5):
+            category = random.choice(expense_categories)
+            amount = Decimal(str(random.randint(50, 200) * 1000))
+
+            # Generate a random date within the range
+            days_diff = (end_date - start_date).days
+            random_days = random.randint(0, days_diff)
+            transaction_date = start_date + timedelta(days=random_days)
+
+            transaksi = Transaksi.objects.create(
+                toko=toko,
+                created_by=user,
+                transaction_type="pengeluaran",  # lowercase
+                category=category,
+                total_amount=amount,
+                total_modal=0,
+                amount=amount,
+                status="Lunas",
+            )
+
+            # Update the created_at date
+            Transaksi.objects.filter(id=transaksi.id).update(
+                created_at=transaction_date
+            )
+
+        # 6. Other income (Pemasukan - various categories) - 4 transactions
+        income_categories = [
+            "Pendapatan Lain-Lain",
+            "Pendapatan Pinjaman",
+        ]
+        for i in range(4):
+            category = random.choice(income_categories)
+            amount = Decimal(str(random.randint(50, 200) * 1000))
+
+            # Generate a random date within the range
+            days_diff = (end_date - start_date).days
+            random_days = random.randint(0, days_diff)
+            transaction_date = start_date + timedelta(days=random_days)
+
+            transaksi = Transaksi.objects.create(
+                toko=toko,
+                created_by=user,
+                transaction_type="pemasukan",  # lowercase
+                category=category,
+                total_amount=amount,
+                total_modal=0,
+                amount=amount,
+                status="Lunas",
+            )
+
+            # Update the created_at date
+            Transaksi.objects.filter(id=transaksi.id).update(
+                created_at=transaction_date
+            )
+
+        # Create another user (employees) for the same toko
+        employees = [
+            {
+                "email": f"karyawan1_{seed_id}@example.com",
+                "username": "Karyawan Satu",
+                "role": "Karyawan",
+            },
+        ]
+
+        for emp_data in employees:
+            employee = User.objects.create(
+                email=emp_data["email"],
+                username=emp_data["username"],
+                role=emp_data["role"],
+                toko=toko,
+                is_active=True,
+            )
+
+        # Create pending invitations
+        invitation_data = [
+            {
+                "email": f"invited1_{seed_id}@example.com",
+                "name": "Calon Karyawan",
+                "role": "Karyawan",
+            },
+        ]
+
+        for inv_data in invitation_data:
+            expiration = timezone.now() + timedelta(days=1)
+            token = f"dummy_token_{seed_id}_{inv_data['email']}"
+
+            Invitation.objects.create(
+                email=inv_data["email"],
+                name=inv_data["name"],
+                role=inv_data["role"],
+                toko=toko,
+                created_by=user,
+                token=token,
+                expires_at=expiration,
+            )
 
     def seed_defined_data(self, user, toko, seed_id):
         """Seed well-defined data for server/CI environment"""
@@ -861,7 +1167,6 @@ class Command(BaseCommand):
             )
             log_file.write("---\n")
 
-            # We'll use the same seeding as defined_data but with logging
             # Create categories
             categories = {}
             for cat_name in [
@@ -886,10 +1191,10 @@ class Command(BaseCommand):
                     created_units.append({"id": obj.id, "name": unit})
                     log_file.write(f"CREATED_UNIT: {obj.id} {unit}\n")
 
-            # Create products
+            # Create products (15 products for production environment)
             products = []
             product_data = [
-                # Using the same product data as in seed_defined_data
+                # Makanan
                 {
                     "nama": "Nasi Goreng Spesial",
                     "modal": 12000,
@@ -914,6 +1219,7 @@ class Command(BaseCommand):
                     "satuan": "Pcs",
                     "kategori": "Makanan",
                 },
+                # Minuman
                 {
                     "nama": "Es Teh Manis",
                     "modal": 2000,
@@ -938,6 +1244,7 @@ class Command(BaseCommand):
                     "satuan": "Pcs",
                     "kategori": "Minuman",
                 },
+                # Snack
                 {
                     "nama": "Keripik Singkong",
                     "modal": 5000,
@@ -954,14 +1261,7 @@ class Command(BaseCommand):
                     "satuan": "Pack",
                     "kategori": "Snack",
                 },
-                {
-                    "nama": "Kacang Goreng",
-                    "modal": 7000,
-                    "jual": 12000,
-                    "stok": 25,
-                    "satuan": "Pack",
-                    "kategori": "Snack",
-                },
+                # Bahan Baku
                 {
                     "nama": "Tepung Terigu",
                     "modal": 8000,
@@ -978,6 +1278,7 @@ class Command(BaseCommand):
                     "satuan": "Kg",
                     "kategori": "Bahan Baku",
                 },
+                # Pakaian
                 {
                     "nama": "Kaos Polos",
                     "modal": 25000,
@@ -994,6 +1295,7 @@ class Command(BaseCommand):
                     "satuan": "Pcs",
                     "kategori": "Pakaian",
                 },
+                # Elektronik
                 {
                     "nama": "Charger HP",
                     "modal": 15000,
@@ -1007,6 +1309,14 @@ class Command(BaseCommand):
                     "modal": 20000,
                     "jual": 35000,
                     "stok": 8,
+                    "satuan": "Pcs",
+                    "kategori": "Elektronik",
+                },
+                {
+                    "nama": "Powerbank",
+                    "modal": 65000,
+                    "jual": 120000,
+                    "stok": 5,
                     "satuan": "Pcs",
                     "kategori": "Elektronik",
                 },
@@ -1031,27 +1341,48 @@ class Command(BaseCommand):
                 })
                 log_file.write(f"CREATED_PRODUCT: {product.id} {product.nama}\n")
 
-            # Create transactions with similar patterns to defined_data
-            # but with fewer transactions (since this is production)
+            # Date range from February 1, 2025 to May 21, 2025
+            start_date = datetime(2025, 2, 1)
+            end_date = datetime(2025, 5, 21)
 
-            # 1. Completed sales (5)
-            for i in range(5):
+            # Create transactions with similar patterns to defined_data
+            # Create different types of transactions with spread-out dates
+
+            # 1. Completed sales (Pemasukan - Penjualan Barang) - 15 transactions
+            for i in range(15):
+                # Choose 1-3 products for this transaction
                 selected_products = random.sample(products, random.randint(1, 3))
                 total_amount = Decimal("0")
                 total_modal = Decimal("0")
 
+                # Generate a random date within the range
+                days_diff = (end_date - start_date).days
+                random_days = random.randint(0, days_diff)
+                random_hours = random.randint(0, 23)
+                random_minutes = random.randint(0, 59)
+                transaction_date = start_date + timedelta(
+                    days=random_days, hours=random_hours, minutes=random_minutes
+                )
+
+                # Create the transaction
                 transaksi = Transaksi.objects.create(
                     toko=toko,
                     created_by=user,
-                    transaction_type="Pemasukan",
+                    transaction_type="pemasukan",
                     category="Penjualan Barang",
                     total_amount=0,
                     total_modal=0,
                     amount=0,
                     status="Lunas",
-                    created_at=timezone.now()
-                    - timedelta(days=i % 15, hours=random.randint(1, 12)),
                 )
+                
+                # Update the created_at date
+                Transaksi.objects.filter(id=transaksi.id).update(
+                    created_at=transaction_date
+                )
+                
+                # Refresh the object after the update
+                transaksi.refresh_from_db()
                 
                 # Track transaction
                 created_transactions.append({
@@ -1107,24 +1438,116 @@ class Command(BaseCommand):
                     f"UPDATED_TRANSACTION_TOTALS: {transaksi.id} {total_amount} {total_modal}\n"
                 )
 
-            # 2. Stock purchases (3)
-            for i in range(3):
-                product = random.choice(products)
-                quantity = random.randint(5, 15)
-                total_amount = product.harga_modal * quantity
+            # 2. Unpaid sales (status="Belum Lunas") - 8 transactions
+            for i in range(8):
+                selected_products = random.sample(products, random.randint(1, 2))
+                total_amount = Decimal("0")
+                total_modal = Decimal("0")
+
+                # Generate a random date within the range, more recent
+                later_start = start_date + timedelta(days=70)
+                days_diff = (end_date - later_start).days
+                random_days = random.randint(0, days_diff) if days_diff > 0 else 0
+                transaction_date = later_start + timedelta(days=random_days)
 
                 transaksi = Transaksi.objects.create(
                     toko=toko,
                     created_by=user,
-                    transaction_type="Pengeluaran",
+                    transaction_type="pemasukan",
+                    category="Penjualan Barang",
+                    total_amount=0,
+                    total_modal=0,
+                    amount=0,
+                    status="Belum Lunas",
+                )
+
+                # Update the created_at date
+                Transaksi.objects.filter(id=transaksi.id).update(
+                    created_at=transaction_date
+                )
+                transaksi.refresh_from_db()
+                
+                # Track transaction
+                created_transactions.append({
+                    "id": transaksi.id,
+                    "type": "Pemasukan",
+                    "category": "Penjualan Barang"
+                })
+
+                log_file.write(
+                    f"CREATED_TRANSACTION: {transaksi.id} Pemasukan Penjualan_Barang_BelumLunas\n"
+                )
+
+                for product in selected_products:
+                    quantity = random.randint(1, 2)
+
+                    item = TransaksiItem.objects.create(
+                        transaksi=transaksi,
+                        product=product,
+                        quantity=quantity,
+                        harga_jual_saat_transaksi=product.harga_jual,
+                        harga_modal_saat_transaksi=product.harga_modal,
+                    )
+                    
+                    # Track transaction item
+                    created_transaction_items.append({
+                        "id": item.id,
+                        "transaction_id": transaksi.id,
+                        "product_id": product.id,
+                        "quantity": quantity
+                    })
+
+                    log_file.write(
+                        f"CREATED_TRANSACTION_ITEM: {item.id} {transaksi.id} {product.id} {quantity}\n"
+                    )
+
+                    item_total = product.harga_jual * quantity
+                    item_modal = product.harga_modal * quantity
+                    total_amount += item_total
+                    total_modal += item_modal
+
+                    original_stock = product.stok
+                    product.stok -= quantity
+                    product.save()
+                    log_file.write(
+                        f"UPDATED_PRODUCT_STOCK: {product.id} {original_stock} {product.stok}\n"
+                    )
+
+                transaksi.total_amount = total_amount
+                transaksi.total_modal = total_modal
+                transaksi.amount = total_amount
+                transaksi.save()
+                log_file.write(
+                    f"UPDATED_TRANSACTION_TOTALS: {transaksi.id} {total_amount} {total_modal}\n"
+                )
+
+            # 3. Stock purchases (Pengeluaran - Pembelian Stok) - 12 transactions
+            for i in range(12):
+                product = random.choice(products)
+                quantity = random.randint(5, 15)
+                total_amount = product.harga_modal * quantity
+
+                # Generate a random date within the range
+                days_diff = (end_date - start_date).days
+                random_days = random.randint(0, days_diff)
+                transaction_date = start_date + timedelta(days=random_days)
+
+                transaksi = Transaksi.objects.create(
+                    toko=toko,
+                    created_by=user,
+                    transaction_type="pengeluaran",
                     category="Pembelian Stok",
                     total_amount=total_amount,
                     total_modal=0,
                     amount=total_amount,
                     status="Lunas",
-                    created_at=timezone.now()
-                    - timedelta(days=i % 15, hours=random.randint(1, 12)),
                 )
+
+                # Update the created_at date
+                Transaksi.objects.filter(id=transaksi.id).update(
+                    created_at=transaction_date
+                )
+                transaksi.refresh_from_db()
                 
                 # Track transaction
                 created_transactions.append({
@@ -1164,48 +1587,202 @@ class Command(BaseCommand):
                     f"UPDATED_PRODUCT_STOCK: {product.id} {original_stock} {product.stok}\n"
                 )
 
-            # 3. Other income/expense (4)
-            categories = [
-                "Biaya Operasional",
-                "Pendapatan Lain-Lain",
-                "Biaya Sewa",
-                "Pendapatan Pinjaman",
-            ]
-            transaction_types = {
-                "Biaya Operasional": "Pengeluaran",
-                "Pendapatan Lain-Lain": "Pemasukan",
-                "Biaya Sewa": "Pengeluaran",
-                "Pendapatan Pinjaman": "Pemasukan",
-            }
+            # 4. Unpaid purchases (Pengeluaran - Pembelian Stok - Belum Lunas) - 6 transactions
+            for i in range(6):
+                product = random.choice(products)
+                quantity = random.randint(10, 20)
+                total_amount = product.harga_modal * quantity
 
-            for category in categories:
-                amount = Decimal(str(random.randint(50, 300) * 1000))
-                transaction_type = transaction_types[category]
+                # Generate a random date within the range, more recent
+                later_start = start_date + timedelta(days=60)
+                days_diff = (end_date - later_start).days
+                random_days = random.randint(0, days_diff) if days_diff > 0 else 0
+                transaction_date = later_start + timedelta(days=random_days)
 
                 transaksi = Transaksi.objects.create(
                     toko=toko,
                     created_by=user,
-                    transaction_type=transaction_type,
+                    transaction_type="pengeluaran",
+                    category="Pembelian Stok",
+                    total_amount=total_amount,
+                    total_modal=0,
+                    amount=total_amount,
+                    status="Belum Lunas",
+                )
+
+                # Update the created_at date
+                Transaksi.objects.filter(id=transaksi.id).update(
+                    created_at=transaction_date
+                )
+                transaksi.refresh_from_db()
+                
+                # Track transaction
+                created_transactions.append({
+                    "id": transaksi.id,
+                    "type": "Pengeluaran",
+                    "category": "Pembelian Stok"
+                })
+
+                log_file.write(
+                    f"CREATED_TRANSACTION: {transaksi.id} Pengeluaran Pembelian_Stok_BelumLunas\n"
+                )
+
+                item = TransaksiItem.objects.create(
+                    transaksi=transaksi,
+                    product=product,
+                    quantity=quantity,
+                    harga_jual_saat_transaksi=0,
+                    harga_modal_saat_transaksi=product.harga_modal,
+                )
+                
+                # Track transaction item
+                created_transaction_items.append({
+                    "id": item.id,
+                    "transaction_id": transaksi.id,
+                    "product_id": product.id,
+                    "quantity": quantity
+                })
+
+                log_file.write(
+                    f"CREATED_TRANSACTION_ITEM: {item.id} {transaksi.id} {product.id} {quantity}\n"
+                )
+
+                original_stock = product.stok
+                product.stok += quantity
+                product.save()
+                log_file.write(
+                    f"UPDATED_PRODUCT_STOCK: {product.id} {original_stock} {product.stok}\n"
+                )
+
+            # 5. Other expenses (Pengeluaran - various categories) - 10 transactions
+            expense_categories = [
+                "Biaya Operasional",
+                "Biaya Sewa",
+                "Biaya Gaji",
+                "Biaya Utilitas",
+            ]
+            for i in range(10):
+                category = random.choice(expense_categories)
+                amount = Decimal(str(random.randint(50, 300) * 1000))
+
+                # Generate a random date within the range
+                days_diff = (end_date - start_date).days
+                random_days = random.randint(0, days_diff)
+                transaction_date = start_date + timedelta(days=random_days)
+
+                transaksi = Transaksi.objects.create(
+                    toko=toko,
+                    created_by=user,
+                    transaction_type="pengeluaran",
                     category=category,
                     total_amount=amount,
                     total_modal=0,
                     amount=amount,
                     status="Lunas",
-                    created_at=timezone.now()
-                    - timedelta(
-                        days=random.randint(1, 15), hours=random.randint(1, 12)
-                    ),
+                )
+
+                # Update the created_at date
+                Transaksi.objects.filter(id=transaksi.id).update(
+                    created_at=transaction_date
                 )
                 
                 # Track transaction
                 created_transactions.append({
                     "id": transaksi.id,
-                    "type": transaction_type,
+                    "type": "Pengeluaran",
                     "category": category
                 })
 
                 log_file.write(
-                    f"CREATED_TRANSACTION: {transaksi.id} {transaction_type} {category}\n"
+                    f"CREATED_TRANSACTION: {transaksi.id} Pengeluaran {category}\n"
+                )
+
+            # 6. Other income (Pemasukan - various categories) - 10 transactions
+            income_categories = [
+                "Pendapatan Lain-Lain",
+                "Pendapatan Pinjaman",
+                "Pendapatan Investasi",
+            ]
+            for i in range(10):
+                category = random.choice(income_categories)
+                amount = Decimal(str(random.randint(50, 200) * 1000))
+
+                # Generate a random date within the range
+                days_diff = (end_date - start_date).days
+                random_days = random.randint(0, days_diff)
+                transaction_date = start_date + timedelta(days=random_days)
+
+                transaksi = Transaksi.objects.create(
+                    toko=toko,
+                    created_by=user,
+                    transaction_type="pemasukan",
+                    category=category,
+                    total_amount=amount,
+                    total_modal=0,
+                    amount=amount,
+                    status="Lunas",
+                )
+
+                # Update the created_at date
+                Transaksi.objects.filter(id=transaksi.id).update(
+                    created_at=transaction_date
+                )
+                
+                # Track transaction
+                created_transactions.append({
+                    "id": transaksi.id,
+                    "type": "Pemasukan",
+                    "category": category
+                })
+
+                log_file.write(
+                    f"CREATED_TRANSACTION: {transaksi.id} Pemasukan {category}\n"
+                )
+
+            # Create another user (employees) for the same toko
+            employees = [
+                {
+                    "email": f"karyawan1_{seed_id}@example.com",
+                    "username": "Karyawan Satu",
+                    "role": "Karyawan",
+                },
+                {
+                    "email": f"pengelola1_{seed_id}@example.com",
+                    "username": "Pengelola Satu",
+                    "role": "Pengelola",
+                },
+            ]
+
+            for emp_data in employees:
+                employee = User.objects.create(
+                    email=emp_data["email"],
+                    username=emp_data["username"],
+                    role=emp_data["role"],
+                    toko=toko,
+                    is_active=True,
+                )
+
+            # Create pending invitations
+            invitation_data = [
+                {
+                    "email": f"invited1_{seed_id}@example.com",
+                    "name": "Calon Karyawan",
+                    "role": "Karyawan",
+                },
+            ]
+
+            for inv_data in invitation_data:
+                expiration = timezone.now() + timedelta(days=1)
+                token = f"dummy_token_{seed_id}_{inv_data['email']}"
+
+                Invitation.objects.create(
+                    email=inv_data["email"],
+                    name=inv_data["name"],
+                    role=inv_data["role"],
+                    toko=toko,
+                    created_by=user,
+                    token=token,
+                    expires_at=expiration,
                 )
 
             log_file.write("---\n")
@@ -1221,15 +1798,12 @@ class Command(BaseCommand):
 
         # Create detailed rollback file
         try:
-            with open(log_path, "w") as log_file:
-                # Write metadata
-                log_file.write(f"SEED_ID: {seed_id}\n")
-                log_file.write(f"USER_EMAIL: {user.email}\n")
-                log_file.write(f"TOKO_ID: {toko.id}\n")
-                log_file.write(f"TIMESTAMP: {timezone.now().isoformat()}\n")
-                log_file.write("---\n")
-                
-                # Rest of the log writing code...
+            with open(log_path, "a") as log_file:
+                # Write some additional stats
+                log_file.write(f"TOTAL_PRODUCTS: {len(created_products)}\n")
+                log_file.write(f"TOTAL_CATEGORIES: {len(created_categories)}\n")
+                log_file.write(f"TOTAL_TRANSACTIONS: {len(created_transactions)}\n")
+                log_file.write(f"TOTAL_TRANSACTION_ITEMS: {len(created_transaction_items)}\n")
             
             # Save detailed rollback info to JSON file
             try:
