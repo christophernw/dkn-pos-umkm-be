@@ -595,4 +595,80 @@ class AuthAPITests(TestCase):
             request = UpdateUserRequest(email=valid_email)
             self.assertEqual(request.email, valid_email)
 
-    
+    # NEW TESTS FOR deactivate_user
+    def test_deactivate_user_success(self):
+        """Test deactivating active user successfully (positive case)"""
+        # Ensure user is active first
+        self.assertTrue(self.user.is_active)
+        
+        response = self.client.delete(f"/users/{self.user.id}")
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertEqual(data["message"], "User deactivated successfully")
+        self.assertEqual(data["user_id"], self.user.id)
+        self.assertFalse(data["is_active"])
+        
+        # Verify in database
+        updated_user = User.objects.get(id=self.user.id)
+        self.assertFalse(updated_user.is_active)
+
+    def test_deactivate_user_not_found(self):
+        """Test deactivating non-existent user (negative case)"""
+        response = self.client.delete("/users/9999")
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()["error"], "User not found")
+
+    def test_deactivate_user_already_inactive(self):
+        """Test deactivating already inactive user (negative case)"""
+        # First deactivate the user
+        self.user.is_active = False
+        self.user.save()
+        
+        response = self.client.delete(f"/users/{self.user.id}")
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.json()["error"], "User is already inactive")
+
+    def test_deactivate_user_and_verify_get_users(self):
+        """Test that deactivated user still appears in get_all_users (integration test)"""
+        # Create another user so we have multiple users
+        User.objects.create_user(username="user2", email="user2@example.com")
+        
+        # Deactivate the first user
+        response = self.client.delete(f"/users/{self.user.id}")
+        self.assertEqual(response.status_code, 200)
+        
+        # Check get_all_users still returns the inactive user
+        response = self.client.get("/users")
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertEqual(data["total_count"], 2)
+        
+        # Find the deactivated user in the list
+        deactivated_user = next(user for user in data["users"] if user["id"] == self.user.id)
+        self.assertFalse(deactivated_user["is_active"])
+
+    def test_deactivate_user_and_verify_get_by_id(self):
+        """Test that deactivated user can still be retrieved by ID (integration test)"""
+        # Deactivate the user
+        response = self.client.delete(f"/users/{self.user.id}")
+        self.assertEqual(response.status_code, 200)
+        
+        # Try to get the user by ID
+        response = self.client.get(f"/users/{self.user.id}")
+        self.assertEqual(response.status_code, 200)
+        
+        data = response.json()
+        self.assertEqual(data["id"], self.user.id)
+        self.assertFalse(data["is_active"])
+
+    # Additional edge cases
+    def test_tokens_with_unicode_characters(self):
+        """Test handling tokens with unicode characters (corner case)"""
+        response = self.client.post(
+            "/validate-token", 
+            json={"token": "invalid-tökën-with-üñiçödé"}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()["valid"])
