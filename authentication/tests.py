@@ -322,12 +322,6 @@ class BPRTests(TestCase):
     def test_bpr_get_shop_info(self):
         # Create a test shop
         toko = Toko.objects.create()
-        owner = User.objects.create_user(
-            username="shopowner",
-            email="shopowner@example.com",
-            toko=toko,
-            role="Pemilik"
-        )
         
         response = self.client.get(
             f"/bpr/shop/{toko.id}",
