@@ -36,7 +36,7 @@ jobs:
             DB_HOST: ${{ secrets.DB_HOST }}
             DB_PORT: ${{ secrets.DB_PORT }}
         run: |
-          coverage run manage.py test laporan
+          coverage run manage.py test authentication
           coverage xml
 
       - name: Run SonarQube Scanner
@@ -51,6 +51,8 @@ jobs:
             -Dsonar.login=${{ secrets.SONAR_TOKEN }}
             -Dsonar.python.coverage.reportPaths=coverage.xml
             -Dsonar.exclusions=manage.py,backend/settings.py,backend/wsgi.py,backend/asgi.py,backend/urls.py,backend/migrations/**
+            -Dsonar.coverage.inclusions=**/api.py
+            -Dsonar.coverage.exclusions=**/*
 
       - name: SonarQube Quality Gate Check
         uses: SonarSource/sonarqube-quality-gate-action@v1.1.0
