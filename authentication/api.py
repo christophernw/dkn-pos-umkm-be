@@ -55,9 +55,7 @@ def send_invitation(request, payload: InvitationRequest):
     return 200, result
 
 
-@router.post("/validate-invitation", auth=None)
-@http_exempt
-@csrf_exempt
+@router.post("/validate-invitation")
 def validate_invitation(request, payload: TokenValidationRequest):
     return InvitationService.validate_invitation(payload.token)
 
