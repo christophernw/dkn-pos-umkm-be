@@ -52,3 +52,11 @@ class LogoutRequest(BaseModel):
 
 class LogoutResponse(BaseModel):
     message: str
+
+class UserInfoResponse(BaseModel):
+    id: int
+    email: str
+    name: str
+    role: str
+    toko_id: int = None
+    is_bpr: bool = False

@@ -24,6 +24,7 @@ class AuthService:
         if created:
             toko = TokoRepository.create_toko()
             user.toko = toko
+            user.role = "Pemilik"
             user.save()
 
         refresh = TokenRepository.create_refresh_token_for_user(user)
@@ -149,7 +150,24 @@ class UserService:
                 "role": user_to_remove.role,
             },
         }, None
-
+    
+    @staticmethod
+    def get_user_info(user_id):
+        try:
+            user = UserRepository.get_user_by_id(user_id)
+            
+            is_bpr = (user.email == settings.BPR_EMAIL)
+            
+            return {
+                "id": user.id,
+                "email": user.email,
+                "name": user.username,
+                "role": user.role,
+                "toko_id": user.toko.id if user.toko else None,
+                "is_bpr": is_bpr,
+            }, None
+        except Exception as e:
+            return None, f"Error retrieving user info: {str(e)}"
 
 class InvitationService:
     @staticmethod
@@ -212,7 +230,7 @@ class InvitationService:
 
             toko = TokoRepository.get_toko_by_id(toko_id)
 
-            user, created = UserRepository.get_or_create_user(
+            user, _ = UserRepository.get_or_create_user(
                 email=email, 
                 defaults={
                     "username": name, 
@@ -220,9 +238,6 @@ class InvitationService:
                     "is_active": True  
                 }
             )
-            
-            if not created and not user.is_active:
-                return {"valid": False, "error": "User account is inactive. Please contact administrator."}
                 
             user.role = role
             user.username = name
@@ -231,11 +246,12 @@ class InvitationService:
 
             InvitationRepository.delete_invitation(invitation)
 
-            return {"valid": True, "message": "User successfully registered"}
+            return {"valid": True, "message": "gitUser successfully registered"}
         except jwt.ExpiredSignatureError:
             return {"valid": False, "error": "Token expired"}
         except jwt.DecodeError:
             return {"valid": False, "error": "Invalid token"}
+
 
     @staticmethod
     def get_pending_invitations(user_id):
