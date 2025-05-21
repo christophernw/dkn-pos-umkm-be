@@ -152,6 +152,23 @@ class Command(BaseCommand):
             self.style.WARNING("Seeding minimal data for local environment...")
         )
 
+        # Initialize entity tracking containers
+        created_categories = []
+        created_products = []
+        created_transactions = []
+        created_transaction_items = []
+        created_units = []
+
+        # Create log and JSON file paths
+        log_dir = settings.SEED_LOGS_DIR
+        os.makedirs(log_dir, exist_ok=True)
+        log_path = os.path.join(log_dir, f"rollback_{seed_id}.log")
+        json_path = os.path.join(log_dir, f"rollback_{seed_id}.json")
+        
+        # Debug log creation
+        self.stdout.write(self.style.SUCCESS(f"Creating log file at: {log_path}"))
+        self.stdout.write(self.style.SUCCESS(f"Creating JSON file at: {json_path}"))
+
         # Create categories with variety
         categories = {}
         for cat_name in [
@@ -160,9 +177,12 @@ class Command(BaseCommand):
             "Snack",
             "Bahan Baku",
         ]:
-            categories[cat_name] = KategoriProduk.objects.create(
+            category = KategoriProduk.objects.create(
                 nama=cat_name, toko=toko
             )
+            categories[cat_name] = category
+            # Track this category
+            created_categories.append({"id": category.id, "name": cat_name})
 
         # Create units with more options
         for unit in [
@@ -172,7 +192,10 @@ class Command(BaseCommand):
             "Pack",
             "Botol",
         ]:
-            Satuan.objects.get_or_create(nama=unit)
+            unit_obj, created = Satuan.objects.get_or_create(nama=unit)
+            if created:
+                # Track only newly created units
+                created_units.append({"id": unit_obj.id, "name": unit})
 
         # Create products (10 products for local environment)
         products = []
@@ -274,6 +297,12 @@ class Command(BaseCommand):
                 toko=toko,
             )
             products.append(product)
+            # Track created product
+            created_products.append({
+                "id": product.id,
+                "name": product.nama,
+                "category_id": product.kategori.id
+            })
 
         # Date range for transactions - past 30 days
         end_date = timezone.now()
@@ -581,11 +610,50 @@ class Command(BaseCommand):
                 expires_at=expiration,
             )
 
+        # Save rollback information to JSON file
+        try:
+            from core.management.utils import save_rollback_info
+            rollback_data = {
+                "user_email": user.email,
+                "toko_id": toko.id,
+                "created_entities": {
+                    "categories": created_categories,
+                    "products": created_products,
+                    "transactions": created_transactions,
+                    "transaction_items": created_transaction_items,
+                    "units": created_units,
+                }
+            }
+            save_result, save_error = save_rollback_info(seed_id, json_path, rollback_data)
+            if save_result:
+                self.stdout.write(self.style.SUCCESS(f"JSON rollback data saved to: {json_path}"))
+            else:
+                self.stdout.write(self.style.ERROR(f"Error saving JSON rollback data: {save_error}"))
+        except Exception as e:
+            self.stdout.write(self.style.ERROR(f"Error saving JSON rollback data: {str(e)}"))
+
     def seed_defined_data(self, user, toko, seed_id):
         """Seed well-defined data for server/CI environment"""
         self.stdout.write(
             self.style.WARNING("Seeding well-defined data for server environment...")
         )
+        
+        # Initialize entity tracking containers
+        created_categories = []
+        created_products = []
+        created_transactions = []
+        created_transaction_items = []
+        created_units = []
+
+        # Create log and JSON file paths
+        log_dir = settings.SEED_LOGS_DIR
+        os.makedirs(log_dir, exist_ok=True)
+        log_path = os.path.join(log_dir, f"rollback_{seed_id}.log")
+        json_path = os.path.join(log_dir, f"rollback_{seed_id}.json")
+        
+        # Debug log creation
+        self.stdout.write(self.style.SUCCESS(f"Creating log file at: {log_path}"))
+        self.stdout.write(self.style.SUCCESS(f"Creating JSON file at: {json_path}"))
 
         # Create categories with more variety
         categories = {}
@@ -598,9 +666,12 @@ class Command(BaseCommand):
             "Elektronik",
             "Alat Tulis",
         ]:
-            categories[cat_name] = KategoriProduk.objects.create(
+            category = KategoriProduk.objects.create(
                 nama=cat_name, toko=toko
             )
+            categories[cat_name] = category
+            # Track this category
+            created_categories.append({"id": category.id, "name": cat_name})
 
         # Create units with more options
         for unit in [
@@ -614,7 +685,10 @@ class Command(BaseCommand):
             "Set",
             "Roll",
         ]:
-            Satuan.objects.get_or_create(nama=unit)
+            unit_obj, created = Satuan.objects.get_or_create(nama=unit)
+            if created:
+                # Track only newly created units
+                created_units.append({"id": unit_obj.id, "name": unit})
 
         # Create products (20 products for server environment)
         products = []
@@ -798,6 +872,12 @@ class Command(BaseCommand):
                 toko=toko,
             )
             products.append(product)
+            # Track created product
+            created_products.append({
+                "id": product.id,
+                "name": product.nama,
+                "category_id": product.kategori.id
+            })
 
         # Date range from January 1, 2025 to May 21, 2025
         start_date = datetime(2025, 1, 1)
@@ -1123,6 +1203,28 @@ class Command(BaseCommand):
                 token=token,
                 expires_at=expiration,
             )
+            
+        # Save rollback information to JSON file
+        try:
+            from core.management.utils import save_rollback_info
+            rollback_data = {
+                "user_email": user.email,
+                "toko_id": toko.id,
+                "created_entities": {
+                    "categories": created_categories,
+                    "products": created_products,
+                    "transactions": created_transactions,
+                    "transaction_items": created_transaction_items,
+                    "units": created_units,
+                }
+            }
+            save_result, save_error = save_rollback_info(seed_id, json_path, rollback_data)
+            if save_result:
+                self.stdout.write(self.style.SUCCESS(f"JSON rollback data saved to: {json_path}"))
+            else:
+                self.stdout.write(self.style.ERROR(f"Error saving JSON rollback data: {save_error}"))
+        except Exception as e:
+            self.stdout.write(self.style.ERROR(f"Error saving JSON rollback data: {str(e)}"))
 
     def seed_production_data(self, user, toko, seed_id):
         """Seed production data with enhanced rollback capability"""
