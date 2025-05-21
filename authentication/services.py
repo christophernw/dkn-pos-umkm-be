@@ -57,9 +57,25 @@ class AuthService:
     @staticmethod
     def validate_token(token_str):
         try:
-            TokenRepository.get_access_token(token_str)
-            return {"valid": True}
-        except TokenError:
+            token = TokenRepository.get_access_token(token_str)
+            # Get updated user information
+            user_id = token.payload.get('user_id')
+            user = UserRepository.get_user_by_id(user_id)
+            
+            is_bpr = (user.email == settings.BPR_EMAIL)
+            
+            return {
+                "valid": True,
+                "user": {
+                    "id": user.id,
+                    "email": user.email,
+                    "name": user.username,
+                    "role": user.role,
+                    "toko_id": user.toko.id if user.toko else None,
+                    "is_bpr": is_bpr,
+                }
+            }
+        except Exception:
             return {"valid": False}
 
     @staticmethod
@@ -131,6 +147,9 @@ class UserService:
             return None, "Only Pemilik can remove users from toko"
 
         user_to_remove = UserRepository.get_user_by_id(user_id_to_remove)
+        # Tambahkan ini
+        TokenRepository.blacklist_all_tokens_for_user(user_to_remove)
+
 
         if not requester.toko or requester.toko != user_to_remove.toko:
             return None, "User is not in your toko"
