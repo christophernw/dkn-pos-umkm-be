@@ -230,7 +230,7 @@ class InvitationService:
 
             toko = TokoRepository.get_toko_by_id(toko_id)
 
-            user, created = UserRepository.get_or_create_user(
+            user, _ = UserRepository.get_or_create_user(
                 email=email, 
                 defaults={
                     "username": name, 
@@ -246,11 +246,12 @@ class InvitationService:
 
             InvitationRepository.delete_invitation(invitation)
 
-            return {"valid": True, "message": "User successfully registered"}
+            return {"valid": True, "message": "gitUser successfully registered"}
         except jwt.ExpiredSignatureError:
             return {"valid": False, "error": "Token expired"}
         except jwt.DecodeError:
             return {"valid": False, "error": "Invalid token"}
+
 
     @staticmethod
     def get_pending_invitations(user_id):
