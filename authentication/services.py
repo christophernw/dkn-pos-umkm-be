@@ -24,6 +24,7 @@ class AuthService:
         if created:
             toko = TokoRepository.create_toko()
             user.toko = toko
+            user.role = "Pemilik"
             user.save()
 
         refresh = TokenRepository.create_refresh_token_for_user(user)
@@ -57,25 +58,9 @@ class AuthService:
     @staticmethod
     def validate_token(token_str):
         try:
-            token = TokenRepository.get_access_token(token_str)
-            # Get updated user information
-            user_id = token.payload.get('user_id')
-            user = UserRepository.get_user_by_id(user_id)
-            
-            is_bpr = (user.email == settings.BPR_EMAIL)
-            
-            return {
-                "valid": True,
-                "user": {
-                    "id": user.id,
-                    "email": user.email,
-                    "name": user.username,
-                    "role": user.role,
-                    "toko_id": user.toko.id if user.toko else None,
-                    "is_bpr": is_bpr,
-                }
-            }
-        except Exception:
+            TokenRepository.get_access_token(token_str)
+            return {"valid": True}
+        except TokenError:
             return {"valid": False}
 
     @staticmethod
@@ -168,7 +153,24 @@ class UserService:
                 "role": user_to_remove.role,
             },
         }, None
-
+    
+    @staticmethod
+    def get_user_info(user_id):
+        try:
+            user = UserRepository.get_user_by_id(user_id)
+            
+            is_bpr = (user.email == settings.BPR_EMAIL)
+            
+            return {
+                "id": user.id,
+                "email": user.email,
+                "name": user.username,
+                "role": user.role,
+                "toko_id": user.toko.id if user.toko else None,
+                "is_bpr": is_bpr,
+            }, None
+        except Exception as e:
+            return None, f"Error retrieving user info: {str(e)}"
 
 class InvitationService:
     @staticmethod
