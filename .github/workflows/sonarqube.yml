@@ -52,7 +52,6 @@ jobs:
             -Dsonar.python.coverage.reportPaths=coverage.xml
             -Dsonar.exclusions=manage.py,backend/settings.py,backend/wsgi.py,backend/asgi.py,backend/urls.py,backend/migrations/**
             -Dsonar.coverage.inclusions=**/api.py
-            -Dsonar.coverage.exclusions=**/*
 
       - name: SonarQube Quality Gate Check
         uses: SonarSource/sonarqube-quality-gate-action@v1.1.0
