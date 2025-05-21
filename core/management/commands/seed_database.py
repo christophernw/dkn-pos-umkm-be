@@ -168,6 +168,27 @@ class Command(BaseCommand):
         # Debug log creation
         self.stdout.write(self.style.SUCCESS(f"Creating log file at: {log_path}"))
         self.stdout.write(self.style.SUCCESS(f"Creating JSON file at: {json_path}"))
+        
+        # Create and start writing to the log file
+        with open(log_path, "w") as log_file:
+            # Write metadata
+            log_file.write(f"SEED_ID: {seed_id}\n")
+            log_file.write(f"USER_EMAIL: {user.email}\n")
+            log_file.write(f"TOKO_ID: {toko.id}\n")
+            log_file.write(f"TIMESTAMP: {timezone.now().isoformat()}\n")
+            log_file.write("---\n")
+
+            # Log existing data counts for verification
+            log_file.write(
+                f"BEFORE_PRODUCTS: {Produk.objects.filter(toko=toko).count()}\n"
+            )
+            log_file.write(
+                f"BEFORE_CATEGORIES: {KategoriProduk.objects.filter(toko=toko).count()}\n"
+            )
+            log_file.write(
+                f"BEFORE_TRANSACTIONS: {Transaksi.objects.filter(toko=toko).count()}\n"
+            )
+            log_file.write("---\n")
 
         # Create categories with variety
         categories = {}
@@ -183,6 +204,9 @@ class Command(BaseCommand):
             categories[cat_name] = category
             # Track this category
             created_categories.append({"id": category.id, "name": cat_name})
+            # Log created category
+            with open(log_path, "a") as log_file:
+                log_file.write(f"CREATED_CATEGORY: {category.id} {cat_name}\n")
 
         # Create units with more options
         for unit in [
@@ -196,6 +220,9 @@ class Command(BaseCommand):
             if created:
                 # Track only newly created units
                 created_units.append({"id": unit_obj.id, "name": unit})
+                # Log created unit
+                with open(log_path, "a") as log_file:
+                    log_file.write(f"CREATED_UNIT: {unit_obj.id} {unit}\n")
 
         # Create products (10 products for local environment)
         products = []
@@ -303,6 +330,9 @@ class Command(BaseCommand):
                 "name": product.nama,
                 "category_id": product.kategori.id
             })
+            # Log created product
+            with open(log_path, "a") as log_file:
+                log_file.write(f"CREATED_PRODUCT: {product.id} {product.nama}\n")
 
         # Date range for transactions - past 30 days
         end_date = timezone.now()
@@ -629,8 +659,40 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.SUCCESS(f"JSON rollback data saved to: {json_path}"))
             else:
                 self.stdout.write(self.style.ERROR(f"Error saving JSON rollback data: {save_error}"))
+                
+            # Create detailed rollback file similar to production mode
+            with open(log_path, "a") as log_file:
+                # Write some additional stats
+                log_file.write("---\n")
+                log_file.write(f"AFTER_PRODUCTS: {Produk.objects.filter(toko=toko).count()}\n")
+                log_file.write(f"AFTER_CATEGORIES: {KategoriProduk.objects.filter(toko=toko).count()}\n")
+                log_file.write(f"AFTER_TRANSACTIONS: {Transaksi.objects.filter(toko=toko).count()}\n")
+                log_file.write("---\n")
+                log_file.write(f"TOTAL_PRODUCTS: {len(created_products)}\n")
+                log_file.write(f"TOTAL_CATEGORIES: {len(created_categories)}\n")
+                log_file.write(f"TOTAL_TRANSACTIONS: {len(created_transactions)}\n")
+                log_file.write(f"TOTAL_TRANSACTION_ITEMS: {len(created_transaction_items)}\n")
+                
+                # Write entity IDs for rollback script
+                for category in created_categories:
+                    log_file.write(f"CREATED_CATEGORY: {category['id']} {category['name']}\n")
+                
+                for product in created_products:
+                    log_file.write(f"CREATED_PRODUCT: {product['id']} {product['name']}\n")
+                
+                for transaction in created_transactions:
+                    log_file.write(f"CREATED_TRANSACTION: {transaction['id']} {transaction['type']} {transaction['category']}\n")
+                
+                for item in created_transaction_items:
+                    if 'id' in item and 'transaction_id' in item and 'product_id' in item and 'quantity' in item:
+                        log_file.write(f"CREATED_TRANSACTION_ITEM: {item['id']} {item['transaction_id']} {item['product_id']} {item['quantity']}\n")
+                
+                for unit in created_units:
+                    log_file.write(f"CREATED_UNIT: {unit['id']} {unit['name']}\n")
+                    
+            self.stdout.write(self.style.SUCCESS(f"Rollback log saved to: {log_path}"))
         except Exception as e:
-            self.stdout.write(self.style.ERROR(f"Error saving JSON rollback data: {str(e)}"))
+            self.stdout.write(self.style.ERROR(f"Error saving rollback data: {str(e)}"))
 
     def seed_defined_data(self, user, toko, seed_id):
         """Seed well-defined data for server/CI environment"""
@@ -654,6 +716,27 @@ class Command(BaseCommand):
         # Debug log creation
         self.stdout.write(self.style.SUCCESS(f"Creating log file at: {log_path}"))
         self.stdout.write(self.style.SUCCESS(f"Creating JSON file at: {json_path}"))
+        
+        # Create and start writing to the log file
+        with open(log_path, "w") as log_file:
+            # Write metadata
+            log_file.write(f"SEED_ID: {seed_id}\n")
+            log_file.write(f"USER_EMAIL: {user.email}\n")
+            log_file.write(f"TOKO_ID: {toko.id}\n")
+            log_file.write(f"TIMESTAMP: {timezone.now().isoformat()}\n")
+            log_file.write("---\n")
+
+            # Log existing data counts for verification
+            log_file.write(
+                f"BEFORE_PRODUCTS: {Produk.objects.filter(toko=toko).count()}\n"
+            )
+            log_file.write(
+                f"BEFORE_CATEGORIES: {KategoriProduk.objects.filter(toko=toko).count()}\n"
+            )
+            log_file.write(
+                f"BEFORE_TRANSACTIONS: {Transaksi.objects.filter(toko=toko).count()}\n"
+            )
+            log_file.write("---\n")
 
         # Create categories with more variety
         categories = {}
@@ -1223,8 +1306,41 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.SUCCESS(f"JSON rollback data saved to: {json_path}"))
             else:
                 self.stdout.write(self.style.ERROR(f"Error saving JSON rollback data: {save_error}"))
+                
+            # Create detailed rollback file similar to production mode
+            with open(log_path, "a") as log_file:
+                # Write some additional stats
+                log_file.write("---\n")
+                log_file.write(f"AFTER_PRODUCTS: {Produk.objects.filter(toko=toko).count()}\n")
+                log_file.write(f"AFTER_CATEGORIES: {KategoriProduk.objects.filter(toko=toko).count()}\n")
+                log_file.write(f"AFTER_TRANSACTIONS: {Transaksi.objects.filter(toko=toko).count()}\n")
+                log_file.write("---\n")
+                log_file.write(f"TOTAL_PRODUCTS: {len(created_products)}\n")
+                log_file.write(f"TOTAL_CATEGORIES: {len(created_categories)}\n")
+                log_file.write(f"TOTAL_TRANSACTIONS: {len(created_transactions)}\n")
+                log_file.write(f"TOTAL_TRANSACTION_ITEMS: {len(created_transaction_items)}\n")
+                
+                # Write entity IDs for rollback script
+                for category in created_categories:
+                    log_file.write(f"CREATED_CATEGORY: {category['id']} {category['name']}\n")
+                
+                for product in created_products:
+                    log_file.write(f"CREATED_PRODUCT: {product['id']} {product['name']}\n")
+                
+                for transaction in created_transactions:
+                    if 'id' in transaction and 'type' in transaction and 'category' in transaction:
+                        log_file.write(f"CREATED_TRANSACTION: {transaction['id']} {transaction['type']} {transaction['category']}\n")
+                
+                for item in created_transaction_items:
+                    if 'id' in item and 'transaction_id' in item and 'product_id' in item and 'quantity' in item:
+                        log_file.write(f"CREATED_TRANSACTION_ITEM: {item['id']} {item['transaction_id']} {item['product_id']} {item['quantity']}\n")
+                
+                for unit in created_units:
+                    log_file.write(f"CREATED_UNIT: {unit['id']} {unit['name']}\n")
+                    
+            self.stdout.write(self.style.SUCCESS(f"Rollback log saved to: {log_path}"))
         except Exception as e:
-            self.stdout.write(self.style.ERROR(f"Error saving JSON rollback data: {str(e)}"))
+            self.stdout.write(self.style.ERROR(f"Error saving rollback data: {str(e)}"))
 
     def seed_production_data(self, user, toko, seed_id):
         """Seed production data with enhanced rollback capability"""
