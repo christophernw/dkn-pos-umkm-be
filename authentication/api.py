@@ -1,5 +1,4 @@
 from silk.profiling.profiler import silk_profile
-
 from ninja import Router
 
 from produk.api import AuthBearer

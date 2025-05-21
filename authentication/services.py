@@ -238,9 +238,6 @@ class InvitationService:
                     "is_active": True  
                 }
             )
-            
-            if not created and not user.is_active:
-                return {"valid": False, "error": "User account is inactive. Please contact administrator."}
                 
             user.role = role
             user.username = name
