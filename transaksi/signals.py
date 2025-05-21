@@ -5,10 +5,11 @@ from .models import Transaksi
 from laporan.models import ArusKasReport, DetailArusKas
 from decimal import Decimal
 
+
 @receiver(post_save, sender=Transaksi)
-def handle_transaksi_selesai(sender, instance, created, **kwargs):
-    if instance.status != 'Lunas':
-        return 
+def handle_transaksi_Lunas(sender, instance, created, **kwargs):
+    if instance.status != "Lunas":
+        return
 
     waktu = localtime(instance.created_at)
     bulan = waktu.month
@@ -18,17 +19,13 @@ def handle_transaksi_selesai(sender, instance, created, **kwargs):
         toko=instance.toko,
         bulan=bulan,
         tahun=tahun,
-        defaults={
-            "total_inflow": 0,
-            "total_outflow": 0,
-            "saldo": 0
-        }
+        defaults={"total_inflow": 0, "total_outflow": 0, "saldo": 0},
     )
 
-    if instance.transaction_type.lower() in ['pemasukan']:
-        jenis = 'inflow'
+    if instance.transaction_type.lower() in ["pemasukan"]:
+        jenis = "inflow"
     else:
-        jenis = 'outflow'
+        jenis = "outflow"
 
     DetailArusKas.objects.create(
         report=report,
@@ -37,10 +34,10 @@ def handle_transaksi_selesai(sender, instance, created, **kwargs):
         nominal=instance.amount,
         kategori=instance.category,
         tanggal_transaksi=instance.created_at,
-        keterangan=f"Transaksi {instance.category}"
+        keterangan=f"Transaksi {instance.category}",
     )
 
-    if jenis == 'inflow':
+    if jenis == "inflow":
         report.total_inflow += Decimal(str(instance.amount))
     else:
         report.total_outflow += Decimal(str(instance.amount))
