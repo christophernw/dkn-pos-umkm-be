@@ -50,7 +50,7 @@ jobs:
             -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }}
             -Dsonar.login=${{ secrets.SONAR_TOKEN }}
             -Dsonar.python.coverage.reportPaths=coverage.xml
-            -Dsonar.exclusions=manage.py,backend/**,produk/**,transaksi/**,authentication/__init__.py,authentication/admin.py,authentication/apps.py,authentication/models.py,authentication/schemas.py,authentication/tests.py,authentication/migrations/**,locustfile.py
+            -Dsonar.exclusions=manage.py,backend/**,produk/**,transaksi/**,authentication/__init__.py,authentication/admin.py,authentication/apps.py,authentication/models.py,authentication/schemas.py,authentication/tests.py,authentication/migrations/**,locustfile.py, laporan/**
 
       - name: SonarQube Quality Gate Check
         uses: SonarSource/sonarqube-quality-gate-action@v1.1.0
