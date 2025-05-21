@@ -117,6 +117,9 @@ SILKY_ANALYZE_QUERIES = True
 SILKY_META = True
 SILKY_STORAGE_CLASS = 'silk.storage.ProfilerResultStorage'
 SILKY_INTERCEPT_PERCENT = 100  # Log all requests
+SILKY_COMPARE = False
+SILKY_META = False
+
 
 # Only enable in development or selectively in production
 if DEBUG:

@@ -93,73 +93,62 @@ def create_transaksi(request, payload: CreateTransaksiRequest):
         return 422, {"message": f"Error during transaction: {str(e)}"}
 
 
+
+from django.db.models import Q, Prefetch
+
+
 @router.get("", response={200: PaginatedTransaksiResponse, 404: dict})
-def get_transaksi_list(
-    request,
-    page: int = 1,
-    q: str = "",
-    category: str = "",
-    transaction_type: str = "",
-    status: str = "",
-    show_deleted: bool = False,
-    month: int = None,
-    year: int = None,
-):
+def get_transaksi_list(request, page: int = 1, q: str = "", category: str = "", 
+                      transaction_type: str = "", status: str = "", 
+                      show_deleted: bool = False, month: int = None, year: int = None):
     user_id = request.auth
     user = get_object_or_404(User, id=user_id)
     
-    # Check if user has a toko
     if not user.toko:
         return 404, {"message": "User doesn't have a toko"}
     
-    # Filter transactions by toko instead of user
-    queryset = Transaksi.objects.filter(toko=user.toko, is_deleted=show_deleted)
+    # Use Q objects for complex filtering
+    filter_conditions = Q(toko=user.toko, is_deleted=show_deleted)
     
     # Add month and year filters
     if month and year:
-        from datetime import datetime
-        import pytz
-        
-        # Create start and end date for the selected month
         start_date = datetime(year, month, 1)
-        next_month = month + 1 if month < 12 else 1
-        next_year = year if month < 12 else year + 1
-        end_date = datetime(next_year, next_month, 1)
-        
-        # Filter by date range
-        queryset = queryset.filter(created_at__gte=start_date, created_at__lt=end_date)
+        if month == 12:
+            next_month = datetime(year + 1, 1, 1)
+        else:
+            next_month = datetime(year, month + 1, 1)
+        filter_conditions &= Q(created_at__gte=start_date, created_at__lt=next_month)
     
-    queryset = queryset.order_by("-created_at")
-
+    # Add search filter
     if q:
-        # Search by transaction ID or category
-        queryset = queryset.filter(id__icontains=q) | queryset.filter(
-            category__icontains=q
-        )
-
+        filter_conditions &= (Q(id__icontains=q) | Q(category__icontains=q))
+    
+    # Add other filters
     if category:
-        queryset = queryset.filter(category=category)
-
+        filter_conditions &= Q(category=category)
+    
     if transaction_type:
-        queryset = queryset.filter(transaction_type=transaction_type)
-
+        filter_conditions &= Q(transaction_type=transaction_type)
+    
     if status:
-        queryset = queryset.filter(status=status)
-
+        filter_conditions &= Q(status=status)
+    
+    # Perform a single query with all filters and prefetch related items
+    queryset = Transaksi.objects.filter(filter_conditions).order_by("-created_at").prefetch_related(
+        Prefetch('items', queryset=TransaksiItem.objects.select_related('product'))
+    )
+    
+    # Pagination logic remains the same
     try:
         per_page = int(request.GET.get("per_page", 10))
     except ValueError:
         per_page = 10
-
     total = queryset.count()
     total_pages = (total + per_page - 1) // per_page
-
     if page > total_pages and total > 0:
         return 404, {"message": "Page not found"}
-
     offset = (page - 1) * per_page
     page_items = queryset[offset : offset + per_page]
-
     return 200, {
         "items": [TransaksiResponse.from_orm(t) for t in page_items],
         "total": total,
@@ -168,13 +157,16 @@ def get_transaksi_list(
         "total_pages": total_pages,
     }
 
+from django.db.models import Sum, Case, When, F, DecimalField, Value, Q
+from django.db.models.functions import Coalesce
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
 
 @router.get("/summary/monthly", response={200: dict, 404: dict})
 def get_monthly_summary(request, month: int = None, year: int = None):
     user_id = request.auth
     user = get_object_or_404(User, id=user_id)
     
-    # Check if user has a toko
     if not user.toko:
         return 404, {"message": "User doesn't have a toko"}
 
@@ -191,60 +183,67 @@ def get_monthly_summary(request, month: int = None, year: int = None):
 
     # Define the current month period
     start_date = datetime(year, month, 1)
-    next_month = month + 1 if month < 12 else 1
-    next_year = year if month < 12 else year + 1
-    end_date = datetime(next_year, next_month, 1)
+    if month == 12:
+        next_month = datetime(year + 1, 1, 1)
+    else:
+        next_month = datetime(year, month + 1, 1)
 
     # Define the previous month period
     prev_start_date = start_date - relativedelta(months=1)
     prev_end_date = start_date
-
-    # Filter transactions for current month by toko instead of user
-    current_month_transactions = Transaksi.objects.filter(
-        toko=user.toko,
-        created_at__gte=start_date,
-        created_at__lt=end_date,
-        is_deleted=False,
+    
+    # Create base query for toko's non-deleted transactions
+    base_query = Q(toko=user.toko, is_deleted=False)
+    
+    # Create queries for the current and previous month
+    current_month_query = base_query & Q(created_at__gte=start_date, created_at__lt=next_month)
+    prev_month_query = base_query & Q(created_at__gte=prev_start_date, created_at__lt=prev_end_date)
+    
+    # Perform a single query with annotations for all the metrics we need
+    metrics = Transaksi.objects.aggregate(
+        # Current month income
+        current_income=Coalesce(Sum(
+            Case(
+                When(current_month_query & Q(transaction_type="pemasukan"), then=F('total_amount')),
+                default=Value(0, output_field=DecimalField()),
+                output_field=DecimalField()
+            )
+        ), Value(0, output_field=DecimalField())),
+        
+        # Previous month income
+        prev_income=Coalesce(Sum(
+            Case(
+                When(prev_month_query & Q(transaction_type="pemasukan"), then=F('total_amount')),
+                default=Value(0, output_field=DecimalField()),
+                output_field=DecimalField()
+            )
+        ), Value(0, output_field=DecimalField())),
+        
+        # Current month expenses
+        current_expenses=Coalesce(Sum(
+            Case(
+                When(current_month_query & Q(transaction_type="pengeluaran"), then=F('total_amount')),
+                default=Value(0, output_field=DecimalField()),
+                output_field=DecimalField()
+            )
+        ), Value(0, output_field=DecimalField())),
+        
+        # Previous month expenses
+        prev_expenses=Coalesce(Sum(
+            Case(
+                When(prev_month_query & Q(transaction_type="pengeluaran"), then=F('total_amount')),
+                default=Value(0, output_field=DecimalField()),
+                output_field=DecimalField()
+            )
+        ), Value(0, output_field=DecimalField()))
     )
-
-    # Filter transactions for previous month by toko instead of user
-    prev_month_transactions = Transaksi.objects.filter(
-        toko=user.toko,
-        created_at__gte=prev_start_date,
-        created_at__lt=prev_end_date,
-        is_deleted=False,
-    )
-
-    # Calculate income (pemasukan) for current and previous months
-    current_income = (
-        current_month_transactions.filter(transaction_type="pemasukan").aggregate(
-            total=Sum("total_amount")
-        )["total"]
-        or 0
-    )
-
-    prev_income = (
-        prev_month_transactions.filter(transaction_type="pemasukan").aggregate(
-            total=Sum("total_amount")
-        )["total"]
-        or 0
-    )
-
-    # Calculate expenses (pengeluaran) for current and previous months
-    current_expenses = (
-        current_month_transactions.filter(transaction_type="pengeluaran").aggregate(
-            total=Sum("total_amount")
-        )["total"]
-        or 0
-    )
-
-    prev_expenses = (
-        prev_month_transactions.filter(transaction_type="pengeluaran").aggregate(
-            total=Sum("total_amount")
-        )["total"]
-        or 0
-    )
-
+    
+    # Extract metrics from the query result
+    current_income = float(metrics['current_income'])
+    prev_income = float(metrics['prev_income'])
+    current_expenses = float(metrics['current_expenses'])
+    prev_expenses = float(metrics['prev_expenses'])
+    
     # Calculate percentage changes
     income_change = 0
     if prev_income > 0:
@@ -252,9 +251,7 @@ def get_monthly_summary(request, month: int = None, year: int = None):
 
     expense_change = 0
     if prev_expenses > 0:
-        expense_change = round(
-            ((current_expenses - prev_expenses) / prev_expenses) * 100, 2
-        )
+        expense_change = round(((current_expenses - prev_expenses) / prev_expenses) * 100, 2)
 
     # Calculate net amount and determine status
     net_amount = current_income - current_expenses
@@ -444,6 +441,10 @@ def get_first_debt_date(request):
         "first_date": first_date
     }
 
+from django.db.models import Prefetch
+import pytz
+from datetime import datetime
+
 @router.get("/financial-report-by-date", response={200: dict, 404: dict, 400: dict})
 def get_financial_report_by_date(request):
     user_id = request.auth
@@ -461,70 +462,65 @@ def get_financial_report_by_date(request):
         return 400, {"message": "Both start_date and end_date parameters are required"}
     
     try:
-        # Parse date strings to datetime objects with timezone handling
-        # The frontend sends date strings with timezone info (UTC+7)
-        from datetime import datetime
-        import pytz
-        
-        # Set the Jakarta timezone (UTC+7)
+        # Streamlined date parsing
         jakarta_tz = pytz.timezone('Asia/Jakarta')
         
-        # Check if timezone info is included in the strings
+        # Parse start_date
+        start_date = None
         if 'T' in start_date_str:
-            # Try to parse ISO format with timezone
             try:
-                start_date = datetime.fromisoformat(start_date_str)
-                # Convert to UTC for database query
-                if start_date.tzinfo is not None:
-                    start_date = start_date.astimezone(pytz.UTC)
+                start_date = datetime.fromisoformat(start_date_str.replace('Z', '+00:00'))
             except ValueError:
-                # Fall back to simpler parsing
                 start_date = datetime.strptime(start_date_str.split('T')[0], "%Y-%m-%d")
-                # Localize to Jakarta time, then convert to UTC
                 start_date = jakarta_tz.localize(start_date).astimezone(pytz.UTC)
         else:
-            # Basic date string without time/timezone - assume it's Jakarta time (UTC+7)
             start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
-            # Localize to Jakarta time, then convert to UTC
             start_date = jakarta_tz.localize(start_date).astimezone(pytz.UTC)
-            
-        # Similar handling for end_date
+        
+        # Parse end_date
+        end_date = None
         if 'T' in end_date_str:
             try:
-                end_date = datetime.fromisoformat(end_date_str)
-                if end_date.tzinfo is not None:
-                    end_date = end_date.astimezone(pytz.UTC)
+                end_date = datetime.fromisoformat(end_date_str.replace('Z', '+00:00'))
             except ValueError:
-                # Parse date part and add time to include the entire day
                 date_part = end_date_str.split('T')[0]
                 end_date = datetime.strptime(f"{date_part} 23:59:59", "%Y-%m-%d %H:%M:%S")
-                # Localize to Jakarta time, then convert to UTC
                 end_date = jakarta_tz.localize(end_date).astimezone(pytz.UTC)
         else:
-            # Add time to end_date to include the entire day (23:59:59)
             end_date = datetime.strptime(f"{end_date_str} 23:59:59", "%Y-%m-%d %H:%M:%S")
-            # Localize to Jakarta time, then convert to UTC for database query
             end_date = jakarta_tz.localize(end_date).astimezone(pytz.UTC)
-            
+        
         # Ensure start_date is before end_date
         if start_date > end_date:
             return 400, {"message": "start_date must be before end_date"}
-            
+    
     except ValueError as e:
         return 400, {"message": f"Invalid date format: {str(e)}"}
     
-    # Get all transactions (regardless of status) within the specified date range
-    transactions = Transaksi.objects.filter(
-        toko=user.toko,
-        is_deleted=False,
-        created_at__gte=start_date,
-        created_at__lte=end_date,
-    ).order_by("-created_at")
+    # Optimized query with prefetching related data
+    transactions = (
+        Transaksi.objects
+        .filter(
+            toko=user.toko,
+            is_deleted=False,
+            created_at__gte=start_date,
+            created_at__lte=end_date,
+        )
+        .select_related('created_by')  # Eagerly load the creator
+        .prefetch_related(
+            Prefetch(
+                'items',
+                queryset=TransaksiItem.objects.select_related('product')
+            )
+        )
+        .order_by("-created_at")
+    )
     
-    # Format the dates back to the Jakarta time zone for the response
+    # Format dates for the response
     jakarta_start_date = start_date.astimezone(jakarta_tz).strftime("%Y-%m-%d")
     jakarta_end_date = end_date.astimezone(jakarta_tz).strftime("%Y-%m-%d")
     
+    # Use from_orm in a list comprehension instead of a loop
     return 200, {
         "transactions": [TransaksiResponse.from_orm(t) for t in transactions],
         "start_date": jakarta_start_date,
