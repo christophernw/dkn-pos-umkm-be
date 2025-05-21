@@ -4,7 +4,7 @@ from django.conf import settings
 import jwt
 from .models import User, Toko, Invitation
 from ninja_jwt.tokens import RefreshToken, AccessToken
-
+from ninja_jwt.token_blacklist.models import OutstandingToken, BlacklistedToken
 
 class UserRepository:
     @staticmethod
@@ -104,3 +104,9 @@ class TokenRepository:
     @staticmethod
     def get_refresh_token(token_string):
         return RefreshToken(token_string)
+    
+    @staticmethod
+    def blacklist_all_tokens_for_user(user):
+        tokens = OutstandingToken.objects.filter(user=user)
+        for token in tokens:
+            BlacklistedToken.objects.get_or_create(token=token)
