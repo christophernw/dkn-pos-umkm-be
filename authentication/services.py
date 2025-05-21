@@ -291,12 +291,13 @@ class BPRService:
             shops_data = []
             for shop in shops:
                 owner = UserRepository.get_owner_of_toko(shop)
-                shops_data.append({
-                    "id": shop.id,
-                    "owner": owner.username if owner else "No owner",
-                    "created_at": shop.created_at,
-                    "user_count": UserRepository.count_users_in_toko(shop),
-                })
+                if owner:  # Only include shops that have an owner
+                    shops_data.append({
+                        "id": shop.id,
+                        "owner": owner.username,
+                        "created_at": shop.created_at,
+                        "user_count": UserRepository.count_users_in_toko(shop),
+                    })
 
             return shops_data, None
         except Exception as e:
@@ -316,10 +317,12 @@ class BPRService:
                 return None, "Shop not found"
 
             owner = UserRepository.get_owner_of_toko(shop)
+            if not owner:
+                return None, "Shop has no owner"
 
             return {
                 "id": shop.id,
-                "owner": owner.username if owner else "No owner",
+                "owner": owner.username,
                 "created_at": shop.created_at,
                 "user_count": UserRepository.count_users_in_toko(shop),
             }, None
