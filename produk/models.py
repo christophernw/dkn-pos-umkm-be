@@ -35,3 +35,8 @@ class Produk(models.Model):
         on_delete=models.CASCADE,
         related_name="produk",
     )
+
+    def save(self, *args, **kwargs):
+        if self.harga_jual < self.harga_modal:
+            raise ValueError("Harga jual tidak boleh lebih rendah dari harga modal")
+        super().save(*args, **kwargs)
