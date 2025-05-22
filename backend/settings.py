@@ -34,7 +34,13 @@ from datetime import timedelta
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(days=7),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    "BLACKLIST_AFTER_ROTATION": True,
+    "ROTATE_REFRESH_TOKENS": True,
+    "AUTH_TOKEN_CLASSES": ("rest_framework_simplejwt.tokens.AccessToken",),
+    "TOKEN_BLACKLIST_ENABLED": True,
 }
+
+BPR_EMAIL = os.environ.get('BPR_EMAIL', 'bprlancar@gmail.com')
 
 MEDIA_URL = 'api/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
@@ -95,9 +101,12 @@ INSTALLED_APPS = [
     'laporan',
     'corsheaders',
     'rest_framework',
+    'silk',
+    "rest_framework_simplejwt.token_blacklist",
 ]
 
 MIDDLEWARE = [
+    'silk.middleware.SilkyMiddleware', 
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
@@ -136,6 +145,8 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 # Load environment variables
 ENV = os.environ.get('ENV', 'local')
 
+print(ENV, "INI ENV NYA YA BOSSSS")
+
 # Database configuration
 if ENV == 'staging' or ENV == 'production':
     DATABASES = {
@@ -155,7 +166,21 @@ else:
             'NAME': BASE_DIR / 'db.sqlite3',
         }
     }
+    
+# CACHES = {
+#     "default": {
+#         "BACKEND": "django_redis.cache.RedisCache",
+#         "LOCATION": "redis://127.0.0.1:6379/1",
+#         "OPTIONS": {
+#             "CLIENT_CLASS": "django_redis.client.DefaultClient",
+#             "SERIALIZER": "django_redis.serializers.json.JSONSerializer",
+#             "COMPRESSOR": "django_redis.compressors.zlib.ZlibCompressor",
+#         }
+#     }
+# }
 
+SESSION_ENGINE = "django.contrib.sessions.backends.cache"
+SESSION_CACHE_ALIAS = "default"
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators
 
@@ -216,4 +241,15 @@ EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_BACKEND ='django.core.mail.backends.smtp.EmailBackend'
 
-#asdfasdf
+#Security 
+
+# Mencegah CSRF Attack
+CSRF_COOKIE_SECURE = True
+CSRF_COOKIE_HTTPONLY= True
+SESSION_COOKIE_SECURE = True
+
+# HTTP Security Headers
+SECURE_BROWSER_XSS_FILTER = True
+X_FRAME_OPTIONS = 'DENY'
+SECURE_CONTENT_TYPE_NOSNIFF = True
+
