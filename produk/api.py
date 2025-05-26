@@ -54,7 +54,13 @@ def get_categories(request):
 
 @router.get("/units", response={200: list, 404: dict})
 def get_units(request):
-    units = Satuan.objects.all().values_list('nama', flat=True)
+    user_id = request.auth
+    user = User.objects.get(id=user_id)
+
+    if not user.toko:
+        return 404, {"message": "User doesn't have a toko"}
+
+    units = Satuan.objects.filter(toko=user.toko).values_list('nama', flat=True)
     return 200, list(units)
 
 
@@ -115,7 +121,7 @@ def create_produk(request, payload: CreateProdukSchema, foto: UploadedFile = Non
         return 422, {"message": "User doesn't have a toko"}
 
     kategori_obj, _ = KategoriProduk.objects.get_or_create(nama=payload.kategori, toko=user.toko)
-    satuan_obj, _ = Satuan.objects.get_or_create(nama=payload.satuan)
+    satuan_obj, _ = Satuan.objects.get_or_create(nama=payload.satuan, toko=user.toko)
 
     produk = Produk.objects.create(
         nama=payload.nama,
@@ -233,10 +239,10 @@ def update_produk(request, id: int, payload: UpdateProdukSchema, foto: UploadedF
             )
             produk.kategori = kategori_obj
         
-        # Handle satuan separately to ensure it's added to the Satuan model
+        # Handle satuan separately to ensure it's added to the Satuan model with toko
         if 'satuan' in update_data:
             satuan_name = update_data.pop('satuan')
-            satuan_obj, _ = Satuan.objects.get_or_create(nama=satuan_name)
+            satuan_obj, _ = Satuan.objects.get_or_create(nama=satuan_name, toko=user.toko)
             produk.satuan = satuan_obj.nama
         
         # Update all other fields

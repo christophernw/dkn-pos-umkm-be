@@ -14,7 +14,11 @@ class KategoriProduk(models.Model):
         return self.nama
 
 class Satuan(models.Model):
-    nama = models.CharField(max_length=50, unique=True)
+    nama = models.CharField(max_length=50)
+    toko = models.ForeignKey("authentication.Toko", on_delete=models.CASCADE, related_name="satuan", null=True)
+    
+    class Meta:
+        unique_together = ("nama", "toko")  # Ensure no duplicate unit names within the same shop
     
     def __str__(self):
         return self.nama

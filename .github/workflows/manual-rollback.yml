@@ -1,0 +1,99 @@
+name: Manual Data Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      seed_id:
+        description: 'Seed ID to rollback (e.g., seed_20250526123456)'
+        required: true
+        type: string
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+        - production
+        - staging
+      dry_run:
+        description: 'Dry run (preview what would be rolled back)'
+        required: false
+        default: true
+        type: boolean
+
+jobs:
+  manual-rollback:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Install sshpass
+      run: sudo apt-get update && sudo apt-get install -y sshpass
+
+    - name: Set environment variables
+      run: |
+        if [ "${{ github.event.inputs.environment }}" == "production" ]; then
+          echo "BRANCH=prod" >> $GITHUB_ENV
+        else
+          echo "BRANCH=staging" >> $GITHUB_ENV
+        fi
+
+    - name: Validate Seed ID Format
+      run: |
+        SEED_ID="${{ github.event.inputs.seed_id }}"
+        if [[ ! $SEED_ID =~ ^seed_[0-9]{14}$ ]] && [[ ! $SEED_ID =~ ^[0-9]{14}$ ]]; then
+          echo "❌ Invalid seed ID format. Expected: seed_YYYYMMDDHHMMSS or YYYYMMDDHHMMSS"
+          exit 1
+        fi
+        echo "✅ Seed ID format is valid"
+
+    - name: Execute Rollback
+      run: |
+        sshpass -p "${{ secrets.SERVER_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << EOF
+          cd ~/django-be-${{ env.BRANCH }}
+          
+          # Check if log file exists
+          SEED_ID="${{ github.event.inputs.seed_id }}"
+          LOG_FILE="seed_logs/rollback_\${SEED_ID}.log"
+          
+          if ! docker-compose --env-file .env exec -T web test -f "\$LOG_FILE"; then
+            echo "❌ Rollback log file not found: \$LOG_FILE"
+            echo "Available log files:"
+            docker-compose --env-file .env exec -T web ls -la seed_logs/ || echo "No seed_logs directory found"
+            exit 1
+          fi
+          
+          echo "✅ Found rollback log file: \$LOG_FILE"
+          
+          # Build rollback command
+          if [ "${{ github.event.inputs.dry_run }}" == "true" ]; then
+            echo "🔍 DRY RUN - Preview of rollback operation:"
+            docker-compose --env-file .env exec -T web head -20 "\$LOG_FILE"
+            echo "To execute actual rollback, run this workflow again with dry_run=false"
+          else
+            echo "🔄 Executing rollback for seed ID: \$SEED_ID"
+            docker-compose --env-file .env exec -T web python manage.py seed_database --mode=production --rollback-id="\$SEED_ID"
+            echo "✅ Rollback completed successfully"
+          fi
+        EOF
+
+    - name: Generate Summary
+      run: |
+        echo "## 🔄 Rollback Operation Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Environment:** ${{ github.event.inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Seed ID:** ${{ github.event.inputs.seed_id }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Dry Run:** ${{ github.event.inputs.dry_run }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        if [ "${{ github.event.inputs.dry_run }}" == "true" ]; then
+          echo "### 🔍 This was a DRY RUN" >> $GITHUB_STEP_SUMMARY
+          echo "No actual changes were made. To execute the rollback:" >> $GITHUB_STEP_SUMMARY
+          echo "1. Run this workflow again with **dry_run=false**" >> $GITHUB_STEP_SUMMARY
+          echo "2. Or manually execute on server" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "### ✅ Rollback Executed" >> $GITHUB_STEP_SUMMARY
+          echo "The seeding operation has been successfully rolled back." >> $GITHUB_STEP_SUMMARY
+        fi

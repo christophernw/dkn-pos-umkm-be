@@ -15,16 +15,23 @@ from backend import settings
 from laporan.models import ArusKasReport, DetailArusKas
 from transaksi.models import Transaksi
 from authentication.models import Toko, User
-from .schemas import ArusKasReportWithDetailsSchema, DateRangeRequest, IncomeStatementResponse, IncomeStatementLine, ArusKasDetailSchema
+from .schemas import (
+    ArusKasReportWithDetailsSchema,
+    DateRangeRequest,
+    IncomeStatementResponse,
+    IncomeStatementLine,
+    ArusKasDetailSchema,
+)
 from .utils import INCOME_CATEGORIES, EXPENSE_CATEGORIES, build_csv
 
 router = Router(tags=["Income Statement"])
+
 
 def _aggregate(toko: Toko, start: date, end: date):
     qs = Transaksi.objects.filter(
         toko=toko,
         is_deleted=False,
-        status="Selesai",
+        status="Lunas",
         created_at__date__gte=start,
         created_at__date__lte=end,
     )
@@ -32,19 +39,22 @@ def _aggregate(toko: Toko, start: date, end: date):
     def sum_by(cats: dict) -> List[IncomeStatementLine]:
         out = []
         for label in cats.values():
-            amt = qs.filter(category=label).aggregate(total=Sum("total_amount"))["total"] or Decimal("0")
+            amt = qs.filter(category=label).aggregate(total=Sum("total_amount"))[
+                "total"
+            ] or Decimal("0")
             out.append(IncomeStatementLine(name=label, total=amt))
         return out
 
     inc = sum_by(INCOME_CATEGORIES)
     exp = sum_by(EXPENSE_CATEGORIES)
-    net = sum((l.total for l in inc), Decimal("0")) - sum((l.total for l in exp), Decimal("0"))
+    net = sum((l.total for l in inc), Decimal("0")) - sum(
+        (l.total for l in exp), Decimal("0")
+    )
     return inc, exp, net
 
+
 @router.get("/income-statement", response=IncomeStatementResponse, auth=django_auth)
-def income_statement(request,
-                     start_date: date,
-                     end_date: date):
+def income_statement(request, start_date: date, end_date: date):
     if start_date > end_date:
         start_date, end_date = end_date, start_date
 
@@ -62,10 +72,9 @@ def income_statement(request,
         net_profit=net,
     )
 
+
 @router.get("/income-statement/download", auth=django_auth)
-def download_income_statement(request,
-                             start_date: date,
-                             end_date: date):
+def download_income_statement(request, start_date: date, end_date: date):
     if start_date > end_date:
         start_date, end_date = end_date, start_date
     if (end_date - start_date).days < 28:
@@ -78,47 +87,47 @@ def download_income_statement(request,
 
 
 router = Router(tags=["Income Statement"])
+
+
 def _month_bounds(year: int, month: int):
     first = date(year, month, 1)
     last = date(year, month, monthrange(year, month)[1])
     return first, last
 
+
 def _aggregate(toko: Toko, first: date, last: date):
     base_qs = Transaksi.objects.filter(
         toko=toko,
         is_deleted=False,
-        status="Selesai",
-        created_at__date__range=(first, last)
+        status="Lunas",
+        created_at__date__range=(first, last),
     )
 
     def sum_by(categories: dict) -> List[IncomeStatementLine]:
         lines = []
         for label in categories.values():
-            total = base_qs.filter(category=label).aggregate(
-                total=Sum("total_amount")
-            )["total"] or Decimal("0")
+            total = base_qs.filter(category=label).aggregate(total=Sum("total_amount"))[
+                "total"
+            ] or Decimal("0")
             lines.append(IncomeStatementLine(name=label, total=total))
         return lines
 
     income_lines = sum_by(INCOME_CATEGORIES)
     expense_lines = sum_by(EXPENSE_CATEGORIES)
 
-    net_profit = sum(
-        (line.total for line in income_lines), Decimal("0")
-    ) - sum((line.total for line in expense_lines), Decimal("0"))
+    net_profit = sum((line.total for line in income_lines), Decimal("0")) - sum(
+        (line.total for line in expense_lines), Decimal("0")
+    )
 
     return income_lines, expense_lines, net_profit
 
-@router.get(
-    "/income-statement",
-    response=IncomeStatementResponse,
-    auth=django_auth
-)
+
+@router.get("/income-statement", response=IncomeStatementResponse, auth=django_auth)
 def income_statement(request, month: str):
     year, mm = map(int, month.split("-"))
     first, last = _month_bounds(year, mm)
 
-    toko = request.user.toko  
+    toko = request.user.toko
 
     income_lines, expense_lines, net = _aggregate(toko, first, last)
 
@@ -127,13 +136,11 @@ def income_statement(request, month: str):
         period=month,
         income=income_lines,
         expenses=expense_lines,
-        net_profit=net
+        net_profit=net,
     )
 
-@router.get(
-    "/income-statement/download",
-    auth=django_auth
-)
+
+@router.get("/income-statement/download", auth=django_auth)
 def download_income_statement(request, month: str):
     year, mm = map(int, month.split("-"))
     first, last = _month_bounds(year, mm)
@@ -141,6 +148,7 @@ def download_income_statement(request, month: str):
 
     income_lines, expense_lines, net = _aggregate(toko, first, last)
     return build_csv(month, toko.id, income_lines, expense_lines, net)
+
 
 class AuthBearer(HttpBearer):
     def authenticate(self, request, token):
@@ -152,20 +160,25 @@ class AuthBearer(HttpBearer):
         except jwt.PyJWTError:
             return None
         return None
-    
+
+
 router = Router(auth=AuthBearer())
+
 
 def _month_bounds(year: int, month: int):
     first = date(year, month, 1)
     last = date(year, month, monthrange(year, month)[1])
     return first, last
 
+
 @router.get("/aruskas-report", response=ArusKasReportWithDetailsSchema)
-def aruskas_report(request, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None):
+def aruskas_report(
+    request, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None
+):
     """
     Get a cash flow report with optional date filters for transactions.
     """
-    if hasattr(request, 'auth') and request.auth:
+    if hasattr(request, "auth") and request.auth:
         user_id = request.auth
         user = User.objects.get(id=user_id)
         toko = user.toko
@@ -182,7 +195,7 @@ def aruskas_report(request, start_date: Optional[datetime] = None, end_date: Opt
             total_inflow=Decimal("0"),
             total_outflow=Decimal("0"),
             balance=Decimal("0"),
-            transactions=[]
+            transactions=[],
         )
 
     transactions = DetailArusKas.objects.filter(report=report)
@@ -194,25 +207,30 @@ def aruskas_report(request, start_date: Optional[datetime] = None, end_date: Opt
 
     return ArusKasReportWithDetailsSchema.from_report(report, transactions)
 
+
 # laporan/api.py
-@router.get("/bpr/shop/{shop_id}/aruskas", response={200: ArusKasReportWithDetailsSchema, 403: dict, 404: dict}, auth=AuthBearer())
+@router.get(
+    "/bpr/shop/{shop_id}/aruskas",
+    response={200: ArusKasReportWithDetailsSchema, 403: dict, 404: dict},
+    auth=AuthBearer(),
+)
 def get_shop_aruskas_for_bpr(request, shop_id: int):
     """Get cash flow report for a specific shop for BPR users."""
     user_id = request.auth
-    
+
     try:
         user = User.objects.get(id=user_id)
-        
+
         # Check ONLY the email, not the role
         if user.email != settings.BPR_EMAIL:
             return 403, {"error": "Only BPR users can access this endpoint"}
-        
+
         # Get the shop
         shop = get_object_or_404(Toko, id=shop_id)
-        
+
         # Get report for the shop
         report = ArusKasReport.objects.filter(toko=shop).first()
-        
+
         if not report:
             return ArusKasReportWithDetailsSchema(
                 id=0,
@@ -221,15 +239,16 @@ def get_shop_aruskas_for_bpr(request, shop_id: int):
                 total_inflow=Decimal("0"),
                 total_outflow=Decimal("0"),
                 balance=Decimal("0"),
-                transactions=[]
+                transactions=[],
             )
-        
+
         transactions = DetailArusKas.objects.filter(report=report)
-        
+
         return ArusKasReportWithDetailsSchema.from_report(report, transactions)
     except Exception as e:
         print(f"Error: {str(e)}")
         return 403, {"error": "Access denied"}
+
 
 # @router.get("/aruskas-available-months", response=List[str])
 # def available_months(request):
@@ -245,6 +264,3 @@ def get_shop_aruskas_for_bpr(request, shop_id: int):
 #     ]
 
 #     return months
-
-
-

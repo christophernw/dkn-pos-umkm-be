@@ -50,16 +50,19 @@ jobs:
           echo "PORT=8000" >> $GITHUB_ENV
           echo "DB_PORT_HOST=5432" >> $GITHUB_ENV
           echo "SENTRY_DSN_VAR=SENTRY_DSN_PROD" >> $GITHUB_ENV
+          echo "SEEDING_MODE=production" >> $GITHUB_ENV
         elif [ "${{ github.ref }}" == "refs/heads/staging" ] || [ "${{ github.base_ref }}" == "staging" ]; then
           echo "BRANCH=staging" >> $GITHUB_ENV
           echo "PORT=8001" >> $GITHUB_ENV
           echo "DB_PORT_HOST=5433" >> $GITHUB_ENV
           echo "SENTRY_DSN_VAR=SENTRY_DSN_STAGING" >> $GITHUB_ENV
+          echo "SEEDING_MODE=server" >> $GITHUB_ENV
         else
           echo "BRANCH=dev" >> $GITHUB_ENV
           echo "PORT=8002" >> $GITHUB_ENV
           echo "DB_PORT_HOST=5434" >> $GITHUB_ENV
           echo "SENTRY_DSN_VAR=SENTRY_DSN_DEV" >> $GITHUB_ENV
+          echo "SEEDING_MODE=local" >> $GITHUB_ENV
         fi
 
     # Update this step to tag with version
@@ -90,7 +93,7 @@ jobs:
         sshpass -p "${{ secrets.SERVER_PASSWORD }}" scp -o StrictHostKeyChecking=no docker-compose.prod.${{ env.BRANCH }}.yml ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }}:~/django-be-${{ env.BRANCH }}/docker-compose.yml
         sshpass -p "${{ secrets.SERVER_PASSWORD }}" scp -o StrictHostKeyChecking=no docker-compose.db.${{ env.BRANCH }}.yml ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }}:~/postgres-db-${{ env.BRANCH }}/docker-compose.yml
 
-    # Update the deploy step to pass VERSION to the environment
+    # Update the deploy step to pass VERSION to the environment and run database seeding
     - name: Deploy database and web application
       run: |
         sshpass -p "${{ secrets.SERVER_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << EOF
@@ -100,7 +103,7 @@ jobs:
           echo "DB_NAME=${{ secrets.DB_NAME }}" >> .env
           echo "DB_USER=${{ secrets.DB_USER }}" >> .env
           echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env
-          echo "VERSION=${{ env.VERSION }}" >> .env  # Add VERSION to environment
+          echo "VERSION=${{ env.VERSION }}" >> .env
           
           # Dynamically choose correct Sentry DSN based on environment
           if [ "${{ env.BRANCH }}" == "main" ]; then
@@ -114,4 +117,19 @@ jobs:
           docker-compose --env-file .env pull
           docker-compose --env-file .env down --remove-orphans
           docker-compose --env-file .env up -d
+          
+          # Wait for the database and application to be ready
+          sleep 10
+          
+          # Run database migrations
+          docker-compose --env-file .env exec -T web python manage.py migrate
+          
+          # Only run automatic seeding for non-production environments
+          if [ "${{ env.BRANCH }}" != "main" ]; then
+            echo "Running automatic seeding for ${{ env.BRANCH }} environment..."
+            docker-compose --env-file .env exec -T web python manage.py seed_database --mode=${{ env.SEEDING_MODE }} --email=gg.gaming1030@gmail.com --clean
+          else
+            echo "Production environment detected. Skipping automatic seeding."
+            echo "Use the Manual Production Seeding workflow to seed production data."
+          fi
         EOF
