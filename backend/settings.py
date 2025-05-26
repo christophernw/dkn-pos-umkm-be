@@ -34,6 +34,10 @@ from datetime import timedelta
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(days=7),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    "BLACKLIST_AFTER_ROTATION": True,
+    "ROTATE_REFRESH_TOKENS": True,
+    "AUTH_TOKEN_CLASSES": ("rest_framework_simplejwt.tokens.AccessToken",),
+    "TOKEN_BLACKLIST_ENABLED": True,
 }
 
 BPR_EMAIL = os.environ.get('BPR_EMAIL', 'bprlancar@gmail.com')
@@ -99,6 +103,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'silk',
     'core',
+    "rest_framework_simplejwt.token_blacklist",
 ]
 
 MIDDLEWARE = [
@@ -140,6 +145,8 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 
 # Load environment variables
 ENV = os.environ.get('ENV', 'local')
+
+print(ENV, "INI ENV NYA YA BOSSSS")
 
 # Database configuration
 if ENV == 'staging' or ENV == 'production':

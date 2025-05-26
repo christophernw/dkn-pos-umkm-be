@@ -1,6 +1,7 @@
 from django.utils.timezone import now
 from datetime import timedelta
 from ninja_jwt.exceptions import TokenError
+from ninja_jwt.token_blacklist.models import BlacklistedToken, OutstandingToken
 import jwt
 
 from backend import settings
@@ -11,11 +12,6 @@ class AuthService:
     @staticmethod
     def process_user_session(user_data):
         email = user_data.get("email")
-        cache_key = f"user_session_{email}"
-
-        cached_user = cache.get(cache_key)
-        if cached_user:
-            return cached_user
 
         user, created = UserRepository.get_or_create_user(
             email=email,
@@ -28,6 +24,7 @@ class AuthService:
         if created:
             toko = TokoRepository.create_toko()
             user.toko = toko
+            user.role = "Pemilik"
             user.save()
 
         refresh = TokenRepository.create_refresh_token_for_user(user)
@@ -48,8 +45,6 @@ class AuthService:
             },
         }
 
-        cache.set(cache_key, response_data, timeout=3600)
-
         return response_data
 
     @staticmethod
@@ -69,16 +64,38 @@ class AuthService:
             return {"valid": False}
 
     @staticmethod
-    def logout(self, refresh_token):
+    def logout(refresh_token_str):
         """Blacklist the refresh token to logout the user."""
         try:
-            refresh_token = TokenRepository.get_refresh_token
-            refresh_token.blacklist()
-            access_token = TokenRepository.get_access_token
-            access_token.blacklist()
+            # Check for None or empty token
+            if not refresh_token_str:
+                return None, "Token is missing or invalid"
+                
+            # Get the refresh token object to validate it
+            refresh = TokenRepository.get_refresh_token(refresh_token_str)
+            
+            # For ninja_jwt, we need to:
+            # 1. Find or create an outstanding token record
+            # 2. Create a blacklist entry for that token
+            
+            # First, try to find if token is already registered
+            try:
+                outstanding = OutstandingToken.objects.get(token=refresh_token_str)
+            except OutstandingToken.DoesNotExist:
+                # Token not found in database, so it can't be blacklisted
+                return {"message": "Token not found or already expired"}, None
+            
+            # Check if already blacklisted
+            if BlacklistedToken.objects.filter(token=outstanding).exists():
+                return {"message": "Token already blacklisted"}, None
+                
+            # Create blacklist entry
+            BlacklistedToken.objects.create(token=outstanding)
+            
             return {"message": "Successfully logged out"}, None
-        except TokenError as e:
-            return None, f"Invalid token: {str(e)}"
+        except Exception as e:
+            # Catch any other exceptions
+            return None, f"Logout failed: {str(e)}"
         
 class UserService:
     @staticmethod
@@ -133,7 +150,24 @@ class UserService:
                 "role": user_to_remove.role,
             },
         }, None
-
+    
+    @staticmethod
+    def get_user_info(user_id):
+        try:
+            user = UserRepository.get_user_by_id(user_id)
+            
+            is_bpr = (user.email == settings.BPR_EMAIL)
+            
+            return {
+                "id": user.id,
+                "email": user.email,
+                "name": user.username,
+                "role": user.role,
+                "toko_id": user.toko.id if user.toko else None,
+                "is_bpr": is_bpr,
+            }, None
+        except Exception as e:
+            return None, f"Error retrieving user info: {str(e)}"
 
 class InvitationService:
     @staticmethod
@@ -196,7 +230,7 @@ class InvitationService:
 
             toko = TokoRepository.get_toko_by_id(toko_id)
 
-            user, created = UserRepository.get_or_create_user(
+            user, _ = UserRepository.get_or_create_user(
                 email=email, 
                 defaults={
                     "username": name, 
@@ -204,9 +238,6 @@ class InvitationService:
                     "is_active": True  
                 }
             )
-            
-            if not created and not user.is_active:
-                return {"valid": False, "error": "User account is inactive. Please contact administrator."}
                 
             user.role = role
             user.username = name
@@ -215,11 +246,12 @@ class InvitationService:
 
             InvitationRepository.delete_invitation(invitation)
 
-            return {"valid": True, "message": "User successfully registered"}
+            return {"valid": True, "message": "gitUser successfully registered"}
         except jwt.ExpiredSignatureError:
             return {"valid": False, "error": "Token expired"}
         except jwt.DecodeError:
             return {"valid": False, "error": "Invalid token"}
+
 
     @staticmethod
     def get_pending_invitations(user_id):
@@ -275,12 +307,13 @@ class BPRService:
             shops_data = []
             for shop in shops:
                 owner = UserRepository.get_owner_of_toko(shop)
-                shops_data.append({
-                    "id": shop.id,
-                    "owner": owner.username if owner else "No owner",
-                    "created_at": shop.created_at,
-                    "user_count": UserRepository.count_users_in_toko(shop),
-                })
+                if owner:  # Only include shops that have an owner
+                    shops_data.append({
+                        "id": shop.id,
+                        "owner": owner.username,
+                        "created_at": shop.created_at,
+                        "user_count": UserRepository.count_users_in_toko(shop),
+                    })
 
             return shops_data, None
         except Exception as e:
@@ -300,10 +333,12 @@ class BPRService:
                 return None, "Shop not found"
 
             owner = UserRepository.get_owner_of_toko(shop)
+            if not owner:
+                return None, "Shop has no owner"
 
             return {
                 "id": shop.id,
-                "owner": owner.username if owner else "No owner",
+                "owner": owner.username,
                 "created_at": shop.created_at,
                 "user_count": UserRepository.count_users_in_toko(shop),
             }, None

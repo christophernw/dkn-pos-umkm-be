@@ -1,5 +1,4 @@
 from silk.profiling.profiler import silk_profile
-
 from ninja import Router
 
 from produk.api import AuthBearer
@@ -109,3 +108,12 @@ def get_shop_info_for_bpr(request, shop_id: int):
     elif error == "Shop not found":
         return 404, {"error": error}
     return 200, shop_info
+
+@router.get("/me", response={200: dict, 404: dict}, auth=AuthBearer())
+@silk_profile(name='Get User Info')
+def get_user_info(request):
+    """Get detailed information about the currently authenticated user"""
+    result, error = UserService.get_user_info(request.auth)
+    if error:
+        return 404, {"error": error}
+    return 200, result
