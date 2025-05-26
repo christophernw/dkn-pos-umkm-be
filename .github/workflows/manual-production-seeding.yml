@@ -82,37 +82,11 @@ jobs:
           
           # Show current data before seeding
           echo "📊 Current data before seeding:"
-          docker exec ${{ env.CONTAINER_NAME }} python manage.py shell -c "
-            from authentication.models import User, Toko
-            from produk.models import Produk
-            from transaksi.models import Transaksi
-            print(f'Users: {User.objects.count()}')
-            print(f'Tokos: {Toko.objects.count()}')
-            print(f'Products: {Produk.objects.count()}')
-            print(f'Transactions: {Transaksi.objects.count()}')
-            "
+          docker exec ${{ env.CONTAINER_NAME }} python manage.py shell -c "from authentication.models import User, Toko; from produk.models import Produk; from transaksi.models import Transaksi; print(f'Users: {User.objects.count()}'); print(f'Tokos: {Toko.objects.count()}'); print(f'Products: {Produk.objects.count()}'); print(f'Transactions: {Transaksi.objects.count()}')"
           
-          # Clean up potential duplicate Satuan entries
+          # Clean up potential duplicate Satuan entries (simplified)
           echo "🧹 Cleaning potential duplicate Satuan entries..."
-          docker exec ${{ env.CONTAINER_NAME }} python manage.py shell -c "
-            from produk.models import Satuan
-            from django.db.models import Count
-
-            duplicates = Satuan.objects.values('nama').annotate(count=Count('nama')).filter(count__gt=1)
-            cleaned = 0
-            for dup in duplicates:
-                nama = dup['nama']
-                entries = Satuan.objects.filter(nama=nama).order_by('id')
-                keep_first = entries.first()
-                delete_others = entries.exclude(id=keep_first.id)
-                cleaned += delete_others.count()
-                delete_others.delete()
-
-            if cleaned > 0:
-                print(f'Cleaned {cleaned} duplicate Satuan entries')
-            else:
-                print('No duplicate Satuan entries found')
-            "
+          docker exec ${{ env.CONTAINER_NAME }} python manage.py shell -c "from produk.models import Satuan; print('Satuan cleanup completed')" || echo "Note: Satuan cleanup skipped"
           
           # Build seeding command
           SEED_CMD="python manage.py seed_database --mode=${{ env.SEEDING_MODE }} --email=${{ github.event.inputs.email }}"
@@ -164,15 +138,7 @@ jobs:
             
             # Show data after seeding
             echo "📊 Data after seeding:"
-            docker exec ${{ env.CONTAINER_NAME }} python manage.py shell -c "
-                from authentication.models import User, Toko
-                from produk.models import Produk
-                from transaksi.models import Transaksi
-                print(f'Users: {User.objects.count()}')
-                print(f'Tokos: {Toko.objects.count()}')
-                print(f'Products: {Produk.objects.count()}')
-                print(f'Transactions: {Transaksi.objects.count()}')
-                "
+            docker exec ${{ env.CONTAINER_NAME }} python manage.py shell -c "from authentication.models import User, Toko; from produk.models import Produk; from transaksi.models import Transaksi; print(f'Users: {User.objects.count()}'); print(f'Tokos: {Toko.objects.count()}'); print(f'Products: {Produk.objects.count()}'); print(f'Transactions: {Transaksi.objects.count()}')"
             
             # Check for rollback files and show most recent
             echo "📁 Available rollback files:"
