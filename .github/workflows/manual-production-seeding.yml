@@ -91,10 +91,10 @@ jobs:
             print(f'Products: {Produk.objects.count()}')
             print(f'Transactions: {Transaksi.objects.count()}')
             "
-                    
-                    # Clean up potential duplicate Satuan entries
-                    echo "🧹 Cleaning potential duplicate Satuan entries..."
-                    docker exec ${{ env.CONTAINER_NAME }} python manage.py shell -c "
+          
+          # Clean up potential duplicate Satuan entries
+          echo "🧹 Cleaning potential duplicate Satuan entries..."
+          docker exec ${{ env.CONTAINER_NAME }} python manage.py shell -c "
             from produk.models import Satuan
             from django.db.models import Count
 
@@ -125,10 +125,42 @@ jobs:
           echo "🚀 Executing: $SEED_CMD"
           echo ""
           
-          # Execute seeding command
-          if docker exec ${{ env.CONTAINER_NAME }} $SEED_CMD; then
+          # Execute seeding command and capture output
+          SEED_OUTPUT=$(docker exec ${{ env.CONTAINER_NAME }} $SEED_CMD 2>&1)
+          SEED_EXIT_CODE=$?
+          
+          # Display the full output
+          echo "$SEED_OUTPUT"
+          
+          if [ $SEED_EXIT_CODE -eq 0 ]; then
             echo ""
             echo "✅ Manual seeding completed successfully!"
+            
+            # Method 1: Extract seed ID from Django command output
+            ACTUAL_SEED_ID=$(echo "$SEED_OUTPUT" | grep -o "Seed ID: seed_[0-9]\{14\}" | cut -d' ' -f3)
+            
+            # Method 2: Get seed ID from latest rollback file
+            LATEST_ROLLBACK=$(docker exec ${{ env.CONTAINER_NAME }} ls -t /app/seed_logs/rollback_seed_*.log 2>/dev/null | head -1)
+            if [ -n "$LATEST_ROLLBACK" ]; then
+              ROLLBACK_SEED_ID=$(basename "$LATEST_ROLLBACK" .log | sed 's/rollback_//')
+              echo "📁 Latest rollback file: $LATEST_ROLLBACK"
+              echo "🎯 SEED ID FROM ROLLBACK FILE: $ROLLBACK_SEED_ID"
+            fi
+            
+            # Method 3: Show from Django output if found
+            if [ -n "$ACTUAL_SEED_ID" ]; then
+              echo "🎯 SEED ID FROM COMMAND OUTPUT: $ACTUAL_SEED_ID"
+            fi
+            
+            # Choose the best seed ID
+            FINAL_SEED_ID="$ROLLBACK_SEED_ID"
+            if [ -n "$ACTUAL_SEED_ID" ]; then
+              FINAL_SEED_ID="$ACTUAL_SEED_ID"
+            fi
+            
+            echo ""
+            echo "🎯🎯🎯 USE THIS SEED ID FOR ROLLBACK: $FINAL_SEED_ID 🎯🎯🎯"
+            echo ""
             
             # Show data after seeding
             echo "📊 Data after seeding:"
@@ -142,14 +174,21 @@ jobs:
                 print(f'Transactions: {Transaksi.objects.count()}')
                 "
             
-            # Check for rollback files
-            echo "📁 Checking rollback files:"
-            docker exec ${{ env.CONTAINER_NAME }} ls -la /app/seed_logs/rollback_*.log 2>/dev/null | tail -3 || echo "No rollback files found"
+            # Check for rollback files and show most recent
+            echo "📁 Available rollback files:"
+            docker exec ${{ env.CONTAINER_NAME }} ls -la /app/seed_logs/rollback_*.log 2>/dev/null | tail -5 || echo "No rollback files found"
             
-            # Generate seed ID for reference
-            TIMESTAMP=$(date +"%Y%m%d%H%M%S")
-            echo "💾 Seed ID for rollback reference: seed_$TIMESTAMP"
-            echo "📝 Note: Use the actual seed ID from the seeding output above for rollback"
+            # Show the most recent rollback file content preview
+            if [ -n "$ACTUAL_SEED_ID" ]; then
+              ROLLBACK_FILE="/app/seed_logs/rollback_${ACTUAL_SEED_ID}.log"
+              if docker exec ${{ env.CONTAINER_NAME }} test -f "$ROLLBACK_FILE"; then
+                echo "✅ Rollback file created: $ROLLBACK_FILE"
+                echo "📋 Rollback file preview:"
+                docker exec ${{ env.CONTAINER_NAME }} head -5 "$ROLLBACK_FILE"
+              else
+                echo "⚠️  Expected rollback file not found: $ROLLBACK_FILE"
+              fi
+            fi
             
           else
             echo "❌ Seeding command failed"
@@ -169,7 +208,13 @@ jobs:
         echo "**Mode:** ${{ env.SEEDING_MODE }}" >> $GITHUB_STEP_SUMMARY
         echo "**Container:** ${{ env.CONTAINER_NAME }}" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🎯 SEED ID FOR ROLLBACK" >> $GITHUB_STEP_SUMMARY
+        echo "**Look for the line: 'USE THIS SEED ID FOR ROLLBACK' in the execution logs above**" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "Or check latest rollback file:" >> $GITHUB_STEP_SUMMARY
+        echo "\`docker exec ${{ env.CONTAINER_NAME }} ls -t /app/seed_logs/rollback_seed_*.log | head -1\`" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
         echo "### 🔄 How to Rollback" >> $GITHUB_STEP_SUMMARY
         echo "1. **GitHub Actions**: Go to Actions > Manual Data Rollback" >> $GITHUB_STEP_SUMMARY
-        echo "2. **Manual SSH**: \`docker exec ${{ env.CONTAINER_NAME }} python manage.py seed_database --mode=production --rollback-id=<SEED_ID>\`" >> $GITHUB_STEP_SUMMARY
-        echo "3. Use the seed ID from the seeding output above" >> $GITHUB_STEP_SUMMARY
+        echo "2. **Use the seed ID from the logs above**" >> $GITHUB_STEP_SUMMARY
+        echo "3. **Manual SSH**: \`docker exec ${{ env.CONTAINER_NAME }} python manage.py seed_database --mode=production --rollback-id=<SEED_ID>\`" >> $GITHUB_STEP_SUMMARY
