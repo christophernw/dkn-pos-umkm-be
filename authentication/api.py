@@ -173,7 +173,6 @@ def get_user_by_id(request, user_id: int):
     except Http404:
         return 404, {"error": "User not found"}
 
-
 # NEW FUNCTION 2: Update user profile
 @router.put("/users/{user_id}", response={200: UserResponse, 404: dict, 422: dict})
 def update_user_profile(request, user_id: int, payload: UpdateUserRequest):
@@ -205,31 +204,6 @@ def update_user_profile(request, user_id: int, payload: UpdateUserRequest):
     # except Exception as e:
     #     return 422, {"error": f"Failed to update user: {str(e)}"}
 
-# NEW FUNCTION 3: Deactivate user (soft delete)
-@router.delete("/users/{user_id}", response={200: dict, 404: dict, 422: dict})
-def deactivate_user(request, user_id: int):
-    """Deactivate a user (soft delete by setting is_active to False)"""
-    try:
-        user = get_object_or_404(User, id=user_id)
-        
-        # Check if user is already inactive
-        if not user.is_active:
-            return 422, {"error": "User is already inactive"}
-        
-        user.is_active = False
-        user.save()
-        
-        return 200, {
-            "message": "User deactivated successfully",
-            "user_id": user_id,
-            "is_active": False
-        }
-        
-    except Http404:
-        return 404, {"error": "User not found"}
-    # except Exception as e:
-    #     return 422, {"error": f"Failed to deactivate user: {str(e)}"}
-    
 # NEW FUNCTION 3: Deactivate user (soft delete)
 @router.delete("/users/{user_id}", response={200: dict, 404: dict, 422: dict})
 def deactivate_user(request, user_id: int):
