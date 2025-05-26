@@ -118,18 +118,34 @@ jobs:
           docker-compose --env-file .env down --remove-orphans
           docker-compose --env-file .env up -d
           
-          # Wait for the database and application to be ready
-          sleep 10
+          # Wait for the application to be ready
+          sleep 30
           
-          # Run database migrations
+          # Run database migrations only (lightweight operation)
+          echo "Running database migrations..."
           docker-compose --env-file .env exec -T web python manage.py migrate
           
-          # Only run automatic seeding for non-production environments
-          if [ "${{ env.BRANCH }}" != "main" ]; then
-            echo "Running automatic seeding for ${{ env.BRANCH }} environment..."
-            docker-compose --env-file .env exec -T web python manage.py seed_database --mode=${{ env.SEEDING_MODE }} --email=gg.gaming1030@gmail.com --clean
+          # Skip automatic seeding for both main and staging environments
+          if [ "${{ env.BRANCH }}" == "main" ]; then
+            echo "✅ Production deployment complete!"
+            echo "📋 Production seeding is disabled for safety."
+            echo "💡 To seed production data manually, use the 'Manual Production Seeding' workflow."
+          elif [ "${{ env.BRANCH }}" == "staging" ]; then
+            echo "✅ Staging deployment complete!"
+            echo "📋 Automatic seeding is disabled to prevent memory issues."
+            echo "💡 To seed staging data manually, SSH to server and run:"
+            echo "   cd ~/django-be-staging && docker-compose --env-file .env exec web python manage.py seed_database --mode=server --email=gg.gaming1030@gmail.com"
           else
-            echo "Production environment detected. Skipping automatic seeding."
-            echo "Use the Manual Production Seeding workflow to seed production data."
+            echo "✅ Development deployment complete!"
+            echo "💡 To seed development data manually, SSH to server and run:"
+            echo "   cd ~/django-be-dev && docker-compose --env-file .env exec web python manage.py seed_database --mode=local --email=gg.gaming1030@gmail.com"
           fi
+          
+          # Show final deployment status
+          echo ""
+          echo "🚀 Deployment Summary:"
+          echo "   Environment: ${{ env.BRANCH }}"
+          echo "   Version: ${{ env.VERSION }}"
+          echo "   Port: ${{ env.PORT }}"
+          docker-compose --env-file .env ps
         EOF
