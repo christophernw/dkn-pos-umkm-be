@@ -103,7 +103,7 @@ jobs:
           echo "DB_NAME=${{ secrets.DB_NAME }}" >> .env
           echo "DB_USER=${{ secrets.DB_USER }}" >> .env
           echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env
-          echo "VERSION=${{ env.VERSION }}" >> .env  # Add VERSION to environment
+          echo "VERSION=${{ env.VERSION }}" >> .env
           
           # Dynamically choose correct Sentry DSN based on environment
           if [ "${{ env.BRANCH }}" == "main" ]; then
@@ -121,10 +121,15 @@ jobs:
           # Wait for the database and application to be ready
           sleep 10
           
-          # Run database migrations and seeding
+          # Run database migrations
           docker-compose --env-file .env exec -T web python manage.py migrate
           
-          # Run database seeding with appropriate mode based on environment
-          # Use demo@example.com as the default user for seeding
-          docker-compose --env-file .env exec -T web python manage.py seed_database --mode=${{ env.SEEDING_MODE }} --email=demo@example.com
+          # Only run automatic seeding for non-production environments
+          if [ "${{ env.BRANCH }}" != "main" ]; then
+            echo "Running automatic seeding for ${{ env.BRANCH }} environment..."
+            docker-compose --env-file .env exec -T web python manage.py seed_database --mode=${{ env.SEEDING_MODE }} --email=gg.gaming1030@gmail.com --clean
+          else
+            echo "Production environment detected. Skipping automatic seeding."
+            echo "Use the Manual Production Seeding workflow to seed production data."
+          fi
         EOF

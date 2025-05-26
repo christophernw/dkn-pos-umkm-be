@@ -1,0 +1,90 @@
+name: Manual Production Data Seeding
+
+on:
+  workflow_dispatch:
+    inputs:
+      email:
+        description: 'Email for seeding user'
+        required: true
+        default: 'demo@example.com'
+        type: string
+      clean_data:
+        description: 'Clean existing data before seeding'
+        required: false
+        default: false
+        type: boolean
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+        - production
+        - staging
+
+jobs:
+  manual-seed:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Install sshpass
+      run: sudo apt-get update && sudo apt-get install -y sshpass
+
+    - name: Set environment variables
+      run: |
+        if [ "${{ github.event.inputs.environment }}" == "production" ]; then
+          echo "BRANCH=prod" >> $GITHUB_ENV
+          echo "PORT=8000" >> $GITHUB_ENV
+          echo "SEEDING_MODE=production" >> $GITHUB_ENV
+        else
+          echo "BRANCH=staging" >> $GITHUB_ENV
+          echo "PORT=8001" >> $GITHUB_ENV
+          echo "SEEDING_MODE=server" >> $GITHUB_ENV
+        fi
+
+    - name: Run Manual Data Seeding
+      run: |
+        sshpass -p "${{ secrets.SERVER_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << EOF
+          cd ~/django-be-${{ env.BRANCH }}
+          
+          # Build seeding command
+          SEED_CMD="python manage.py seed_database --mode=${{ env.SEEDING_MODE }} --email=${{ github.event.inputs.email }}"
+          
+          # Add clean flag if requested
+          if [ "${{ github.event.inputs.clean_data }}" == "true" ]; then
+            SEED_CMD="$SEED_CMD --clean"
+          fi
+          
+          # Execute seeding with logging
+          echo "Starting manual seeding with command: $SEED_CMD"
+          docker-compose --env-file .env exec -T web $SEED_CMD
+          
+          # Capture the seed ID for rollback reference
+          SEED_ID=$(docker-compose --env-file .env exec -T web python -c "
+          import os
+          from django.utils import timezone
+          seed_id = f'seed_{timezone.now().strftime(\"%Y%m%d%H%M%S\")}'
+          print(f'Generated seed ID: {seed_id}')
+          ")
+          
+          echo "Manual seeding completed. Save this for rollback: $SEED_ID"
+        EOF
+
+    - name: Generate Rollback Instructions
+      run: |
+        echo "## 🎯 Seeding Completed Successfully!" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Environment:** ${{ github.event.inputs.environment }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Email:** ${{ github.event.inputs.email }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Clean Data:** ${{ github.event.inputs.clean_data }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### 🔄 Rollback Instructions" >> $GITHUB_STEP_SUMMARY
+        echo "If you need to rollback this seeding operation:" >> $GITHUB_STEP_SUMMARY
+        echo "1. SSH to the server" >> $GITHUB_STEP_SUMMARY
+        echo "2. Navigate to ~/django-be-${{ env.BRANCH }}" >> $GITHUB_STEP_SUMMARY
+        echo "3. Run: \`./rollback.sh <SEED_ID>\`" >> $GITHUB_STEP_SUMMARY
+        echo "4. Or manually: \`docker-compose exec web python manage.py seed_database --mode=production --rollback-id=<SEED_ID>\`" >> $GITHUB_STEP_SUMMARY
