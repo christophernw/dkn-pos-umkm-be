@@ -37,19 +37,82 @@ jobs:
     - name: Set environment variables
       run: |
         if [ "${{ github.event.inputs.environment }}" == "production" ]; then
-          echo "BRANCH=prod" >> $GITHUB_ENV
-          echo "PORT=8000" >> $GITHUB_ENV
+          echo "CONTAINER_NAME=django-be-main_web_1" >> $GITHUB_ENV
           echo "SEEDING_MODE=production" >> $GITHUB_ENV
         else
-          echo "BRANCH=staging" >> $GITHUB_ENV
-          echo "PORT=8001" >> $GITHUB_ENV
+          echo "CONTAINER_NAME=django-be-staging_web_1" >> $GITHUB_ENV
           echo "SEEDING_MODE=server" >> $GITHUB_ENV
         fi
 
     - name: Run Manual Data Seeding
       run: |
-        sshpass -p "${{ secrets.SERVER_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << EOF
-          cd ~/django-be-${{ env.BRANCH }}
+        sshpass -p "${{ secrets.SERVER_PASSWORD }}" ssh -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+          echo "🎯 Manual Seeding for ${{ github.event.inputs.environment }}"
+          echo "📧 Email: ${{ github.event.inputs.email }}"
+          echo "🧹 Clean data: ${{ github.event.inputs.clean_data }}"
+          echo "🏗️ Mode: ${{ env.SEEDING_MODE }}"
+          echo "📦 Container: ${{ env.CONTAINER_NAME }}"
+          echo ""
+          
+          # Check if container is running
+          if ! docker ps --format "table {{.Names}}" | grep -q "${{ env.CONTAINER_NAME }}"; then
+            echo "❌ Container ${{ env.CONTAINER_NAME }} is not running"
+            echo "📋 Available containers:"
+            docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+            exit 1
+          fi
+          
+          echo "✅ Container ${{ env.CONTAINER_NAME }} is running"
+          
+          # Test container access
+          if ! docker exec ${{ env.CONTAINER_NAME }} echo "Container accessible"; then
+            echo "❌ Cannot access container ${{ env.CONTAINER_NAME }}"
+            exit 1
+          fi
+          
+          # Check if seed_database command exists
+          if ! docker exec ${{ env.CONTAINER_NAME }} python manage.py help | grep -q seed_database; then
+            echo "❌ seed_database command not found"
+            echo "📋 Available commands:"
+            docker exec ${{ env.CONTAINER_NAME }} python manage.py help | grep -E "(seed|database)"
+            exit 1
+          fi
+          
+          echo "✅ seed_database command found"
+          
+          # Show current data before seeding
+          echo "📊 Current data before seeding:"
+          docker exec ${{ env.CONTAINER_NAME }} python manage.py shell -c "
+            from authentication.models import User, Toko
+            from produk.models import Produk
+            from transaksi.models import Transaksi
+            print(f'Users: {User.objects.count()}')
+            print(f'Tokos: {Toko.objects.count()}')
+            print(f'Products: {Produk.objects.count()}')
+            print(f'Transactions: {Transaksi.objects.count()}')
+            "
+                    
+                    # Clean up potential duplicate Satuan entries
+                    echo "🧹 Cleaning potential duplicate Satuan entries..."
+                    docker exec ${{ env.CONTAINER_NAME }} python manage.py shell -c "
+            from produk.models import Satuan
+            from django.db.models import Count
+
+            duplicates = Satuan.objects.values('nama').annotate(count=Count('nama')).filter(count__gt=1)
+            cleaned = 0
+            for dup in duplicates:
+                nama = dup['nama']
+                entries = Satuan.objects.filter(nama=nama).order_by('id')
+                keep_first = entries.first()
+                delete_others = entries.exclude(id=keep_first.id)
+                cleaned += delete_others.count()
+                delete_others.delete()
+
+            if cleaned > 0:
+                print(f'Cleaned {cleaned} duplicate Satuan entries')
+            else:
+                print('No duplicate Satuan entries found')
+            "
           
           # Build seeding command
           SEED_CMD="python manage.py seed_database --mode=${{ env.SEEDING_MODE }} --email=${{ github.event.inputs.email }}"
@@ -59,32 +122,54 @@ jobs:
             SEED_CMD="$SEED_CMD --clean"
           fi
           
-          # Execute seeding with logging
-          echo "Starting manual seeding with command: $SEED_CMD"
-          docker-compose --env-file .env exec -T web $SEED_CMD
+          echo "🚀 Executing: $SEED_CMD"
+          echo ""
           
-          # Capture the seed ID for rollback reference
-          SEED_ID=$(docker-compose --env-file .env exec -T web python -c "
-          import os
-          from django.utils import timezone
-          seed_id = f'seed_{timezone.now().strftime(\"%Y%m%d%H%M%S\")}'
-          print(f'Generated seed ID: {seed_id}')
-          ")
-          
-          echo "Manual seeding completed. Save this for rollback: $SEED_ID"
+          # Execute seeding command
+          if docker exec ${{ env.CONTAINER_NAME }} $SEED_CMD; then
+            echo ""
+            echo "✅ Manual seeding completed successfully!"
+            
+            # Show data after seeding
+            echo "📊 Data after seeding:"
+            docker exec ${{ env.CONTAINER_NAME }} python manage.py shell -c "
+                from authentication.models import User, Toko
+                from produk.models import Produk
+                from transaksi.models import Transaksi
+                print(f'Users: {User.objects.count()}')
+                print(f'Tokos: {Toko.objects.count()}')
+                print(f'Products: {Produk.objects.count()}')
+                print(f'Transactions: {Transaksi.objects.count()}')
+                "
+            
+            # Check for rollback files
+            echo "📁 Checking rollback files:"
+            docker exec ${{ env.CONTAINER_NAME }} ls -la /app/seed_logs/rollback_*.log 2>/dev/null | tail -3 || echo "No rollback files found"
+            
+            # Generate seed ID for reference
+            TIMESTAMP=$(date +"%Y%m%d%H%M%S")
+            echo "💾 Seed ID for rollback reference: seed_$TIMESTAMP"
+            echo "📝 Note: Use the actual seed ID from the seeding output above for rollback"
+            
+          else
+            echo "❌ Seeding command failed"
+            echo "📋 Container logs (last 50 lines):"
+            docker logs ${{ env.CONTAINER_NAME }} --tail=50
+            exit 1
+          fi
         EOF
 
-    - name: Generate Rollback Instructions
+    - name: Generate Summary
       run: |
-        echo "## 🎯 Seeding Completed Successfully!" >> $GITHUB_STEP_SUMMARY
+        echo "## 🎯 Manual Seeding Completed!" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "**Environment:** ${{ github.event.inputs.environment }}" >> $GITHUB_STEP_SUMMARY
         echo "**Email:** ${{ github.event.inputs.email }}" >> $GITHUB_STEP_SUMMARY
         echo "**Clean Data:** ${{ github.event.inputs.clean_data }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Mode:** ${{ env.SEEDING_MODE }}" >> $GITHUB_STEP_SUMMARY
+        echo "**Container:** ${{ env.CONTAINER_NAME }}" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### 🔄 Rollback Instructions" >> $GITHUB_STEP_SUMMARY
-        echo "If you need to rollback this seeding operation:" >> $GITHUB_STEP_SUMMARY
-        echo "1. SSH to the server" >> $GITHUB_STEP_SUMMARY
-        echo "2. Navigate to ~/django-be-${{ env.BRANCH }}" >> $GITHUB_STEP_SUMMARY
-        echo "3. Run: \`./rollback.sh <SEED_ID>\`" >> $GITHUB_STEP_SUMMARY
-        echo "4. Or manually: \`docker-compose exec web python manage.py seed_database --mode=production --rollback-id=<SEED_ID>\`" >> $GITHUB_STEP_SUMMARY
+        echo "### 🔄 How to Rollback" >> $GITHUB_STEP_SUMMARY
+        echo "1. **GitHub Actions**: Go to Actions > Manual Data Rollback" >> $GITHUB_STEP_SUMMARY
+        echo "2. **Manual SSH**: \`docker exec ${{ env.CONTAINER_NAME }} python manage.py seed_database --mode=production --rollback-id=<SEED_ID>\`" >> $GITHUB_STEP_SUMMARY
+        echo "3. Use the seed ID from the seeding output above" >> $GITHUB_STEP_SUMMARY
