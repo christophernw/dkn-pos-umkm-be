@@ -3,17 +3,19 @@ from typing import List, Optional
 from datetime import datetime
 from pydantic import BaseModel, Field, field_validator
 
+
 class TransaksiItemRequest(Schema):
     product_id: int
     quantity: float
     harga_jual_saat_transaksi: float
     harga_modal_saat_transaksi: float
-    
+
     @field_validator("quantity")
     def validate_quantity(cls, v):
         if v <= 0:
             raise ValueError("Quantity harus lebih dari 0")
         return v
+
 
 class CreateTransaksiRequest(Schema):
     transaction_type: str
@@ -22,13 +24,20 @@ class CreateTransaksiRequest(Schema):
     total_modal: float = 0
     amount: float
     items: List[TransaksiItemRequest] = []
-    status: str = "Selesai"
-    
+    status: str = "Lunas"
+
     @field_validator("items")
     def validate_items(cls, v, values):
-        if "category" in values.data and values.data["category"] == "Penjualan Barang" and not v:
-            raise ValueError("Minimal satu item harus ditambahkan untuk penjualan barang")
+        if (
+            "category" in values.data
+            and values.data["category"] == "Penjualan Barang"
+            and not v
+        ):
+            raise ValueError(
+                "Minimal satu item harus ditambahkan untuk penjualan barang"
+            )
         return v
+
 
 class TransaksiItemResponse(Schema):
     id: int
@@ -39,7 +48,7 @@ class TransaksiItemResponse(Schema):
     harga_jual_saat_transaksi: float
     harga_modal_saat_transaksi: float
     subtotal: float
-    
+
     @classmethod
     def from_orm(cls, item):
         return cls(
@@ -50,8 +59,9 @@ class TransaksiItemResponse(Schema):
             quantity=float(item.quantity),
             harga_jual_saat_transaksi=float(item.harga_jual_saat_transaksi),
             harga_modal_saat_transaksi=float(item.harga_modal_saat_transaksi),
-            subtotal=float(item.quantity * item.harga_jual_saat_transaksi)
+            subtotal=float(item.quantity * item.harga_jual_saat_transaksi),
         )
+
 
 class TransaksiResponse(Schema):
     id: str
@@ -64,7 +74,7 @@ class TransaksiResponse(Schema):
     status: str
     is_deleted: bool
     created_at: datetime
-    
+
     @classmethod
     def from_orm(cls, transaksi):
         return cls(
@@ -74,11 +84,14 @@ class TransaksiResponse(Schema):
             total_amount=float(transaksi.total_amount),
             total_modal=float(transaksi.total_modal),
             amount=float(transaksi.amount),
-            items=[TransaksiItemResponse.from_orm(item) for item in transaksi.items.all()],
+            items=[
+                TransaksiItemResponse.from_orm(item) for item in transaksi.items.all()
+            ],
             status=transaksi.status,
             is_deleted=transaksi.is_deleted,
             created_at=transaksi.created_at,
         )
+
 
 class PaginatedTransaksiResponse(Schema):
     items: List[TransaksiResponse]
