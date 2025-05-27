@@ -205,7 +205,7 @@ def get_produk_by_id(request, id: int):
         # Get product by id and check if it belongs to user's toko
         produk = get_object_or_404(Produk, id=id, toko=user.toko)
         return 200, ProdukResponseSchema.from_orm(produk)
-    except Exception as e:
+    except Exception:
         return 404, {"message": "Produk tidak ditemukan"}
 
 

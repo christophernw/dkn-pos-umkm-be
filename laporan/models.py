@@ -27,7 +27,7 @@ class DetailHutangPiutang(models.Model):
     jenis = models.CharField(max_length=10, choices=[('hutang', 'Hutang'), ('piutang', 'Piutang')])
     jumlah = models.DecimalField(max_digits=12, decimal_places=2)
     tanggal_transaksi = models.DateTimeField()
-    keterangan = models.CharField(max_length=255, blank=True, null=True)
+    keterangan = models.CharField(max_length=255, blank=True)
     
     class Meta:
         ordering = ['-tanggal_transaksi']
@@ -60,7 +60,7 @@ class DetailArusKas(models.Model):
     nominal = models.DecimalField(max_digits=12, decimal_places=2)
     kategori = models.CharField(max_length=50)
     tanggal_transaksi = models.DateTimeField()
-    keterangan = models.CharField(max_length=255, blank=True, null=True)
+    keterangan = models.CharField(max_length=255, blank=True)
     
     class Meta:
         ordering = ['-tanggal_transaksi']

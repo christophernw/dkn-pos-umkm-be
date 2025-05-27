@@ -109,7 +109,7 @@ class IncomeStatementTestCase(TestCase):
             status="Draft",
             created_at=datetime(2025, 4, 21, 10, 0),
         )
-        Transaksi.objects.create(  # is_deleted=True
+        Transaksi.objects.create( 
             toko=self.toko,
             created_by=self.user,
             transaction_type="Pengeluaran",
@@ -175,7 +175,7 @@ class ArusKasReportTests(TestCase):
 
     def test_get_aruskas_report_existing(self):
         request = MockAuthenticatedRequest(user_id=self.user.id)
-        response = aruskas_report(request, start_date=datetime(2025, 4, 1))  # langsung return object schema
+        response = aruskas_report(request, start_date=datetime(2025, 4, 1)) 
 
         self.assertEqual(response.month, 4)
         self.assertEqual(response.year, 2025)
@@ -191,15 +191,6 @@ class ArusKasReportTests(TestCase):
         self.assertEqual(len(response.transactions), 0)
 
     def test_get_aruskas_report_with_date_filter(self):
-        detail2 = DetailArusKas.objects.create(
-            report=self.report,
-            jenis="outflow",
-            nominal=Decimal("50000.00"),
-            kategori="Pengeluaran",
-            tanggal_transaksi=datetime(2025, 4, 25, 10, 0),
-            keterangan="Pembayaran"
-        )
-
         request = MockAuthenticatedRequest(user_id=self.user.id)
         start = datetime(2025, 4, 15)
         end = datetime(2025, 4, 30)
