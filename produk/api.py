@@ -13,16 +13,18 @@ from produk.schemas import (
     UpdateProdukStokSchema,
 )
 from django.contrib.auth.models import User
+from silk.profiling.profiler import silk_profile
+from rest_framework_simplejwt.tokens import AccessToken
 
 
 class AuthBearer(HttpBearer):
     def authenticate(self, request, token):
         try:
-            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])
-            user_id = payload.get("user_id")
-            if user_id:
+            access_token = AccessToken(token)
+            user_id = access_token.get("user_id")
+            if user_id and User.objects.filter(id=user_id).exists():
                 return user_id
-        except jwt.PyJWTError:
+        except Exception:
             return None
         return None
 
@@ -31,11 +33,13 @@ router = Router(auth=AuthBearer())
 
 
 @router.get("", response={200: PaginatedResponseSchema, 404: dict})
+@silk_profile(name="Profiling Get Produk Default")
 def get_produk_default(request, sort: str = None):
     return get_produk_paginated(request, page=1, sort=sort)
 
 
 @router.get("/page/{page}", response={200: PaginatedResponseSchema, 404: dict})
+@silk_profile(name="Profiling Get Produk Paginated")
 def get_produk_paginated(request, page: int, sort: str = None, q: str = ""):
     if sort not in [None, "asc", "desc"]:
         return HttpResponseBadRequest("Invalid sort parameter. Use 'asc' or 'desc'.")
@@ -47,7 +51,10 @@ def get_produk_paginated(request, page: int, sort: str = None, q: str = ""):
     if q:
         queryset = queryset.filter(nama__icontains=q)
 
-    queryset = queryset.select_related("kategori").order_by(order_by_field, "id")
+    queryset = queryset.select_related("kategori", "user").only(
+        "id", "nama", "foto", "harga_modal", "harga_jual", "stok",
+        "satuan", "kategori__nama", "user"
+        ).order_by(order_by_field, "id")
 
     try:
         per_page = int(request.GET.get("per_page", 7))
@@ -73,6 +80,7 @@ def get_produk_paginated(request, page: int, sort: str = None, q: str = ""):
 
 
 @router.post("/create", response={201: ProdukResponseSchema, 422: dict})
+@silk_profile(name="Profiling Create Produk")
 def create_produk(request, payload: CreateProdukSchema, foto: UploadedFile = None):
     user_id = request.auth
     user = get_object_or_404(User, id=user_id)
@@ -92,11 +100,32 @@ def create_produk(request, payload: CreateProdukSchema, foto: UploadedFile = Non
 
     return 201, ProdukResponseSchema.from_orm(produk)
 
+@router.get("/low-stock", response=list[ProdukResponseSchema])
+@silk_profile(name="Profiling Get Low Stock Products")
+def get_low_stock_products(request):
+    user_id = request.auth
+    products = (
+    Produk.objects.select_related("kategori", "user").only(
+        "id", "nama", "foto", "harga_modal", "harga_jual", "stok",
+        "satuan", "kategori__nama", "user"
+        )
+    .filter(stok__lt=10, user_id=user_id)
+    .order_by("id")
+    )
+
+    return [ProdukResponseSchema.from_orm(p) for p in products]
+
 @router.get("/{id}", response={200: ProdukResponseSchema, 404: dict})
 def get_produk_by_id(request, id: int):
     user_id = request.auth
     try:
-        produk = get_object_or_404(Produk, id=id, user_id=user_id)
+        produk = get_object_or_404(
+        Produk.objects.select_related("kategori", "user").only(
+            "id", "nama", "foto", "harga_modal", "harga_jual", "stok",
+            "satuan", "kategori__nama", "user"
+        ),
+        id=id, user_id=user_id
+    )
         return 200, ProdukResponseSchema.from_orm(produk)
     except Exception as e:
         return 404, {"message": "Produk tidak ditemukan"}
@@ -128,14 +157,3 @@ def delete_produk(request, id: int):
     produk = get_object_or_404(Produk, id=id, user_id=user_id)
     produk.delete()
     return {"message": "Produk berhasil dihapus"}
-
-
-@router.get("/low-stock", response=list[ProdukResponseSchema])
-def get_low_stock_products(request):
-    user_id = request.auth
-    products = (
-        Produk.objects.select_related("kategori")
-        .filter(stok__lt=10, user_id=user_id)
-        .order_by("id")
-    )
-    return [ProdukResponseSchema.from_orm(p) for p in products]
