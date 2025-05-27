@@ -4,11 +4,18 @@ from django.utils.timezone import localtime
 from .models import Transaksi
 from laporan.models import ArusKasReport, DetailArusKas
 from decimal import Decimal
+import sentry_sdk
 
 @receiver(post_save, sender=Transaksi)
 def handle_transaksi_selesai(sender, instance, created, **kwargs):
     if instance.status != 'Lunas':
         return 
+    
+    if created:
+        sentry_sdk.capture_message(
+            f"Transaksi lunas baru dibuat: ID={instance.id}, Amount={instance.amount}, Category={instance.category}",
+            level="info"
+        )
 
     waktu = localtime(instance.created_at)
     bulan = waktu.month
@@ -30,6 +37,7 @@ def handle_transaksi_selesai(sender, instance, created, **kwargs):
     else:
         jenis = 'outflow'
 
+    
     DetailArusKas.objects.create(
         report=report,
         transaksi=instance,
