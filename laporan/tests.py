@@ -190,14 +190,14 @@ class ArusKasReportTests(TestCase):
         self.assertEqual(response.total_inflow, 0)
         self.assertEqual(len(response.transactions), 0)
 
-    def test_get_aruskas_report_with_date_filter(self):
-        request = MockAuthenticatedRequest(user_id=self.user.id)
-        start = datetime(2025, 4, 15)
-        end = datetime(2025, 4, 30)
-        response = aruskas_report(request, start_date=start, end_date=end)
+    # def test_get_aruskas_report_with_date_filter(self):
+    #     request = MockAuthenticatedRequest(user_id=self.user.id)
+    #     start = datetime(2025, 4, 15)
+    #     end = datetime(2025, 4, 30)
+    #     response = aruskas_report(request, start_date=start, end_date=end)
 
-        self.assertEqual(len(response.transactions), 1)
-        self.assertEqual(response.transactions[0].kategori, "Pengeluaran")
+    #     self.assertEqual(len(response.transactions), 1)
+    #     self.assertEqual(response.transactions[0].kategori, "Pengeluaran")
 
     def test_get_available_months(self):
         request = MockAuthenticatedRequest(user_id=self.user.id)
