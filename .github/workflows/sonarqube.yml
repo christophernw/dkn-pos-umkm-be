@@ -46,9 +46,9 @@ jobs:
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         with:
           args: >
-            -Dsonar.projectKey=app-laporan
+            -Dsonar.projectKey=dkn-pos-umkm-be
             -Dsonar.sources=laporan
             -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }}
-            -Dsonar.login=${{ secrets.SONAR_TOKEN }}
+            -Dsonar.token=${{ secrets.SONAR_TOKEN }}
             -Dsonar.python.coverage.reportPaths=coverage.xml
             -Dsonar.exclusions=manage.py,*/settings.py,*/wsgi.py,*/asgi.py,*/urls.py,*/migrations/**
