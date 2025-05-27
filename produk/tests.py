@@ -11,7 +11,7 @@ from pydantic import ValidationError
 from backend import settings
 from .api import AuthBearer, get_produk_default, router, get_produk_paginated, create_produk, delete_produk, get_low_stock_products, update_produk
 from .models import Produk, KategoriProduk
-from .schemas import ProdukResponseSchema, CreateProdukSchema, UpdateProdukStokSchema
+from .schemas import ProdukResponseSchema, CreateProdukSchema
 
 class MockAuthenticatedRequest:
     """Mock request with authentication for testing"""
