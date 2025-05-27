@@ -68,43 +68,6 @@ def aruskas_report(request, start_date: Optional[datetime] = None, end_date: Opt
 
     return ArusKasReportWithDetailsSchema.from_report(report, transactions)
 
-# laporan/api.py
-# @router.get("/bpr/shop/{shop_id}/aruskas", response={200: ArusKasReportWithDetailsSchema, 403: dict, 404: dict}, auth=AuthBearer())
-# def get_shop_aruskas_for_bpr(request, shop_id: int):
-#     """Get cash flow report for a specific shop for BPR users."""
-#     user_id = request.auth
-    
-#     try:
-#         user = User.objects.get(id=user_id)
-        
-#         # Check ONLY the email, not the role
-#         if user.email != settings.BPR_EMAIL:
-#             return 403, {"error": "Only BPR users can access this endpoint"}
-        
-#         # Get the shop
-#         shop = get_object_or_404(Toko, id=shop_id)
-        
-#         # Get report for the shop
-#         report = ArusKasReport.objects.filter(toko=shop).first()
-        
-#         if not report:
-#             return ArusKasReportWithDetailsSchema(
-#                 id=0,
-#                 month=0,
-#                 year=0,
-#                 total_inflow=Decimal("0"),
-#                 total_outflow=Decimal("0"),
-#                 balance=Decimal("0"),
-#                 transactions=[]
-#             )
-        
-#         transactions = DetailArusKas.objects.filter(report=report)
-        
-#         return ArusKasReportWithDetailsSchema.from_report(report, transactions)
-#     except Exception as e:
-#         print(f"Error: {str(e)}")
-#         return 403, {"error": "Access denied"}
-
 @router.get("/aruskas-available-months", response=List[str])
 def available_months(request):
     user_id = request.auth
