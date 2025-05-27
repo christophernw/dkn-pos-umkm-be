@@ -1,12 +1,12 @@
-name: SonarQube Analysis
+name: SonarQube Analysis (transaksi - filter-status-unmerged)
 
 on:
   push:
     branches:
-      - "**"
+      - filter-status-unmerged
   pull_request:
     branches:
-      - "**"
+      - filter-status-unmerged
 
 jobs:
   sonar:
@@ -30,13 +30,13 @@ jobs:
 
       - name: Run Tests with Coverage
         env:
-            DB_NAME: ${{ secrets.DB_NAME }}
-            DB_USER: ${{ secrets.DB_USER }}
-            DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-            DB_HOST: ${{ secrets.DB_HOST }}
-            DB_PORT: ${{ secrets.DB_PORT }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_PORT: ${{ secrets.DB_PORT }}
         run: |
-          coverage run manage.py test
+          coverage run manage.py test transaksi
           coverage xml
 
       - name: Run SonarQube Scanner
@@ -47,7 +47,8 @@ jobs:
         with:
           args: >
             -Dsonar.projectKey=dkn-pos-umkm-be
+            -Dsonar.sources=transaksi
             -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }}
-            -Dsonar.login=${{ secrets.SONAR_TOKEN }}
+            -Dsonar.token=${{ secrets.SONAR_TOKEN }}
             -Dsonar.python.coverage.reportPaths=coverage.xml
-            -Dsonar.exclusions=manage.py,backend/settings.py,backend/wsgi.py,backend/asgi.py,backend/urls.py,backend/migrations/**
+            -Dsonar.exclusions=manage.py,*/settings.py,*/wsgi.py,*/asgi.py,*/urls.py,*/migrations/**
