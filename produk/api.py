@@ -18,6 +18,8 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from transaksi.models import TransaksiItem
 from typing import Optional
+# Add this line with your other imports
+from core.pos_monitoring import POSMonitoring
 
 
 class AuthBearer(HttpBearer):
@@ -117,28 +119,70 @@ def create_produk(request, payload: CreateProdukSchema, foto: UploadedFile = Non
     user = get_object_or_404(User, id=user_id)
 
     if not user.toko:
-        sentry_sdk.capture_message(f"[Produk] Gagal create: user {user_id} belum punya toko", level="warning")
+        # Custom business monitoring for failed operations
+        POSMonitoring.track_failed_operation(
+            operation_type="product_creation",
+            error_msg="User doesn't have a shop",
+            user_id=user_id,
+            user_email=user.email,
+            attempted_product=payload.nama
+        )
         return 422, {"message": "User doesn't have a toko"}
 
-    kategori_obj, _ = KategoriProduk.objects.get_or_create(nama=payload.kategori, toko=user.toko)
-    satuan_obj, _ = Satuan.objects.get_or_create(nama=payload.satuan, toko=user.toko)
+    try:
+        # Add business context to Sentry
+        sentry_sdk.set_tag("operation", "product_creation")
+        sentry_sdk.set_tag("shop_id", user.toko.id)
+        sentry_sdk.set_tag("user_role", user.role)
+        sentry_sdk.set_extra("product_name", payload.nama)
+        sentry_sdk.set_extra("initial_stock", payload.stok)
+        sentry_sdk.set_extra("selling_price", payload.harga_jual)
+        sentry_sdk.set_extra("cost_price", payload.harga_modal)
+        sentry_sdk.set_extra("category", payload.kategori)
+        sentry_sdk.set_extra("shop_id", user.toko.id)
+        sentry_sdk.set_extra("created_by", user.username)
 
-    produk = Produk.objects.create(
-        nama=payload.nama,
-        foto=foto,
-        harga_modal=payload.harga_modal,
-        harga_jual=payload.harga_jual,
-        stok=payload.stok,
-        satuan=satuan_obj.nama,
-        kategori=kategori_obj,
-        toko=user.toko,
-    )
+        kategori_obj, _ = KategoriProduk.objects.get_or_create(nama=payload.kategori, toko=user.toko)
+        satuan_obj, _ = Satuan.objects.get_or_create(nama=payload.satuan, toko=user.toko)
 
-    sentry_sdk.capture_message(
-        f"[Produk] Produk '{produk.nama}' berhasil dibuat oleh {user.username} (ID: {user_id})", level="info"
-    )
+        produk = Produk.objects.create(
+            nama=payload.nama,
+            foto=foto,
+            harga_modal=payload.harga_modal,
+            harga_jual=payload.harga_jual,
+            stok=payload.stok,
+            satuan=satuan_obj.nama,
+            kategori=kategori_obj,
+            toko=user.toko,
+        )
 
-    return 201, ProdukResponseSchema.from_orm(produk)
+        # Check for low stock immediately after creation
+        POSMonitoring.track_low_stock_alert(produk, produk.stok)
+
+        # Track successful product creation
+        POSMonitoring.track_business_success(
+            operation_type="product_creation",
+            shop_name=f"Shop #{user.toko.id}",
+            user_name=user.username,
+            product_name=produk.nama,
+            initial_stock=float(produk.stok),
+            selling_price=float(produk.harga_jual)
+        )
+
+        return 201, ProdukResponseSchema.from_orm(produk)
+    
+    except Exception as e:
+        # Custom error tracking with business context
+        POSMonitoring.track_failed_operation(
+            operation_type="product_creation",
+            error_msg=str(e),
+            user_id=user_id,
+            shop_id=user.toko.id,
+            product_name=payload.nama,
+            user_role=user.role,
+            error_type=type(e).__name__
+        )
+        raise
 
 
 @router.get("/most-popular", response={200: list, 404: dict})
@@ -224,8 +268,17 @@ def update_produk(request, id: int, payload: UpdateProdukSchema, foto: UploadedF
         return 422, {"message": "User doesn't have a toko"}
 
     try:
+        # Add business context
+        sentry_sdk.set_tag("operation", "product_update")
+        sentry_sdk.set_tag("shop_id", user.toko.id)
+        sentry_sdk.set_tag("user_role", user.role)
+
         # Get product by id and check if it belongs to user's toko
         produk = get_object_or_404(Produk, id=id, toko=user.toko)
+        
+        # Store old values for comparison
+        old_stock = produk.stok
+        old_name = produk.nama
 
         # Convert payload to dict and filter out None values
         update_data = {k: v for k, v in payload.dict().items() if v is not None}
@@ -255,9 +308,46 @@ def update_produk(request, id: int, payload: UpdateProdukSchema, foto: UploadedF
 
         produk.save()
 
+        # Check for low stock after update
+        if 'stok' in update_data:
+            POSMonitoring.track_low_stock_alert(produk, produk.stok)
+            
+            # Track stock changes
+            if old_stock != produk.stok:
+                stock_change = produk.stok - old_stock
+                sentry_sdk.capture_message(
+                    f"📦 STOCK UPDATED: {produk.nama} ({stock_change:+.0f})",
+                    level="info",
+                    extra={
+                        "product_name": produk.nama,
+                        "old_stock": float(old_stock),
+                        "new_stock": float(produk.stok),
+                        "stock_change": float(stock_change),
+                        "shop_id": user.toko.id,
+                        "updated_by": user.username
+                    }
+                )
+
+        # Track successful update
+        POSMonitoring.track_business_success(
+            operation_type="product_update",
+            shop_name=f"Shop #{user.toko.id}",
+            user_name=user.username,
+            product_name=produk.nama,
+            updated_fields=list(update_data.keys())
+        )
+
         return 200, ProdukResponseSchema.from_orm(produk)
 
     except Exception as e:
+        POSMonitoring.track_failed_operation(
+            operation_type="product_update",
+            error_msg=str(e),
+            user_id=user_id,
+            shop_id=user.toko.id,
+            product_id=id,
+            user_role=user.role
+        )
         return 422, {"message": str(e)}
 
 

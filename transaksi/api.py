@@ -2,6 +2,7 @@ from ninja import Router
 from django.shortcuts import get_object_or_404
 from django.db import transaction
 from django.http import HttpResponseBadRequest
+import sentry_sdk
 from transaksi.models import Transaksi, TransaksiItem
 from produk.models import Produk
 from transaksi.schemas import (
@@ -14,6 +15,9 @@ from produk.api import AuthBearer
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 from django.db.models import Sum
+from django.utils import timezone
+from core.pos_monitoring import POSMonitoring
+
 
 router = Router(auth=AuthBearer())
 
@@ -26,13 +30,43 @@ def create_transaksi(request, payload: CreateTransaksiRequest):
     
     # Check if user has a toko
     if not user.toko:
+        POSMonitoring.track_failed_operation(
+            operation_type="transaction_creation",
+            error_msg="User doesn't have a shop",
+            user_id=user_id
+        )
         return 422, {"message": "User doesn't have a toko"}
 
     try:
+        # Add business context to Sentry
+        sentry_sdk.set_tag("operation", "transaction_creation")
+        sentry_sdk.set_tag("shop_id", user.toko.id)
+        sentry_sdk.set_tag("user_role", user.role)
+        sentry_sdk.set_tag("transaction_type", payload.transaction_type)
+        sentry_sdk.set_tag("transaction_category", payload.category)
+        
+        # Set business context
+        sentry_sdk.set_extra("transaction_type", payload.transaction_type)
+        sentry_sdk.set_extra("transaction_category", payload.category)
+        sentry_sdk.set_extra("transaction_amount", float(payload.total_amount))
+        sentry_sdk.set_extra("transaction_status", payload.status)
+        sentry_sdk.set_extra("items_count", len(payload.items))
+        sentry_sdk.set_extra("shop_id", user.toko.id)
+        sentry_sdk.set_extra("created_by", user.username)
+        sentry_sdk.set_extra("is_peak_hour", 11 <= timezone.now().hour <= 13 or 17 <= timezone.now().hour <= 20)
+
+        # Track large transactions before creating
+        shop_name = f"Shop #{user.toko.id}"
+        POSMonitoring.track_large_transaction(
+            payload.total_amount, 
+            shop_name, 
+            user.username
+        )
+
         # Create main transaction
         transaksi = Transaksi.objects.create(
-            toko=user.toko,  # Associate with toko instead of user
-            created_by=user,  # Keep track of which user created the transaction
+            toko=user.toko,
+            created_by=user,
             transaction_type=payload.transaction_type,
             category=payload.category,
             total_amount=payload.total_amount,
@@ -48,6 +82,19 @@ def create_transaksi(request, payload: CreateTransaksiRequest):
                     Produk, id=item_data.product_id, toko=user.toko
                 )
 
+                # Check stock before creating item
+                if product.stok < item_data.quantity:
+                    POSMonitoring.track_failed_operation(
+                        operation_type="transaction_creation",
+                        error_msg=f"Insufficient stock for {product.nama}",
+                        user_id=user_id,
+                        shop_id=user.toko.id,
+                        product_name=product.nama,
+                        requested_quantity=item_data.quantity,
+                        available_stock=float(product.stok)
+                    )
+                    raise ValueError(f"Stok tidak cukup untuk produk {product.nama}")
+
                 # Create transaction item
                 TransaksiItem.objects.create(
                     transaksi=transaksi,
@@ -58,10 +105,11 @@ def create_transaksi(request, payload: CreateTransaksiRequest):
                 )
 
                 # Update product stock
-                if product.stok < item_data.quantity:
-                    raise ValueError(f"Stok tidak cukup untuk produk {product.nama}")
                 product.stok -= item_data.quantity
                 product.save()
+                
+                # Check if product is now low stock
+                POSMonitoring.track_low_stock_alert(product, product.stok)
 
         # Create transaction items and update stock if this is a stock purchase
         elif payload.category == "Pembelian Stok" and payload.items:
@@ -83,13 +131,48 @@ def create_transaksi(request, payload: CreateTransaksiRequest):
                 product.stok += item_data.quantity
                 product.save()
 
+        # Track successful transaction creation
+        POSMonitoring.track_business_success(
+            operation_type="transaction_creation",
+            shop_name=shop_name,
+            user_name=user.username,
+            transaction_id=transaksi.id,
+            transaction_type=payload.transaction_type,
+            amount=float(payload.total_amount),
+            items_count=len(payload.items),
+            status=payload.status
+        )
+
         # Reload transaction with all items for response
         transaksi = Transaksi.objects.get(id=transaksi.id)
         return 201, TransaksiResponse.from_orm(transaksi)
 
     except ValueError as e:
+        # Business logic errors (like insufficient stock)
+        POSMonitoring.track_failed_operation(
+            operation_type="transaction_creation",
+            error_msg=str(e),
+            user_id=user_id,
+            shop_id=user.toko.id,
+            transaction_type=payload.transaction_type,
+            transaction_amount=float(payload.total_amount),
+            business_impact="high",  # Customer is waiting
+            error_category="business_logic"
+        )
         return 422, {"message": str(e)}
     except Exception as e:
+        # Technical errors
+        POSMonitoring.track_failed_operation(
+            operation_type="transaction_creation",
+            error_msg=str(e),
+            user_id=user_id,
+            shop_id=user.toko.id,
+            transaction_type=payload.transaction_type,
+            transaction_amount=float(payload.total_amount),
+            business_impact="high",
+            error_category="technical",
+            error_type=type(e).__name__
+        )
         return 422, {"message": f"Error during transaction: {str(e)}"}
 
 
